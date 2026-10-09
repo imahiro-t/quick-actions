@@ -8,8 +8,6 @@ test('at least 20 actions, unique IDs, every field filled in', () => {
   expect(ACTIONS.length).toBeGreaterThanOrEqual(20)
   const ids = ACTIONS.map(a => a.id)
   expect(new Set(ids).size).toBe(ids.length)
-  // `close` is the ✕ button's key on the hint line.
-  expect(ids).not.toContain('close')
   for (const a of ACTIONS) {
     expect(a.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
     expect(a.icon).not.toBe('')
@@ -64,7 +62,7 @@ test(
 
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
     const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-    expect(icons).toEqual([...ACTIONS.map(a => a.icon), '✕'])
+    expect(icons).toEqual(ACTIONS.map(a => a.icon))
 
     for (const a of ACTIONS) {
       const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }

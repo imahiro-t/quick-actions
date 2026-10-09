@@ -14,6 +14,7 @@ import {
   wrap,
 } from './actions'
 import type { ActionDef, SubagentAction } from './actions'
+import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions: no action is
 // named here, so adding one there needs no change in this file.
@@ -30,7 +31,6 @@ const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
 // types/index.d.ts types these keys under the same name, so a drift fails tsc.
 const selection = atom({ plugin: 'selection-actions', key: 'selection' } as const, null)
-const dismissed = atom({ plugin: 'selection-actions', key: 'dismissed' } as const, null)
 const results = atom({ plugin: 'selection-actions', key: 'results' } as const, [])
 
 const quoteOf = (text: string) => {
@@ -83,6 +83,8 @@ async function run($: EngineInterface, def: ActionDef, text: string) {
   const result: Result = { id, action: def.id, quote: quoteOf(text), status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
   await $.ui.open({ id: PANE, title: PANE_TITLE, columns: PANE_COLUMNS })
+  // Back to the top, where this newest result is drawn (see ./scroll).
+  await settleQuietly($.ui.scroll(toLatest(PANE)))
 
   if (def.kind === 'subagent') {
     await startSubagent($, def, id, text)
@@ -131,6 +133,11 @@ export const register: Register = (on, options) => {
       immediate: true,
     })
 
+    // The icons follow $.ui.selection(): once it answers undefined, the next
+    // poll writes null and the hint line redraws without them. The engine
+    // keeps answering the last selection after its highlight goes (so a press
+    // can still read it) until the person selects again, dismisses it, or
+    // their next prompt or command has run: no event tells the module more.
     $.clock.every(POLL_MS, () => {
       void (async () => {
         const text = (await $.ui.selection())?.text.trim() || null
@@ -176,7 +183,7 @@ export const register: Register = (on, options) => {
   // a band above the prompt would add a row mid-drag and shift the transcript.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const text = await read($, selection)
-    if (e.props.isDraft || text === null || text === (await read($, dismissed))) {
+    if (e.props.isDraft || text === null) {
       return next(e)
     }
 
@@ -194,23 +201,11 @@ export const register: Register = (on, options) => {
             />
           </Box>
         ))}
-        <Box key="act-close" hover={{ scope: 'tip-close' }}>
-          <Button
-            key="close"
-            label="✕"
-            dimColor
-            role="dismiss"
-            onPress={() => update($, dismissed, () => text)}
-          />
-        </Box>
         {enabled.map(a => (
           <Box display="none" hover={{ scope: `tip-action-${a.id}`, display: 'flex' }}>
             <Text color="cyan"> {a.label}</Text>
           </Box>
         ))}
-        <Box display="none" hover={{ scope: 'tip-close', display: 'flex' }}>
-          <Text color="cyan"> 閉じる</Text>
-        </Box>
       </Box>
     )
   })

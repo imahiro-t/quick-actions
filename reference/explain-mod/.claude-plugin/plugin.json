@@ -1,0 +1,6 @@
+{
+  "name": "explain",
+  "version": "0.2.0",
+  "description": "Icon actions on the selected transcript text: meaning, translation, code evidence, ask in context",
+  "types": "./types/index.d.ts"
+}

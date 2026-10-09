@@ -136,7 +136,7 @@ export const register: Register = (on, options) => {
     // The icons follow $.ui.selection(): once it answers undefined, the next
     // poll writes null and the hint line redraws without them. The engine
     // keeps answering the last selection after its highlight goes (so a press
-    // can still read it) until the person selects again, dismisses it, or
+    // can still read it) until the person selects again, clears it, or
     // their next prompt or command has run: no event tells the module more.
     $.clock.every(POLL_MS, () => {
       void (async () => {

@@ -41,6 +41,9 @@ export type Stage = {
   answer: 'text' | 'empty'
   // Set to have every spawn refused with this reason.
   spawnDeny: string | null
+  // Set to have every model call, and every subagent registration, refused
+  // beneath the plugin with this reason: the plugin's call then rejects.
+  refuse: string | null
 }
 
 const reply = (s: Stage, text: string) => {
@@ -50,7 +53,7 @@ const reply = (s: Stage, text: string) => {
 }
 
 export const stage = (on: On): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null }
+  const s: Stage = { selected: null, models: [], registered: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null }
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
@@ -65,6 +68,7 @@ export const stage = (on: On): Stage => {
   })
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('agent.register', (_$, e) => {
+    if (s.refuse !== null) return { deny: s.refuse }
     s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description })
     return { value: { agent: `${PLUGIN}:${e.name}` } }
   })
@@ -79,10 +83,12 @@ export const stage = (on: On): Stage => {
   })
   on('model.complete', (_$, e) => {
     s.models.push({ model: e.model, system: e.system, prompt: e.prompt })
+    if (s.refuse !== null) return { deny: s.refuse }
     return { value: reply(s, `answer from ${e.model}`) }
   })
   on('model.fork', (_$, e) => {
     s.forks.push(e.prompt)
+    if (s.refuse !== null) return { deny: s.refuse }
     return { value: reply(s, 'answer in context') }
   })
   return s

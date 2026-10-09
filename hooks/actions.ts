@@ -49,6 +49,10 @@ export const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob']
 
 export const wrap = (text: string) => `<selected>\n${text}\n</selected>`
 
+// What a failure shows after its label: an Error's String() would repeat
+// "Error: " there, so an Error gives its message; anything else, String().
+export const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
 const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
 
 export const ACTIONS: readonly ActionDef[] = [

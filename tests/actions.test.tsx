@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, DEFAULT_ACTION_IDS, resolveActions } from '../hooks/actions'
+import { ACTIONS, DEFAULT_ACTION_IDS, messageOf, resolveActions } from '../hooks/actions'
 import type { ActionDef } from '../hooks/actions'
 import { BAND, PANE, PLUGIN, stage, start } from './stage'
 
@@ -90,3 +90,11 @@ test(
     expect(await pane.find({ text: new RegExp(ACTIONS.at(-1)!.label) })).toBeDefined()
   },
 )
+
+test('a failure shows an Error by its message, anything else as String() gives it', () => {
+  expect(messageOf(new Error('rate limited'))).toBe('rate limited')
+  expect(messageOf(new TypeError('bad input'))).toBe('bad input')
+  expect(messageOf('plain string')).toBe('plain string')
+  expect(messageOf(42)).toBe('42')
+  expect(messageOf(undefined)).toBe('undefined')
+})

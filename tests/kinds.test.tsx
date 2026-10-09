@@ -132,3 +132,32 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: '考え中…' })).toBeUndefined()
   })
 }
+
+for (const surface of SURFACES) {
+  test(`[${surface}] a call that rejects shows its message alone, without a repeated "Error: "`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'segfault'
+    await clock.advance(400)
+    const band = await $.ui.mount({ ...BAND, surface })
+
+    // Refused beneath the plugin, each call rejects with an Error.
+    s.refuse = 'rate limited'
+    await band.press({ key: 'explain' })
+    await band.press({ key: 'ask' })
+    await band.press({ key: 'code' })
+
+    const pane = await $.ui.mount({ ...PANE, surface })
+    // The boxes around them match too; the texts themselves are the three, in red.
+    const texts = (await pane.findAll({ text: /rate limited/ })).filter(f => f.type === 'Text')
+    expect(texts.map(f => f.props.color)).toEqual(['red', 'red', 'red'])
+    const shown = texts.map(f => f.text)
+    // Newest first: the subagent, the fork, the completion.
+    expect(shown[0]).toMatch(/^起動できませんでした: \S.*rate limited$/)
+    expect(shown[1]).toMatch(/^失敗しました: \S.*rate limited$/)
+    expect(shown[2]).toMatch(/^失敗しました: \S.*rate limited$/)
+    expect(await pane.find({ text: /Error:/ })).toBeUndefined()
+    expect(await pane.find({ text: '考え中…' })).toBeUndefined()
+  })
+}

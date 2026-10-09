@@ -8,6 +8,7 @@ import {
   READ_ONLY_TOOLS,
   STYLE,
   findAction,
+  messageOf,
   resolveActions,
   subagentType,
   wrap,
@@ -73,7 +74,7 @@ async function startSubagent($: EngineInterface, def: SubagentAction, id: number
     }
     pendingAgents.set(spawned.agentId, id)
   } catch (err) {
-    await settle($, id, false, `起動できませんでした: ${String(err)}`)
+    await settle($, id, false, `起動できませんでした: ${messageOf(err)}`)
   }
 }
 
@@ -104,7 +105,7 @@ async function run($: EngineInterface, def: ActionDef, text: string) {
     await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : `回答なし (${r.reason})`)
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
-    await settle($, id, false, `失敗しました: ${String(err)}`)
+    await settle($, id, false, `失敗しました: ${messageOf(err)}`)
   }
 }
 

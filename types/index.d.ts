@@ -1,4 +1,5 @@
-export type ActionId = 'meaning' | 'translate' | 'code' | 'ask'
+/** An action's ID as written in the `actions` setting (see hooks/actions.ts). */
+export type ActionId = string
 
 export type Result = {
   id: number
@@ -10,7 +11,7 @@ export type Result = {
 
 declare module 'claude-code' {
   interface PluginState {
-    explain: {
+    'selection-actions': {
       selection: string | null
       dismissed: string | null
       results: Result[]

@@ -1,0 +1,16 @@
+{
+  "name": "selection-actions",
+  "version": "0.1.0",
+  "description": "Icon actions on the text selected in the Claude Code transcript: explain, translate, summarize, find the code behind it, ask in context and more, chosen and ordered in settings",
+  "author": { "name": "Takashi Imahiro" },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "actions": {
+      "type": "string",
+      "title": "Actions",
+      "description": "Comma-separated action IDs shown on the hint line, in this order (e.g. explain,translate,summarize,ask). Leave empty for the default set; unknown IDs are ignored.",
+      "default": ""
+    }
+  }
+}

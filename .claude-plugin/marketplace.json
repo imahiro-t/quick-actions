@@ -1,0 +1,12 @@
+{
+  "name": "selection-actions",
+  "description": "Selection Actions: icon actions on the text selected in the Claude Code transcript",
+  "owner": { "name": "Takashi Imahiro" },
+  "plugins": [
+    {
+      "name": "selection-actions",
+      "source": "./",
+      "description": "Icon actions on the text selected in the Claude Code transcript, chosen and ordered in settings"
+    }
+  ]
+}

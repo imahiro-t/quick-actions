@@ -37,10 +37,20 @@ export type Stage = {
   spawned: { subagentType: string; prompt: string }[]
   forks: string[]
   toasts: string[]
+  // How the models answer: with text, or with none.
+  answer: 'text' | 'empty'
+  // Set to have every spawn refused with this reason.
+  spawnDeny: string | null
+}
+
+const reply = (s: Stage, text: string) => {
+  return s.answer === 'empty'
+    ? ({ isAnswered: false, reason: 'empty-reply', usage } as const)
+    : ({ isAnswered: true, text, usage } as const)
 }
 
 export const stage = (on: On): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], spawned: [], forks: [], toasts: [] }
+  const s: Stage = { selected: null, models: [], registered: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null }
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
@@ -64,15 +74,16 @@ export const stage = (on: On): Stage => {
   on('agent.spawn', (_$, e) => {
     const raw = e as unknown as { subagentType?: string; subagent_type?: string }
     s.spawned.push({ subagentType: raw.subagent_type ?? raw.subagentType ?? '', prompt: e.prompt })
+    if (s.spawnDeny !== null) return { deny: s.spawnDeny }
     return { model: 'sonnet', agentId: `agent-${s.spawned.length}` }
   })
   on('model.complete', (_$, e) => {
     s.models.push({ model: e.model, system: e.system, prompt: e.prompt })
-    return { value: { isAnswered: true, text: `answer from ${e.model}`, usage } }
+    return { value: reply(s, `answer from ${e.model}`) }
   })
   on('model.fork', (_$, e) => {
     s.forks.push(e.prompt)
-    return { value: { isAnswered: true, text: 'answer in context', usage } }
+    return { value: reply(s, 'answer in context') }
   })
   return s
 }

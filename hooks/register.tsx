@@ -25,6 +25,9 @@ const POLL_MS = 300
 const KEEP = 20
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const
 
+// The engine reads these references statically before the module runs, so
+// `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
+// types/index.d.ts types these keys under the same name, so a drift fails tsc.
 const selection = atom({ plugin: 'selection-actions', key: 'selection' } as const, null)
 const dismissed = atom({ plugin: 'selection-actions', key: 'dismissed' } as const, null)
 const results = atom({ plugin: 'selection-actions', key: 'results' } as const, [])
@@ -85,19 +88,24 @@ async function run($: EngineInterface, def: ActionDef, text: string) {
     return
   }
 
-  const r =
-    def.kind === 'fork'
-      ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${STYLE}` })
-      : await $.model.complete({
-          model: def.model,
-          system: def.prompt,
-          prompt: wrap(text),
-          effort: 'low',
-          maxTokens: def.maxTokens ?? 1500,
-          timeoutMs: 60_000,
-        })
+  try {
+    const r =
+      def.kind === 'fork'
+        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${STYLE}` })
+        : await $.model.complete({
+            model: def.model,
+            system: def.prompt,
+            prompt: wrap(text),
+            effort: 'low',
+            maxTokens: def.maxTokens ?? 1500,
+            timeoutMs: 60_000,
+          })
 
-  await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : `回答なし (${r.reason})`)
+    await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : `回答なし (${r.reason})`)
+  } catch (err) {
+    // A thrown call must not leave the entry "running" for good.
+    await settle($, id, false, `失敗しました: ${String(err)}`)
+  }
 }
 
 async function runOnSelection($: EngineInterface, def: ActionDef) {
@@ -155,8 +163,8 @@ export const register: Register = (on, options) => {
     const wanted = e.args.trim().toLowerCase()
     const def = wanted === '' ? first : findAction(ACTIONS, wanted)
     if (def === undefined) {
-      $.ui.toast(`不明なアクション ID です: ${wanted}`)
-      return { text: `不明なアクション ID です: ${wanted}` }
+      // Told once, as the command's result, with the IDs that do exist.
+      return { text: `不明なアクション ID です: ${wanted}（使える ID: ${ACTIONS.map(a => a.id).join(', ')}）` }
     }
     await runOnSelection($, def)
 
@@ -176,7 +184,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="row">
         {enabled.map((a, i) => (
-          <Box key={`act-${a.id}`} hover={{ scope: `tip-${a.id}` }}>
+          <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
             <Button
               key={a.id}
               label={a.icon}
@@ -195,7 +203,7 @@ export const register: Register = (on, options) => {
           />
         </Box>
         {enabled.map(a => (
-          <Box display="none" hover={{ scope: `tip-${a.id}`, display: 'flex' }}>
+          <Box display="none" hover={{ scope: `tip-action-${a.id}`, display: 'flex' }}>
             <Text color="cyan"> {a.label}</Text>
           </Box>
         ))}

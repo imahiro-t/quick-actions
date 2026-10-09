@@ -95,8 +95,10 @@ test('/selection-actions <id> runs that action; an unknown ID is told, not run',
 
   const r = await runCommand($, 'nope')
   expect(s.models).toHaveLength(1)
-  expect(s.toasts).toContain('不明なアクション ID です: nope')
-  expect(JSON.stringify(r)).toContain('nope')
+  // Told once, as the result, with the IDs to pick from: no toast besides.
+  expect(s.toasts).toEqual([])
+  expect(JSON.stringify(r)).toContain('不明なアクション ID です: nope')
+  expect(JSON.stringify(r)).toContain('translate-en')
 })
 
 test('/selection-actions with nothing selected says so', async ($, on) => {
@@ -107,3 +109,26 @@ test('/selection-actions with nothing selected says so', async ($, on) => {
   expect(s.models).toEqual([])
   expect(s.toasts).toContain('選択されたテキストがありません')
 })
+
+for (const surface of SURFACES) {
+  test(`[${surface}] a failed call shows in red in the pane, never stuck at running`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'segfault'
+    await clock.advance(400)
+    const band = await $.ui.mount({ ...BAND, surface })
+
+    s.answer = 'empty'
+    await band.press({ key: 'explain' })
+    await band.press({ key: 'ask' })
+    s.spawnDeny = 'not allowed here'
+    await band.press({ key: 'code' })
+
+    const pane = await $.ui.mount({ ...PANE, surface })
+    const failed = await pane.findAll({ text: /回答なし \(empty-reply\)|起動できませんでした: not allowed here/ })
+    // The boxes around them match too; the texts themselves are the three, in red.
+    expect(failed.filter(f => f.type === 'Text').map(f => f.props.color)).toEqual(['red', 'red', 'red'])
+    expect(await pane.find({ text: '考え中…' })).toBeUndefined()
+  })
+}

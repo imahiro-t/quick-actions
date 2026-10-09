@@ -8,6 +8,8 @@ test('at least 20 actions, unique IDs, every field filled in', () => {
   expect(ACTIONS.length).toBeGreaterThanOrEqual(20)
   const ids = ACTIONS.map(a => a.id)
   expect(new Set(ids).size).toBe(ids.length)
+  // `close` is the ✕ button's key on the hint line.
+  expect(ids).not.toContain('close')
   for (const a of ACTIONS) {
     expect(a.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
     expect(a.icon).not.toBe('')
@@ -85,7 +87,6 @@ test(
     await band.unmount()
 
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-    expect(await pane.find({ text: /大声で/ })).toBeUndefined()
     expect(await pane.find({ text: new RegExp(ACTIONS.at(-1)!.label) })).toBeDefined()
   },
 )

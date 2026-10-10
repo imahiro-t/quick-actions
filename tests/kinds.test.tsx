@@ -113,27 +113,32 @@ test('/selection-actions with nothing selected says so', { options: JA }, async 
   expect(s.toasts).toContain('選択されたテキストがありません')
 })
 
+// Docked, a failure is the theme's error colour, on the background core paints
+// in the theme; inline, it is the raw red the terminal draws, on the terminal's own background.
 for (const surface of SURFACES) {
-  test(`[${surface}] a failed call shows in red in the pane, never stuck at running`, { options: JA }, async ($, on) => {
-    const clock = mock.clock(on)
-    const s = stage(on)
-    await start($)
-    s.selected = 'segfault'
-    await clock.advance(400)
-    const band = await $.ui.mount({ ...BAND, surface })
+  for (const placement of ['dock', 'inline'] as const) {
+    test(`[${surface}] ${placement}: a failed call shows in the colour that suits the background, never stuck at running`, { options: JA }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'segfault'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
 
-    s.answer = 'empty'
-    await band.press({ key: 'explain' })
-    await band.press({ key: 'ask' })
-    s.spawnDeny = 'not allowed here'
-    await band.press({ key: 'code' })
+      s.answer = 'empty'
+      await band.press({ key: 'explain' })
+      await band.press({ key: 'ask' })
+      s.spawnDeny = 'not allowed here'
+      await band.press({ key: 'code' })
 
-    const pane = await $.ui.mount({ ...PANE, surface })
-    const failed = await pane.findAll({ text: /回答なし \(empty-reply\)|起動できませんでした: not allowed here/ })
-    // The boxes around them match too; the texts themselves are the three, in red.
-    expect(failed.filter(f => f.type === 'Text').map(f => f.props.color)).toEqual(['red', 'red', 'red'])
-    expect(await pane.find({ text: '考え中…' })).toBeUndefined()
-  })
+      const pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement } })
+      const failed = await pane.findAll({ text: /回答なし \(empty-reply\)|起動できませんでした: not allowed here/ })
+      // The boxes around them match too; the texts themselves are the three.
+      const expected = placement === 'dock' ? 'error' : 'red'
+      expect(failed.filter(f => f.type === 'Text').map(f => f.props.color)).toEqual([expected, expected, expected])
+      expect(await pane.find({ text: '考え中…' })).toBeUndefined()
+    })
+  }
 }
 
 for (const surface of SURFACES) {
@@ -152,9 +157,9 @@ for (const surface of SURFACES) {
     await band.press({ key: 'code' })
 
     const pane = await $.ui.mount({ ...PANE, surface })
-    // The boxes around them match too; the texts themselves are the three, in red.
+    // The boxes around them match too; the texts themselves are the three, in the theme's error colour.
     const texts = (await pane.findAll({ text: /rate limited/ })).filter(f => f.type === 'Text')
-    expect(texts.map(f => f.props.color)).toEqual(['red', 'red', 'red'])
+    expect(texts.map(f => f.props.color)).toEqual(['error', 'error', 'error'])
     const shown = texts.map(f => f.text)
     // Newest first: the subagent, the fork, the completion.
     expect(shown[0]).toMatch(/^起動できませんでした: \S.*rate limited$/)
@@ -163,4 +168,32 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: /Error:/ })).toBeUndefined()
     expect(await pane.find({ text: '考え中…' })).toBeUndefined()
   })
+}
+
+// Docked, core paints the pane's background in the theme, so the heading and
+// the answer are drawn in the theme too; inline, nothing is painted, so they
+// keep the terminal's foreground. The dimmed texts are the theme's either way.
+for (const surface of SURFACES) {
+  for (const placement of ['dock', 'inline'] as const) {
+    test(`[${surface}] ${placement}: heading and answer colours follow what paints the background`, { options: JA }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'Permission denied (publickey)'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
+      await band.press({ key: 'explain' })
+
+      const pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement } })
+      const expected = placement === 'dock' ? 'text' : undefined
+      const answer = (await pane.findAll({ text: 'answer from sonnet' })).filter(f => f.type === 'Text')
+      expect(answer.map(f => f.props.color)).toEqual([expected])
+      const heading = (await pane.findAll({ text: /「Permission denied \(publickey\)」/ })).filter(
+        f => f.type === 'Text' && f.props.bold === true,
+      )
+      expect(heading.map(f => f.props.color)).toEqual([expected])
+      const quote = (await pane.findAll({ text: '「Permission denied (publickey)」' })).filter(f => f.type === 'Text')
+      expect(quote.map(f => f.props.dimColor)).toContain(true)
+    })
+  }
 }

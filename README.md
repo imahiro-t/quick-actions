@@ -2,12 +2,12 @@
 
 English | [日本語](README.ja.md)
 
-A Claude Code plugin for the text you select in the conversation (the transcript). Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (explain it, translate it, summarize it, find the code behind it and more) and read the result in a pane. You choose which actions are shown, and in what order, in settings. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
+A Claude Code plugin for the text you select in the conversation (the transcript). Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate it, explain it simply or in depth, summarize it, or find the evidence behind it) and read the result in a pane. You choose which actions are shown, and in what order, in settings. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
 
 ## How it works
 
 1. Select text in the transcript with the mouse
-2. Icons appear on the hint line under the prompt (by default 💡 🌐 🔎 💬 ✕). Hover over an icon to see its label
+2. Icons appear on the hint line under the prompt (by default 💡 🌐 📝 🔎 ✕). Hover over an icon to see its label
    - Pressing an action's icon or ✕ hides the icons for that selection (selecting other text brings them back)
    - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run). Clicking away without pressing an icon therefore leaves the icons in place: press ✕ to close them
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds
@@ -20,9 +20,9 @@ The selected text itself is not shown on the hint line (so a multi-line selectio
 ### What is sent, and when
 
 - The selected text is sent through Claude Code to the model (the one the session uses, such as the Anthropic API) only when you press an icon or run `/selection-actions`. Selecting alone sends nothing
-- `fork` actions (such as 💬 Ask Claude) pass the current conversation to the model along with the selection
+- `fork` actions (💬 Ask Claude and 🧾 Why so?) pass the current conversation to the model along with the selection
 - Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
-- The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it (📨 Send to Claude in particular treats the selection as your question). None of the standard actions can write files or run commands (the subagents have read-only tools)
+- The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). None of the standard actions can write files or run commands (the one subagent, 🔎 Find the code, has read-only tools)
 
 ## Install
 
@@ -73,8 +73,9 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`, or `
 }
 ```
 
-- **Unset or empty**: the default set `explain,translate,code,ask` (💡 🌐 🔎 💬) is shown
+- **Unset or empty**: the default set `explain,translate,summarize,code` (💡 🌐 📝 🔎) is shown, one action per purpose
 - **Unknown IDs**: ignored (no error). If no valid ID is left, the default set is shown
+- **Removed IDs**: the built-ins were narrowed to the ten in [Actions](#actions). The IDs taken out — `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` — are ignored like unknown IDs if your `actions` setting still names them (their icons simply no longer show; if no valid ID is left, the default set is shown)
 - Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
 - To keep the line on one row, eight to ten actions at most is a good limit
 
@@ -128,34 +129,22 @@ Kinds:
 - **fork**: answered in a branch of the current conversation, so the answer knows what you are working on
 - **subagent**: a read-only (Read / Grep / Glob) subagent searches the repository and answers. The main Claude is not offered it
 
-| # | ID | Icon | Label | Kind | Model |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `explain` | 💡 | Explain | complete | sonnet |
-| 2 | `translate` | 🌐 | To Japanese | complete | haiku |
-| 3 | `code` | 🔎 | Find the code | subagent | sonnet |
-| 4 | `ask` | 💬 | Ask Claude | fork | the conversation's |
-| 5 | `summarize` | 📝 | Summarize | complete | haiku |
-| 6 | `translate-en` | 🔤 | To English | complete | haiku |
-| 7 | `command` | 💻 | Explain command | complete | sonnet |
-| 8 | `error` | 🩹 | Fix the error | complete | sonnet |
-| 9 | `regex` | 🧩 | Explain regex | complete | sonnet |
-| 10 | `code-explain` | 📖 | Explain code | complete | sonnet |
-| 11 | `review` | 🧐 | Code review | complete | sonnet |
-| 12 | `stacktrace` | 🧵 | Stack trace | complete | sonnet |
-| 13 | `log` | 📜 | Read logs | complete | sonnet |
-| 14 | `security` | 🔒 | Security check | complete | sonnet |
-| 15 | `test-ideas` | 🧪 | Test ideas | complete | sonnet |
-| 16 | `glossary` | 📚 | Glossary | complete | haiku |
-| 17 | `simplify` | 🌱 | Simplify | complete | haiku |
-| 18 | `proofread` | ✅ | Proofread | complete | haiku |
-| 19 | `structure` | 🧱 | Data structure | complete | haiku |
-| 20 | `naming` | 🔖 | Name ideas | complete | haiku |
-| 21 | `usages` | 🧭 | Find usages | subagent | sonnet |
-| 22 | `docs` | 📄 | Find docs | subagent | haiku |
-| 23 | `next-step` | 👉 | Next step | fork | the conversation's |
-| 24 | `send` | 📨 | Send to Claude | fork | the conversation's |
+The built-ins cover four purposes: translation, meaning, summary and evidence.
 
-The labels above are the English ones (see [README.ja.md](README.ja.md) for the Japanese). Answers come in the language chosen with `language`, except the translations of `translate` / `translate-en` and the corrected text of `proofread`.
+| # | Purpose | ID | Icon | Label | What it does | Kind | Model |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Translation | `translate` | 🌐 | To Japanese | Translates into Japanese | complete | haiku |
+| 2 | Translation | `translate-en` | 🔤 | To English | Translates into English | complete | haiku |
+| 3 | Meaning | `explain` | 💡 | Explain | What it means, why it likely appeared, what to do about it | complete | sonnet |
+| 4 | Meaning | `eli5` | 🧸 | Explain simply | Explains it to someone with no background, with an everyday analogy | complete | haiku |
+| 5 | Meaning | `deep-dive` | 🔬 | Deep dive | Goes into how it works, the background and why it is so | complete | sonnet |
+| 6 | Meaning | `ask` | 💬 | Ask Claude | Explains it in the context of the current work | fork | the conversation's |
+| 7 | Summary | `summarize` | 📝 | Summarize | A few sentences or up to five bullet points | complete | haiku |
+| 8 | Summary | `tldr` | ⚡ | TL;DR | One line | complete | haiku |
+| 9 | Evidence | `code` | 🔎 | Find the code | Finds where the text or behaviour comes from in the repository | subagent | sonnet |
+| 10 | Evidence | `why` | 🧾 | Why so? | Explains the grounds for something Claude said in the conversation | fork | the conversation's |
+
+The labels above are the English ones (see [README.ja.md](README.ja.md) for the Japanese). Answers come in the language chosen with `language`, except the translations of `translate` / `translate-en`. Other uses (reviewing code, reading logs and so on) are left to actions you add yourself.
 
 ## Adding an action
 
@@ -196,9 +185,9 @@ Common fields:
 
 ```ts
 {
-  id: 'why',
+  id: 'cause',
   icon: '❓',
-  label: { ja: 'なぜこうなった？', en: 'Why?' },
+  label: { ja: '原因は？', en: 'What caused this?' },
   kind: 'fork',
   prompt: 'Explain why this happened, given what we did earlier in this session.',
 },

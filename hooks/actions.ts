@@ -103,7 +103,33 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   return { ...rest, ...texts, prompt }
 }
 
+// In the order of their purpose, so the hint line keeps them together when all
+// are shown: translation, meaning, summary, then evidence.
 export const ACTIONS: readonly ActionSpec[] = [
+  {
+    id: 'translate',
+    icon: '🌐',
+    label: { ja: '日本語訳', en: 'To Japanese' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: [
+      'Translate the selected text into natural Japanese.',
+      'Keep code, identifiers, paths and commands as they are.',
+      'Reply with the translation alone.',
+    ].join(' '),
+  },
+  {
+    id: 'translate-en',
+    icon: '🔤',
+    label: { ja: '英訳', en: 'To English' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: [
+      'Translate the selected text into natural English.',
+      'Keep code, identifiers, paths and commands as they are.',
+      'Reply with the translation alone.',
+    ].join(' '),
+  },
   {
     id: 'explain',
     icon: '💡',
@@ -118,16 +144,57 @@ export const ACTIONS: readonly ActionSpec[] = [
     ),
   },
   {
-    id: 'translate',
-    icon: '🌐',
-    label: { ja: '日本語訳', en: 'To Japanese' },
+    id: 'eli5',
+    icon: '🧸',
+    label: { ja: 'やさしく説明', en: 'Explain simply' },
     kind: 'complete',
     model: 'haiku',
-    prompt: [
-      'Translate the selected text into natural Japanese.',
-      'Keep code, identifiers, paths and commands as they are.',
-      'Reply with the translation alone.',
-    ].join(' '),
+    prompt: sys(
+      'Explain the selected text to someone with no background in the topic at all.',
+      'Use an everyday analogy, avoid jargon, and if a technical term is unavoidable, say in plain words what it means right there.',
+      'Keep it short, about 10 lines at most.',
+    ),
+  },
+  {
+    id: 'deep-dive',
+    icon: '🔬',
+    label: { ja: '詳しく解説', en: 'Deep dive' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'Explain the selected text in depth for a developer who wants to understand it thoroughly:',
+      'how it works, the background behind it, why it is the way it is, related concepts, and caveats or pitfalls.',
+      'Organize it into short paragraphs and bullet points, one aspect each, so it stays easy to scan.',
+    ),
+  },
+  {
+    id: 'ask',
+    icon: '💬',
+    label: { ja: 'Claudeに聞く', en: 'Ask Claude' },
+    kind: 'fork',
+    prompt: 'Explain the selected text in the context of what we are working on in this session.',
+  },
+  {
+    id: 'summarize',
+    icon: '📝',
+    label: { ja: '要約', en: 'Summarize' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Summarize the selected text for a developer in a few short sentences or up to five bullet points.',
+      'Keep the facts, numbers and names that matter; drop the rest.',
+    ),
+  },
+  {
+    id: 'tldr',
+    icon: '⚡',
+    label: { ja: '一行で要約', en: 'TL;DR' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Summarize the selected text in a single sentence on a single line.',
+      'Reply with that sentence alone, with no preamble.',
+    ),
   },
   {
     id: 'code',
@@ -150,251 +217,22 @@ export const ACTIONS: readonly ActionSpec[] = [
     ),
   },
   {
-    id: 'ask',
-    icon: '💬',
-    label: { ja: 'Claudeに聞く', en: 'Ask Claude' },
+    id: 'why',
+    icon: '🧾',
+    label: { ja: '根拠を説明', en: 'Why so?' },
     kind: 'fork',
-    prompt: 'Explain the selected text in the context of what we are working on in this session.',
-  },
-  {
-    id: 'summarize',
-    icon: '📝',
-    label: { ja: '要約', en: 'Summarize' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: sys(
-      'Summarize the selected text for a developer in a few short sentences or up to five bullet points.',
-      'Keep the facts, numbers and names that matter; drop the rest.',
-    ),
-  },
-  {
-    id: 'translate-en',
-    icon: '🔤',
-    label: { ja: '英訳', en: 'To English' },
-    kind: 'complete',
-    model: 'haiku',
     prompt: [
-      'Translate the selected text into natural English.',
-      'Keep code, identifiers, paths and commands as they are.',
-      'Reply with the translation alone.',
+      'The selected text is something you (Claude) said earlier in this session.',
+      'Find that statement in our conversation; if you cannot find it, say so instead of guessing.',
+      'Then explain what grounds it: the files you read, the results of commands that were run,',
+      'facts established earlier in the conversation, or general knowledge, saying which is which.',
+      'Point out plainly any part that rests on weak evidence or is only an inference.',
     ].join(' '),
-  },
-  {
-    id: 'command',
-    icon: '💻',
-    label: { ja: 'コマンドの説明', en: 'Explain command' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection is a shell command or command line.',
-      'Explain what it does part by part (the program, each option and argument, pipes and redirections),',
-      'and point out anything destructive or surprising it would do.',
-    ),
-  },
-  {
-    id: 'error',
-    icon: '🩹',
-    label: { ja: 'エラーの対処', en: 'Fix the error' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection is an error message or failing output.',
-      'Name the most likely causes, most likely first, and for each the concrete steps or commands to check and fix it.',
-    ),
-  },
-  {
-    id: 'regex',
-    icon: '🧩',
-    label: { ja: '正規表現の説明', en: 'Explain regex' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection contains a regular expression.',
-      'Break it down token by token, say what it matches overall, give two or three strings it matches and one it does not,',
-      'and mention pitfalls such as greedy quantifiers, anchors, escaping or flavour differences.',
-    ),
-  },
-  {
-    id: 'code-explain',
-    icon: '📖',
-    label: { ja: 'コードの説明', en: 'Explain code' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection is a piece of source code.',
-      'Explain what it does and how, step by step at the level of a code reader, and note any non-obvious behaviour.',
-    ),
-  },
-  {
-    id: 'review',
-    icon: '🧐',
-    label: { ja: 'コードレビュー', en: 'Code review' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'Review the selected code as a careful senior engineer.',
-      'List concrete problems (bugs, edge cases, unclear naming, needless complexity), most important first,',
-      'each with a short suggestion. If it looks fine, say so briefly.',
-    ),
-  },
-  {
-    id: 'stacktrace',
-    icon: '🧵',
-    label: { ja: 'スタックトレース解析', en: 'Stack trace' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection is a stack trace.',
-      'Say what was thrown and where it most likely originated (the first frame in application code rather than library code),',
-      'the call path that led there, and what to look at first.',
-    ),
-  },
-  {
-    id: 'log',
-    icon: '📜',
-    label: { ja: 'ログの読み解き', en: 'Read logs' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'The selection is log output.',
-      'Say what happened in order, which lines matter (warnings, errors, timing gaps), and whether anything needs attention.',
-    ),
-  },
-  {
-    id: 'security',
-    icon: '🔒',
-    label: { ja: 'セキュリティ観点', en: 'Security check' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'Look at the selection (code, a command, configuration or output) from a security point of view.',
-      'Point out risks such as injection, secrets in the open, unsafe permissions or unvalidated input, each with a fix.',
-      'If you see nothing of concern, say so briefly.',
-    ),
-  },
-  {
-    id: 'test-ideas',
-    icon: '🧪',
-    label: { ja: 'テスト観点', en: 'Test ideas' },
-    kind: 'complete',
-    model: 'sonnet',
-    prompt: sys(
-      'Suggest test cases for the selected code or behaviour:',
-      'the normal path, boundaries, error cases and edge cases worth covering, one line each.',
-    ),
-  },
-  {
-    id: 'glossary',
-    icon: '📚',
-    label: { ja: '用語の解説', en: 'Glossary' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: sys(
-      'Explain the technical terms, abbreviations and names in the selection, one short line each,',
-      'in the sense they most likely carry in software development.',
-    ),
-  },
-  {
-    id: 'simplify',
-    icon: '🌱',
-    label: { ja: 'やさしく言い換え', en: 'Simplify' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: sys(
-      'Rewrite the selected text in plain, easy words for someone new to the topic,',
-      'keeping its meaning. Reply with the rewrite alone.',
-    ),
-  },
-  {
-    id: 'proofread',
-    icon: '✅',
-    label: { ja: '校正', en: 'Proofread' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: [
-      'Proofread the selected text in its own language.',
-      `Give the corrected text first, then list the changes briefly in ${ANSWER_LANGUAGE}.`,
-      `If nothing needs fixing, say so in ${ANSWER_LANGUAGE}.`,
-    ].join(' '),
-  },
-  {
-    id: 'structure',
-    icon: '🧱',
-    label: { ja: 'JSON/YAMLの構造', en: 'Data structure' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: sys(
-      'The selection is structured data such as JSON, YAML or TOML.',
-      'Describe its shape (top-level keys, nesting, arrays and the types of values) and what it seems to configure or represent.',
-      'Mention syntax errors if there are any.',
-    ),
-  },
-  {
-    id: 'naming',
-    icon: '🔖',
-    label: { ja: '命名案', en: 'Name ideas' },
-    kind: 'complete',
-    model: 'haiku',
-    prompt: sys(
-      'Suggest five clear names for the thing the selection describes or implements,',
-      'in the naming style the selection already uses, each with a few words on why.',
-    ),
-  },
-  {
-    id: 'usages',
-    icon: '🧭',
-    label: { ja: '使用箇所を探す', en: 'Find usages' },
-    kind: 'subagent',
-    model: 'sonnet',
-    runningText: { ja: '使用箇所を調査中…', en: 'Searching for usages…' },
-    description: {
-      ja: '識別子やコード片がリポジトリのどこで使われているかを探します（selection-actions 専用）',
-      en: 'Finds where an identifier or snippet is used in the repository (selection-actions only)',
-    },
-    task: 'Find where the following identifier or snippet is defined and used in this repository.',
-    prompt: sys(
-      'You find where an identifier, function, type, config key or snippet is defined and used in the current repository.',
-      'Search with Grep and Glob, read with Read; change nothing.',
-      'Reply with the definition first, then the usages as `path:line` with a few words each, then a one-line summary.',
-      'If nothing matches, say so.',
-    ),
-  },
-  {
-    id: 'docs',
-    icon: '📄',
-    label: { ja: '関連ドキュメントを探す', en: 'Find docs' },
-    kind: 'subagent',
-    model: 'haiku',
-    runningText: { ja: 'ドキュメントを調査中…', en: 'Searching the docs…' },
-    description: {
-      ja: '選択テキストに関連するリポジトリのドキュメントを探します（selection-actions 専用）',
-      en: 'Finds the repository documentation related to selected text (selection-actions only)',
-    },
-    task: 'Find the documentation in this repository related to the following text.',
-    prompt: sys(
-      'You find documentation in the current repository (README, docs folders, comments, changelogs) related to the given text.',
-      'Search with Grep and Glob, read with Read; change nothing.',
-      'Reply with the most relevant places as `path:line` with what each says in a line or two. If nothing matches, say so.',
-    ),
-  },
-  {
-    id: 'next-step',
-    icon: '👉',
-    label: { ja: '次の一手', en: 'Next step' },
-    kind: 'fork',
-    prompt: 'Given what we are working on in this session, suggest the next concrete step to take about the selected text, and why.',
-  },
-  {
-    id: 'send',
-    icon: '📨',
-    label: { ja: 'Claudeへの質問として送る', en: 'Send to Claude' },
-    kind: 'fork',
-    prompt: 'Treat the selected text as my question and answer it in the context of this session.',
   },
 ]
 
-/** Shown when the setting is empty or names no known action: the original four, in their order. */
-export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'code', 'ask']
+/** Shown when the setting is empty or names no known action: one per purpose, meaning first. */
+export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'summarize', 'code']
 
 /**
  * The actions the setting names, in its order: comma-separated IDs, trimmed and

@@ -2,12 +2,12 @@
 
 [English](README.md) | 日本語
 
-Claude Code の会話（トランスクリプト）でテキストを選択すると、プロンプト下のヒント行にアイコンが並び、押すとその選択テキストに対するアクション（意味の説明・翻訳・要約・コードの根拠探しなど）を実行して、結果をペインに表示する Claude Code プラグインです。どのアクションをどの順で並べるかは設定で選べます。表示と回答の言語は日本語と英語を切り替えられます（既定は Claude Code の言語設定・ロケールに合わせる）。
+Claude Code の会話（トランスクリプト）でテキストを選択すると、プロンプト下のヒント行にアイコンが並び、押すとその選択テキストに対するアクション（翻訳・意味のやさしい／詳しい説明・要約・根拠探し）を実行して、結果をペインに表示する Claude Code プラグインです。どのアクションをどの順で並べるかは設定で選べます。表示と回答の言語は日本語と英語を切り替えられます（既定は Claude Code の言語設定・ロケールに合わせる）。
 
 ## 動き
 
 1. トランスクリプトのテキストをマウスで選択する
-2. プロンプト下のヒント行にアイコン（既定は 💡 🌐 🔎 💬 ✕）が出る。アイコンにマウスを重ねるとラベルが出る
+2. プロンプト下のヒント行にアイコン（既定は 💡 🌐 📝 🔎 ✕）が出る。アイコンにマウスを重ねるとラベルが出る
    - アクションのアイコンか ✕ を押すと、その選択についてはアイコンを隠す（別のテキストを選べばまた出る）
    - Claude Code は、アイコンを押したときに選択を読めるよう、別の箇所をクリックしてハイライトが消えても直前の選択を覚えている（別のテキストを選ぶか、次のプロンプトやコマンドを実行するまで）。そのため、どのアイコンも押さずにクリックで選択を外しただけではアイコンは残る。使わないときは ✕ で閉じる
    - Claude Code が「選択なし」と答えるようになると（次のプロンプトやコマンドの後など）、0.3 秒ほどでアイコンは消える
@@ -20,9 +20,9 @@ Claude Code の会話（トランスクリプト）でテキストを選択す�
 ### 選択テキストの送信について
 
 - アイコンを押すか `/selection-actions` を実行したときだけ、選択テキストを Claude Code 経由でモデル（Anthropic API など、そのセッションが使っているモデル）に送ります。選択しただけでは送りません
-- `fork` 方式のアクション（💬 Claude に聞く など）は、選択テキストに加えて現在の会話の内容もモデルに渡します
+- `fork` 方式のアクション（💬 Claudeに聞く と 🧾 根拠を説明）は、選択テキストに加えて現在の会話の内容もモデルに渡します
 - 表示言語を自動判定する（`language` が `auto` の）ときだけ、Claude Code の設定（`language`）と環境変数 `LC_ALL` / `LC_MESSAGES` / `LANG` を読みます。値は言語の判定にだけ使い、どこにも送りません
-- 選択テキストは指示ではなく対象のテキストとして渡しますが、Web ページやツールの出力など信頼できないテキストを選ぶと、回答がその中の指示に引きずられることがあります（特に 📨 send は選択テキストをそのまま質問として扱います）。なお、標準のアクションはどれもファイルの書き込みやコマンドの実行はできません（サブエージェントは読み取り専用のツールだけを使います）
+- 選択テキストは指示ではなく対象のテキストとして渡しますが、Web ページやツールの出力など信頼できないテキストを選ぶと、回答がその中の指示に引きずられることがあります。特に `fork` 方式の 💬 Claudeに聞く と 🧾 根拠を説明 は、会話の文脈と合わせて選択テキストを扱うため影響を受けやすくなります（🧾 根拠を説明 は選択テキストを Claude の発言として扱い、会話の文脈で推論します）。なお、標準のアクションはどれもファイルの書き込みやコマンドの実行はできません（唯一のサブエージェントである 🔎 コードの根拠 は読み取り専用のツールだけを使います）
 
 ## インストール
 
@@ -73,8 +73,9 @@ echo '{"actions":"explain,translate,summarize,ask"}' | claude plugin configure s
 }
 ```
 
-- **未設定・空のとき**: 既定のセット `explain,translate,code,ask`（💡 🌐 🔎 💬）を表示します
+- **未設定・空のとき**: 既定のセット `explain,translate,summarize,code`（💡 🌐 📝 🔎）を表示します（用途ごとに 1 つずつ）
 - **存在しない ID**: 無視します（エラーにはなりません）。有効な ID が 1 つも残らなければ既定のセットを表示します
+- **外した ID**: 組み込みアクションは[アクション一覧](#アクション一覧)の 10 個に絞りました。外した `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` を `actions` に書いたままの場合は、存在しない ID と同じく無視されます（そのアイコンが出なくなるだけで、有効な ID が 1 つも残らなければ既定のセットを表示します）
 - 前後の空白・大文字小文字の違いは無視し、同じ ID を重ねて書いたときは最初の 1 つだけを使います
 - 1 行に収まるよう、並べるのは多くても 8〜10 個程度がおすすめです
 
@@ -128,34 +129,22 @@ echo '{"language":"ja"}' | claude plugin configure selection-actions@selection-a
 - **fork**: 今の会話を引き継いだ分岐で答えるので、作業中の文脈を踏まえた回答になります
 - **subagent**: 読み取り専用（Read / Grep / Glob）のサブエージェントがリポジトリを調べて答えます。メインの Claude からは呼ばれません
 
-| # | ID | アイコン | ラベル | 実行方式 | モデル |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `explain` | 💡 | 意味 | complete | sonnet |
-| 2 | `translate` | 🌐 | 日本語訳 | complete | haiku |
-| 3 | `code` | 🔎 | コードの根拠 | subagent | sonnet |
-| 4 | `ask` | 💬 | Claudeに聞く | fork | 会話のモデル |
-| 5 | `summarize` | 📝 | 要約 | complete | haiku |
-| 6 | `translate-en` | 🔤 | 英訳 | complete | haiku |
-| 7 | `command` | 💻 | コマンドの説明 | complete | sonnet |
-| 8 | `error` | 🩹 | エラーの対処 | complete | sonnet |
-| 9 | `regex` | 🧩 | 正規表現の説明 | complete | sonnet |
-| 10 | `code-explain` | 📖 | コードの説明 | complete | sonnet |
-| 11 | `review` | 🧐 | コードレビュー | complete | sonnet |
-| 12 | `stacktrace` | 🧵 | スタックトレース解析 | complete | sonnet |
-| 13 | `log` | 📜 | ログの読み解き | complete | sonnet |
-| 14 | `security` | 🔒 | セキュリティ観点 | complete | sonnet |
-| 15 | `test-ideas` | 🧪 | テスト観点 | complete | sonnet |
-| 16 | `glossary` | 📚 | 用語の解説 | complete | haiku |
-| 17 | `simplify` | 🌱 | やさしく言い換え | complete | haiku |
-| 18 | `proofread` | ✅ | 校正 | complete | haiku |
-| 19 | `structure` | 🧱 | JSON/YAMLの構造 | complete | haiku |
-| 20 | `naming` | 🔖 | 命名案 | complete | haiku |
-| 21 | `usages` | 🧭 | 使用箇所を探す | subagent | sonnet |
-| 22 | `docs` | 📄 | 関連ドキュメントを探す | subagent | haiku |
-| 23 | `next-step` | 👉 | 次の一手 | fork | 会話のモデル |
-| 24 | `send` | 📨 | Claudeへの質問として送る | fork | 会話のモデル |
+組み込みアクションは、翻訳・意味・要約・根拠の 4 つの用途に絞っています。
 
-ラベルは日本語表示のものです（英語表示のラベルは [README.md](README.md) を参照）。回答は `language` で選んだ言語です（`translate` / `translate-en` の訳文と、`proofread` の校正後の本文を除く）。
+| # | 用途 | ID | アイコン | ラベル | 内容 | 実行方式 | モデル |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 翻訳 | `translate` | 🌐 | 日本語訳 | 日本語に訳す | complete | haiku |
+| 2 | 翻訳 | `translate-en` | 🔤 | 英訳 | 英語に訳す | complete | haiku |
+| 3 | 意味 | `explain` | 💡 | 意味 | 意味・出てきた理由・対処を説明する | complete | sonnet |
+| 4 | 意味 | `eli5` | 🧸 | やさしく説明 | 前提知識ゼロ向けに、たとえを使ってやさしく説明する | complete | haiku |
+| 5 | 意味 | `deep-dive` | 🔬 | 詳しく解説 | 仕組み・背景まで踏み込んで詳しく解説する | complete | sonnet |
+| 6 | 意味 | `ask` | 💬 | Claudeに聞く | 今の作業の文脈で説明する | fork | 会話のモデル |
+| 7 | 要約 | `summarize` | 📝 | 要約 | 数文か 5 項目以内の箇条書きで要約する | complete | haiku |
+| 8 | 要約 | `tldr` | ⚡ | 一行で要約 | 一行で要約する | complete | haiku |
+| 9 | 根拠 | `code` | 🔎 | コードの根拠 | リポジトリ内でその文言・挙動の出どころを探す | subagent | sonnet |
+| 10 | 根拠 | `why` | 🧾 | 根拠を説明 | 会話の中の Claude の発言について、そう言える根拠を説明する | fork | 会話のモデル |
+
+ラベルは日本語表示のものです（英語表示のラベルは [README.md](README.md) を参照）。回答は `language` で選んだ言語です（`translate` / `translate-en` の訳文を除く）。ほかの用途（コードレビューやログの読み解きなど）は、自分で追加するアクションで補ってください。
 
 ## アクションの追加方法
 
@@ -196,9 +185,9 @@ echo '{"language":"ja"}' | claude plugin configure selection-actions@selection-a
 
 ```ts
 {
-  id: 'why',
+  id: 'cause',
   icon: '❓',
-  label: { ja: 'なぜこうなった？', en: 'Why?' },
+  label: { ja: '原因は？', en: 'What caused this?' },
   kind: 'fork',
   prompt: 'Explain why this happened, given what we did earlier in this session.',
 },

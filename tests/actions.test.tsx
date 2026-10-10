@@ -1,12 +1,22 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, DEFAULT_ACTION_IDS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
+import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
 import type { ActionSpec } from '../hooks/actions'
 import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
 
-test('at least 20 actions, unique IDs, every field filled in', () => {
-  expect(ACTIONS.length).toBeGreaterThanOrEqual(20)
+// The built-ins, in the order of their purpose: translation, meaning, summary, evidence.
+const BUILT_IN = ['translate', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why']
+
+// The built-ins taken out (SELM-00010): written in the setting, they are ignored like any unknown ID.
+const REMOVED = [
+  'command', 'error', 'regex', 'code-explain', 'review', 'stacktrace', 'log', 'security', 'test-ideas',
+  'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
+]
+
+test('the ten built-ins, unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
+  expect(ids).toEqual(BUILT_IN)
+  for (const id of REMOVED) expect(ids).not.toContain(id)
   expect(new Set(ids).size).toBe(ids.length)
   // `close` is the ✕ button's key on the hint line.
   expect(ids).not.toContain('close')
@@ -37,12 +47,35 @@ test('at least 20 actions, unique IDs, every field filled in', () => {
   expect(actionsFor('en').map(a => a.id)).toEqual(ids)
 })
 
-test('the original four are kept', () => {
+test('the kept six are unchanged and the new four are defined as planned', () => {
   const byId = new Map(ACTIONS.map(a => [a.id, a]))
-  expect(byId.get('explain')).toMatchObject({ icon: '💡', kind: 'complete', model: 'sonnet' })
-  expect(byId.get('translate')).toMatchObject({ icon: '🌐', kind: 'complete', model: 'haiku' })
-  expect(byId.get('code')).toMatchObject({ icon: '🔎', kind: 'subagent', model: 'sonnet' })
-  expect(byId.get('ask')).toMatchObject({ icon: '💬', kind: 'fork' })
+  expect(byId.get('translate')).toMatchObject({ icon: '🌐', label: { ja: '日本語訳', en: 'To Japanese' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('translate-en')).toMatchObject({ icon: '🔤', label: { ja: '英訳', en: 'To English' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('explain')).toMatchObject({ icon: '💡', label: { ja: '意味', en: 'Explain' }, kind: 'complete', model: 'sonnet' })
+  expect(byId.get('ask')).toMatchObject({ icon: '💬', label: { ja: 'Claudeに聞く', en: 'Ask Claude' }, kind: 'fork' })
+  expect(byId.get('summarize')).toMatchObject({ icon: '📝', label: { ja: '要約', en: 'Summarize' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('code')).toMatchObject({ icon: '🔎', label: { ja: 'コードの根拠', en: 'Find the code' }, kind: 'subagent', model: 'sonnet' })
+
+  expect(byId.get('eli5')).toMatchObject({ icon: '🧸', label: { ja: 'やさしく説明', en: 'Explain simply' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('deep-dive')).toMatchObject({ icon: '🔬', label: { ja: '詳しく解説', en: 'Deep dive' }, kind: 'complete', model: 'sonnet' })
+  expect(byId.get('tldr')).toMatchObject({ icon: '⚡', label: { ja: '一行で要約', en: 'TL;DR' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('why')).toMatchObject({ icon: '🧾', label: { ja: '根拠を説明', en: 'Why so?' }, kind: 'fork' })
+
+  // The new complete ones answer in the configured language.
+  for (const id of ['eli5', 'deep-dive', 'tldr']) {
+    const spec = byId.get(id)!
+    expect(resolveSpec(spec, 'en').prompt).toContain('Answer in English')
+    expect(resolveSpec(spec, 'ja').prompt).toContain('Answer in Japanese')
+  }
+  // Icons are told apart on the hint line.
+  expect(new Set(ACTIONS.map(a => a.icon)).size).toBe(ACTIONS.length)
+})
+
+test('the default set is one per purpose: explain, translate, summarize, code', () => {
+  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'translate', 'summarize', 'code'])
+  // A removed ID in the setting is ignored like an unknown one.
+  expect(resolveActions(ACTIONS, 'send,usages').map(a => a.id)).toEqual([...DEFAULT_ACTION_IDS])
+  expect(resolveActions(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
 })
 
 test('resolveActions: one more definition is all a new action needs', () => {
@@ -60,6 +93,22 @@ test('resolveActions: one more definition is all a new action needs', () => {
   // Resolved, it reads in the language and asks for an answer in it.
   expect(resolveSpec(extra, 'en')).toMatchObject({ label: 'Shout', prompt: expect.stringContaining('Answer in English') })
   expect(resolveSpec(extra, 'ja')).toMatchObject({ label: '大声で', prompt: expect.stringContaining('Answer in Japanese') })
+})
+
+test('resolveSpec: ANSWER_LANGUAGE in a prompt becomes the language name', () => {
+  const extra: ActionSpec = {
+    id: 'changes',
+    icon: '🧮',
+    label: { ja: '変更点', en: 'Changes' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: `Explain the changes in ${ANSWER_LANGUAGE}.`,
+  }
+  for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
+    const { prompt } = resolveSpec(extra, lang)
+    expect(prompt).toContain(`in ${name}.`)
+    expect(prompt).not.toContain(ANSWER_LANGUAGE)
+  }
 })
 
 test('resolveActions: unset, empty, unknown and odd values never throw', () => {

@@ -2,6 +2,9 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { BAND, JA, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
+// The default set has no fork: these name one (💬 ask) beside the complete and subagent defaults.
+const WITH_ASK = { ...JA, actions: 'explain,translate,ask,code' }
+
 // These check the Japanese texts as they were before the language setting,
 // so each pins `language: 'ja'` (left to `auto`, a test would see English).
 
@@ -29,7 +32,7 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: 'answer from haiku' })).toBeDefined()
   })
 
-  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, { options: JA }, async ($, on) => {
+  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, { options: { ...JA, actions: 'ask' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -97,9 +100,10 @@ test('/selection-actions <id> runs that action; an unknown ID is told, not run',
   await start($)
   s.selected = 'ls -la | grep foo'
 
-  await runCommand($, ' Command ')
+  // Case and spaces around the ID are ignored.
+  await runCommand($, ' Explain ')
   expect(s.models.map(m => m.model)).toEqual(['sonnet'])
-  expect(s.models[0]?.system).toContain('shell command')
+  expect(s.models[0]?.system).toContain('You explain text a developer selected')
 
   const r = await runCommand($, 'nope')
   expect(s.models).toHaveLength(1)
@@ -122,7 +126,7 @@ test('/selection-actions with nothing selected says so', { options: JA }, async 
 // in the theme; inline, it is the raw red the terminal draws, on the terminal's own background.
 for (const surface of SURFACES) {
   for (const placement of ['dock', 'inline'] as const) {
-    test(`[${surface}] ${placement}: a failed call shows in the colour that suits the background, never stuck at running`, { options: JA }, async ($, on) => {
+    test(`[${surface}] ${placement}: a failed call shows in the colour that suits the background, never stuck at running`, { options: WITH_ASK }, async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
       await start($)
@@ -150,7 +154,7 @@ for (const surface of SURFACES) {
 }
 
 for (const surface of SURFACES) {
-  test(`[${surface}] a call that rejects shows its message alone, without a repeated "Error: "`, { options: JA }, async ($, on) => {
+  test(`[${surface}] a call that rejects shows its message alone, without a repeated "Error: "`, { options: WITH_ASK }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)

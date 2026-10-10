@@ -14,19 +14,8 @@
 
 import type { LocalInput, LocalOutput } from './actions'
 import type { Lang } from './i18n'
-
-type Texts = Record<Lang, string>
-
-/** `{ error }` for an argument the action does not take, saying what it takes. */
-const invalid = (lang: Lang, expected: Texts): LocalOutput => ({
-  error: lang === 'ja' ? `引数が正しくありません: ${expected.ja}` : `Invalid argument: ${expected.en}`,
-})
-
-const isInt = (arg: unknown, min: number, max: number): arg is number =>
-  typeof arg === 'number' && Number.isInteger(arg) && arg >= min && arg <= max
-
-/** The argument as text: '' for none, undefined when it is no string. */
-const textOf = (arg: unknown): string | undefined => (arg === undefined ? '' : typeof arg === 'string' ? arg.trim() : undefined)
+import { invalid, isInt, textOf } from './local-args'
+import type { Texts } from './local-args'
 
 /** Digits grouped by three with commas, a sign kept in front. */
 export const groupDigits = (digits: string): string => {
@@ -115,8 +104,6 @@ const VARIADIC_FUNCTIONS: Readonly<Record<string, (xs: number[]) => number>> = {
   min: xs => Math.min(...xs),
   max: xs => Math.max(...xs),
 }
-
-const at = (t: Token | undefined, src: string) => (t === undefined ? src.length + 1 : t.at + 1)
 
 /** The value of an expression, or the reason it has none (thrown as CalcError, caught by calc). */
 export function evaluate(src: string): number {
@@ -212,7 +199,7 @@ export function evaluate(src: string): number {
     const t = peek()
     if (t === undefined) return fail('閉じ括弧 ) が足りません', 'a ")" is missing')
     if (t.kind === 'num' || t.kind === 'id' || (t.kind === 'op' && t.op === '(')) return missingOperator(t)
-    return fail(`「${t.text}」の位置に ) が必要です（${at(t, src)} 文字目）`, `")" is expected at "${t.text}", position ${at(t, src)}`)
+    return fail(`「${t.text}」の位置に ) が必要です（${t.at + 1} 文字目）`, `")" is expected at "${t.text}", position ${t.at + 1}`)
   }
 
   if (tokens.length === 0) fail('式が空です', 'the expression is empty')
@@ -375,6 +362,12 @@ export const unitOf = (name: string): Unit | undefined => UNIT_BY_ALIAS.get(name
 const toKelvin = (v: number, id: string) => (id === '°C' ? v + 273.15 : id === '°F' ? ((v - 32) * 5) / 9 + 273.15 : v)
 const fromKelvin = (k: number, id: string) => (id === '°C' ? k - 273.15 : id === '°F' ? ((k - 273.15) * 9) / 5 + 32 : k)
 
+/**
+ * Whether a temperature lies below absolute zero. A margin far below the
+ * digits shown lets -459.67 °F, which lands a rounding error under 0 K, pass.
+ */
+export const belowAbsoluteZero = (v: number, id: string) => toKelvin(v, id) < -1e-9
+
 /** `value` in unit `from` converted to unit `to` (of the same quantity). */
 export function convertUnit(value: number, from: Unit, to: Unit): number {
   if (from.quantity === 'temperature') return fromKelvin(toKelvin(value, from.id), to.id)
@@ -460,6 +453,14 @@ export const unitConvert = ({ arg, lang }: LocalInput): LocalOutput => {
         lang === 'ja'
           ? `種類の違う単位どうしは換算できません: ${from!.id}（${a}）と ${to!.id}（${b}）`
           : `Cannot convert between units of different kinds: ${from!.id} (${a}) and ${to!.id} (${b})`,
+    }
+  }
+  if (from!.quantity === 'temperature' && belowAbsoluteZero(read.value, from!.id)) {
+    return {
+      error:
+        lang === 'ja'
+          ? '絶対零度（0 K = -273.15 °C = -459.67 °F）より低い温度は換算できません'
+          : 'Cannot convert a temperature below absolute zero (0 K = -273.15 °C = -459.67 °F)',
     }
   }
   const result = convertUnit(read.value, from!, to!)

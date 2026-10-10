@@ -181,6 +181,20 @@ test('unit-convert: no two aliases the same, each lowercase and naming a known u
   for (const [name, id] of expected) expect(unitOf(name)?.id).toBe(id)
 })
 
+test('unit-convert: absolute zero converts; a temperature below it is an error', () => {
+  const first = (arg: string) => answer(unitConvert, arg).split('\n')[0]
+  expect(first('0 K C')).toBe('0 K = -273.15 °C')
+  expect(first('-273.15 C K')).toBe('-273.15 °C = 0 K')
+  expect(first('-459.67 F K')).toBe('-459.67 °F = 0 K')
+  for (const bad of ['-0.001 K C', '-1 K C', '-273.16 C K', '-459.68 F C', '-460 F C', '-500 C K', '-500 K C']) {
+    expect(isError(run(unitConvert, bad))).toBe(true)
+  }
+  expect((run(unitConvert, '-1 K C') as { error: string }).error).toBe('絶対零度（0 K = -273.15 °C = -459.67 °F）より低い温度は換算できません')
+  expect((run(unitConvert, '-460 F C', 'en') as { error: string }).error).toBe('Cannot convert a temperature below absolute zero (0 K = -273.15 °C = -459.67 °F)')
+  // Lengths and the like are not bounded below.
+  expect(isError(run(unitConvert, '-5 km mi'))).toBe(false)
+})
+
 test('unit-convert: no argument shows the table of common conversions', () => {
   expect(answer(unitConvert, undefined)).toContain('1 in = 2.54 cm')
   expect(answer(unitConvert, '', 'en')).toContain('Common conversions')

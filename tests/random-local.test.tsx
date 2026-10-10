@@ -261,16 +261,16 @@ test('random-number: from 1 to N (2 to 1000000000)', () => {
   }
 })
 
-test('pick-one: one of the candidates, yes or no with none; one candidate alone or over 100 is an error', () => {
+test('pick-one: one of the candidates, yes or no with none; separators alone, one candidate alone or over 100 is an error', () => {
   expect(textOf(pickOneAction(input({ arg: '寿司, ラーメン、カレー', randomBytes: sequence([1]) })))).toBe('ラーメン\n\n（3 個の候補から）')
   expect(textOf(pickOneAction(input({ arg: undefined, randomBytes: sequence([0]) }))).split('\n')[0]).toBe('はい')
   expect(textOf(pickOneAction(input({ arg: '', lang: 'en', randomBytes: sequence([1]) }))).split('\n')[0]).toBe('No')
   const hundred = Array.from({ length: CANDIDATES_MAX }, (_, i) => `c${i}`).join(' ')
   expect(isError(pickOneAction(input({ arg: hundred })))).toBe(false)
-  for (const bad of ['only', `${hundred} extra`, 3]) expect(isError(pickOneAction(input({ arg: bad })))).toBe(true)
+  for (const bad of ['only', `${hundred} extra`, 3, ',,,', '、、', ', 、，']) expect(isError(pickOneAction(input({ arg: bad })))).toBe(true)
 })
 
-test('shuffle: the candidates in a random order, numbered; 1 to 10 with none', () => {
+test('shuffle: the candidates in a random order, numbered; 1 to 10 with none; separators alone are an error', () => {
   const out = textOf(shuffle(input({ arg: 'a b c', randomBytes: counting() }))).split('\n')
   expect(out).toHaveLength(3)
   expect(out.map(l => l.replace(/^\d+\. /, '')).sort()).toEqual(['a', 'b', 'c'])
@@ -279,7 +279,7 @@ test('shuffle: the candidates in a random order, numbered; 1 to 10 with none', (
   expect(ten).toHaveLength(10)
   expect(ten[0]).toMatch(/^ 1\. /)
   expect(ten.map(l => Number(l.replace(/^\s*\d+\. /, ''))).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-  for (const bad of ['solo', Array.from({ length: 101 }, (_, i) => i).join(','), 5]) expect(isError(shuffle(input({ arg: bad })))).toBe(true)
+  for (const bad of ['solo', Array.from({ length: 101 }, (_, i) => i).join(','), 5, ',,,', '、、']) expect(isError(shuffle(input({ arg: bad })))).toBe(true)
 })
 
 test('random-color: five colours as HEX, RGB and HSL', () => {

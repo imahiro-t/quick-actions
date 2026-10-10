@@ -17,22 +17,8 @@
 import type { LocalInput, LocalOutput } from './actions'
 import { base64Encode, toHex } from './codec'
 import type { Lang } from './i18n'
+import { INT_TEXT, invalid, isInt, textOf } from './local-args'
 import { rgbToHsl } from './selection-local'
-
-type Texts = Record<Lang, string>
-
-/** `{ error }` for an argument the action does not take, saying what it takes. */
-const invalid = (lang: Lang, expected: Texts): LocalOutput => ({
-  error: lang === 'ja' ? `引数が正しくありません: ${expected.ja}` : `Invalid argument: ${expected.en}`,
-})
-
-const INT_TEXT = (min: number, max: number): Texts => ({ ja: `${min}〜${max} の整数`, en: `a whole number from ${min} to ${max}` })
-
-const isInt = (arg: unknown, min: number, max: number): arg is number =>
-  typeof arg === 'number' && Number.isInteger(arg) && arg >= min && arg <= max
-
-/** The argument as text: '' for none, undefined when it is no string. */
-const textOf = (arg: unknown): string | undefined => (arg === undefined ? '' : typeof arg === 'string' ? arg.trim() : undefined)
 
 // ---------------------------------------------------------------------------
 // Choices without a lean.
@@ -88,11 +74,9 @@ const ID_COUNT = 5
 // ---------------------------------------------------------------------------
 // IDs.
 
-const hex = (bytes: Uint8Array) => toHex(bytes)
-
 /** A UUID's 16 bytes written 8-4-4-4-12 in lowercase. */
 export const formatUuid = (b: Uint8Array) =>
-  `${hex(b.subarray(0, 4))}-${hex(b.subarray(4, 6))}-${hex(b.subarray(6, 8))}-${hex(b.subarray(8, 10))}-${hex(b.subarray(10, 16))}`
+  `${toHex(b.subarray(0, 4))}-${toHex(b.subarray(4, 6))}-${toHex(b.subarray(6, 8))}-${toHex(b.subarray(8, 10))}-${toHex(b.subarray(10, 16))}`
 
 /** 48 bits of a time in ms, the most significant byte first. */
 function timeBytes(ms: number): number[] {
@@ -171,6 +155,10 @@ export const DIGITS = '0123456789'
 export const SYMBOLS = '!#$%&*+-=?@^_~'
 export const PASSWORD_CHARS = UPPER + LOWER + DIGITS + SYMBOLS
 
+/** Each kind of password character, and all of them, as arrays made once for pickOne. */
+const PASSWORD_KINDS: readonly (readonly string[])[] = [UPPER, LOWER, DIGITS, SYMBOLS].map(set => [...set])
+const PASSWORD_CHAR_LIST: readonly string[] = [...PASSWORD_CHARS]
+
 const SECRET_COUNT = 3
 
 /** Bits written with one decimal. */
@@ -178,8 +166,8 @@ const bits = (n: number) => n.toFixed(1)
 
 /** One password of `length` (4 at least): one character of each kind, the rest of any, in a random order. */
 export function makePassword(length: number, randomBytes: (n: number) => Uint8Array): string {
-  const chars = [UPPER, LOWER, DIGITS, SYMBOLS].map(set => pickOne([...set], randomBytes))
-  for (let i = chars.length; i < length; i++) chars.push(pickOne([...PASSWORD_CHARS], randomBytes))
+  const chars = PASSWORD_KINDS.map(kind => pickOne(kind, randomBytes))
+  for (let i = chars.length; i < length; i++) chars.push(pickOne(PASSWORD_CHAR_LIST, randomBytes))
   return shuffleInPlace(chars, randomBytes).join('')
 }
 
@@ -371,12 +359,17 @@ export const randomNumber = ({ arg, lang, randomBytes }: LocalInput): LocalOutpu
   return { text: [String(v), '', lang === 'ja' ? `（1〜${arg} から）` : `(from 1 to ${arg})`].join('\n') }
 }
 
-/** The candidates in the argument, or undefined (with the error to answer) when they are one alone or too many. */
+/**
+ * The candidates in the argument: `{ ok: true, list }` (an empty list for no
+ * argument), or `{ ok: false, out }` with the `{ error }` to answer when it is
+ * no text, or a text with no candidate in it (separators alone), one alone or
+ * too many.
+ */
 function candidatesOf(arg: unknown, lang: Lang): { ok: true; list: string[] } | { ok: false; out: LocalOutput } {
   const s = textOf(arg)
   if (s === undefined) return { ok: false, out: invalid(lang, { ja: 'カンマ・読点・空白で区切った候補', en: 'candidates separated by commas or spaces' }) }
   const list = splitCandidates(s)
-  if (list.length === 1 || list.length > CANDIDATES_MAX) {
+  if ((s !== '' && list.length === 0) || list.length === 1 || list.length > CANDIDATES_MAX) {
     return {
       ok: false,
       out: invalid(lang, {
@@ -411,9 +404,10 @@ export const randomColor = ({ randomBytes }: LocalInput): LocalOutput => {
   const bytes = randomBytes(3 * ID_COUNT)
   const lines: string[] = []
   for (let i = 0; i < ID_COUNT; i++) {
-    const rgb: [number, number, number] = [bytes[i * 3] ?? 0, bytes[i * 3 + 1] ?? 0, bytes[i * 3 + 2] ?? 0]
+    const one = bytes.subarray(i * 3, i * 3 + 3)
+    const rgb: [number, number, number] = [one[0] ?? 0, one[1] ?? 0, one[2] ?? 0]
     const [h, s, l] = rgbToHsl(rgb)
-    lines.push(`#${rgb.map(v => v.toString(16).padStart(2, '0')).join('')}  rgb(${rgb.join(', ')})  hsl(${h}, ${s}%, ${l}%)`)
+    lines.push(`#${toHex(one)}  rgb(${rgb.join(', ')})  hsl(${h}, ${s}%, ${l}%)`)
   }
   return { text: lines.join('\n') }
 }

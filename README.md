@@ -22,7 +22,8 @@ The selected text itself is not shown on the hint line (so a multi-line selectio
 - The selected text is sent through Claude Code to the model (the one the session uses, such as the Anthropic API) only when you press an icon or run `/selection-actions`. Selecting alone sends nothing
 - `fork` actions (💬 Ask Claude and 🧾 Why so?) pass the current conversation to the model along with the selection
 - Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
-- The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). None of the standard actions can write files or run commands (the one subagent, 🔎 Find the code, has read-only tools)
+- The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). None of the standard actions can write files or run commands: of the two subagents, 🔎 Find the code has read-only tools (Read / Grep / Glob) and 📚 Check on the web has `WebSearch` / `WebFetch` alone
+- 📚 Check on the web (`web-check`) sends the selection outside: words from it go to a web search service as queries, and it fetches pages at URLs written in the selection or turned up by the search. It has no tool that reads files, so nothing from the repository is put into those queries or URLs: the queries come from the selection, and the pages fetched are ones the selection names or the search found (its prompt also tells it to build queries from the selection alone and fetch only such URLs, though that part rests on the model following it). The pages it fetches can carry instructions of their own (prompt injection) that steer its answer, or what it searches and fetches next. Since it cannot change files or run commands, the effect stays within the answer in the pane. It is not in the default set: it runs only once `web-check` is in `actions`. Whether it can search or fetch at all also depends on your Claude Code permissions for `WebSearch` / `WebFetch`
 - Actions you add in [`customActions`](#customactions) send the selection the same way. A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, and the files it read (inside the repository or out), to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
 
 ## Install
@@ -77,7 +78,7 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`, or `
 - **Unset or empty**: the default set `explain,translate,summarize,code` (💡 🌐 📝 🔎) is shown, one action per purpose
 - **Unknown IDs**: ignored (no error). If no valid ID is left, the default set is shown
 - **Your own actions**: the IDs of the valid definitions in [`customActions`](#customactions) can be written here like the built-ins'
-- **Removed IDs**: the built-ins were narrowed to the ten in [Actions](#actions). The IDs taken out — `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` — are ignored like unknown IDs if your `actions` setting still names them (their icons simply no longer show; if no valid ID is left, the default set is shown)
+- **Removed IDs**: the built-ins were narrowed down (see [Actions](#actions) for the current ones). The IDs taken out — `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` — are ignored like unknown IDs if your `actions` setting still names them (their icons simply no longer show; if no valid ID is left, the default set is shown)
 - Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
 - To keep the line on one row, eight to ten actions at most is a good limit
 
@@ -166,7 +167,7 @@ Kinds:
 
 - **complete**: one model call on the selection (the conversation is not used)
 - **fork**: answered in a branch of the current conversation, so the answer knows what you are working on
-- **subagent**: a read-only (Read / Grep / Glob) subagent searches the repository and answers. The main Claude is not offered it
+- **subagent**: a subagent of its own looks things up and answers. 🔎 Find the code searches the repository with read-only tools (Read / Grep / Glob); 📚 Check on the web searches and reads the web with `WebSearch` / `WebFetch` alone. The main Claude is not offered them
 
 The built-ins cover four purposes: translation, meaning, summary and evidence.
 
@@ -182,6 +183,7 @@ The built-ins cover four purposes: translation, meaning, summary and evidence.
 | 8 | Summary | `tldr` | ⚡ | TL;DR | One line | complete | haiku |
 | 9 | Evidence | `code` | 🔎 | Find the code | Finds where the text or behaviour comes from in the repository | subagent | sonnet |
 | 10 | Evidence | `why` | 🧾 | Why so? | Explains the grounds for something Claude said in the conversation | fork | the conversation's |
+| 11 | Evidence | `web-check` | 📚 | Check on the web | Checks the claims in the text against web sources, with their URLs: what they support apart from what they do not support or contradict | subagent | sonnet |
 
 The labels above are the English ones (see [README.ja.md](README.ja.md) for the Japanese). Answers come in the language chosen with `language`, except the translations of `translate` / `translate-en`. Other uses (reviewing code, reading logs and so on) are left to actions you add yourself.
 

@@ -184,10 +184,10 @@ for (const surface of SURFACES) {
   )
 }
 
-test('the subagent\'s running text exists in both languages', () => {
+test('the subagents\' running texts exist in both languages', () => {
   const running = (lang: 'ja' | 'en') => actionsFor(lang).flatMap(a => (a.runningText === undefined ? [] : [a.runningText]))
-  expect(running('en')).toEqual(['Searching the repository…'])
-  expect(running('ja')).toEqual(['リポジトリを調査中…'])
+  expect(running('en')).toEqual(['Searching the repository…', 'Checking the web…'])
+  expect(running('ja')).toEqual(['リポジトリを調査中…', 'Webで調査中…'])
 })
 
 for (const [options, thinking] of [

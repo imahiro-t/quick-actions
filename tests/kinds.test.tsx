@@ -78,6 +78,51 @@ for (const surface of SURFACES) {
   })
 }
 
+// web-check is not in the default set: named in the setting, it joins the hint
+// line, and pressed or run by the command it registers a subagent with the web
+// tools alone, described in the configured language.
+for (const language of ['ja', 'en'] as const) {
+  test(
+    `[${language}] web-check: on the hint line once named, runs by key and by command with WebSearch / WebFetch only`,
+    { options: { language, actions: 'explain,code,web-check' } },
+    async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'Node.js 18 reached end-of-life in April 2025'
+      await clock.advance(400)
+
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
+      expect(icons).toEqual(['💡', '🔎', '📚', '✕'])
+
+      await reselect(s, clock)
+      await band.press({ key: 'web-check' })
+      expect(s.registered.map(r => r.name)).toEqual(['web-check'])
+      expect([...(s.registered[0]?.tools ?? [])]).toEqual(['WebFetch', 'WebSearch'])
+      expect(s.registered[0]?.model).toBe('sonnet')
+      expect(s.registered[0]?.description).toBe(
+        language === 'ja'
+          ? '選択テキストの主張を Web の出典で確かめます（selection-actions 専用）'
+          : 'Checks the claims in a piece of selected text against sources on the web (selection-actions only)',
+      )
+      expect(s.registered[0]?.prompt).toContain(language === 'ja' ? 'Answer in Japanese' : 'Answer in English')
+      expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:web-check`])
+      expect(s.spawned[0]?.prompt).toContain('Check the claims in the following text against sources on the web.')
+      expect(s.spawned[0]?.prompt).toContain('Node.js 18 reached end-of-life in April 2025')
+      await band.unmount()
+
+      // The command runs it too, on the same registered type.
+      await runCommand($, 'web-check')
+      expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:web-check`, `${PLUGIN}:web-check`])
+      expect(s.registered.map(r => r.name)).toEqual(['web-check'])
+
+      const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+      expect(await pane.find({ text: language === 'ja' ? /Webで裏どり/ : /Check on the web/ })).toBeDefined()
+    },
+  )
+}
+
 test('the empty pane points at the hint line under the prompt', { options: JA }, async ($, on) => {
   stage(on)
   await start($)

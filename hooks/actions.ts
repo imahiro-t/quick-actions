@@ -313,7 +313,7 @@ export const timerCompute = ({ arg, now, lang }: LocalInput): LocalOutput => {
 // context actions on the conversation, then the standalone ones.
 export const ACTIONS: readonly ActionSpec[] = [
   {
-    id: 'translate',
+    id: 'translate-ja',
     icon: '🌐',
     label: { ja: '日本語訳', en: 'To Japanese' },
     kind: 'complete',
@@ -607,7 +607,7 @@ export const ACTIONS: readonly ActionSpec[] = [
  * none (see ./order): one per purpose, meaning first, the kinds in turn.
  * Which of them show depends on the selection (see arrange in ./order).
  */
-export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'recap', 'translate', 'decisions', 'summarize', 'code', 'timer']
+export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'recap', 'translate-ja', 'decisions', 'summarize', 'code', 'timer']
 
 /** The action a pane entry or a command names, if it is defined. */
 export const findAction = <D extends { id: string }>(defs: readonly D[], id: string): D | undefined =>

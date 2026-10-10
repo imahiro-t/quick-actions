@@ -9,6 +9,7 @@ import {
   TIMER_DEFAULT_MS,
   WEB_TOOLS,
   actionsFor,
+  findAction,
   isContext,
   isStandalone,
   markedIcon,
@@ -25,7 +26,7 @@ import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
 import { BAND, PANE, PLUGIN, promptOf, reselect, stage, start } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, evidence.
-const ON_SELECTION = ['translate', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
+const ON_SELECTION = ['translate-ja', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
 // The built-ins on the conversation (context actions), after them.
 const ON_CONVERSATION = [
   'recap', 'decisions', 'todo', 'open-questions', 'simplify-last', 'translate-last',
@@ -99,7 +100,7 @@ test('the twenty-three built-ins (eleven on the selection, eleven on the convers
 
 test('the kept six are unchanged and the new four are defined as planned', () => {
   const byId = new Map(ACTIONS.map(a => [a.id, a]))
-  expect(byId.get('translate')).toMatchObject({ icon: '🌐', label: { ja: '日本語訳', en: 'To Japanese' }, kind: 'complete', model: 'haiku' })
+  expect(byId.get('translate-ja')).toMatchObject({ icon: '🌐', label: { ja: '日本語訳', en: 'To Japanese' }, kind: 'complete', model: 'haiku' })
   expect(byId.get('translate-en')).toMatchObject({ icon: '🔤', label: { ja: '英訳', en: 'To English' }, kind: 'complete', model: 'haiku' })
   expect(byId.get('explain')).toMatchObject({ icon: '💡', label: { ja: '意味', en: 'Explain' }, kind: 'complete', model: 'sonnet' })
   expect(byId.get('ask')).toMatchObject({ icon: '💬', label: { ja: 'Claudeに聞く', en: 'Ask Claude' }, kind: 'fork' })
@@ -266,11 +267,20 @@ test('web-check: a subagent on the web alone, in both languages, answering with 
   expect(DEFAULT_ACTION_IDS).not.toContain('web-check')
 })
 
-test('the default set mixes the kinds: explain, recap, translate, decisions, summarize, code, timer', () => {
-  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'recap', 'translate', 'decisions', 'summarize', 'code', 'timer'])
+test('the default set mixes the kinds: explain, recap, translate-ja, decisions, summarize, code, timer', () => {
+  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'recap', 'translate-ja', 'decisions', 'summarize', 'code', 'timer'])
   // A removed ID in the setting is ignored like an unknown one.
   expect(parsePins(ACTIONS, 'send,usages')).toEqual([])
   expect(parsePins(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
+})
+
+test('the Japanese translation is translate-ja: the old ID translate is gone, with no alias', () => {
+  for (const lang of ['ja', 'en'] as const) expect(findAction(actionsFor(lang), 'translate')).toBeUndefined()
+  expect(ACTIONS.map(a => a.id)).not.toContain('translate')
+  expect(findAction(actionsFor('ja'), 'translate-ja')).toMatchObject({ icon: '🌐', label: '日本語訳', kind: 'complete', model: 'haiku' })
+  // Pinned by its old ID, it is ignored as any unknown ID is.
+  expect(parsePins(ACTIONS, 'translate')).toEqual([])
+  expect(parsePins(ACTIONS, 'translate,translate-ja').map(a => a.id)).toEqual(['translate-ja'])
 })
 
 test('parsePins: one more definition is all a new action needs', () => {

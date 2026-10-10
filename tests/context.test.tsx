@@ -253,7 +253,7 @@ test('/quick-actions recap runs with nothing selected', async ($, on) => {
 // off the line while the person is selecting).
 test('the usage scores order the kinds as one; with a selection, the actions on it come first', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const s = stage(on, { store: { usage: { recap: at(5), translate: at(3), decisions: at(1) } } })
+  const s = stage(on, { store: { usage: { recap: at(5), 'translate-ja': at(3), decisions: at(1) } } })
   await start($)
   s.selected = 'some text'
   await clock.advance(400)

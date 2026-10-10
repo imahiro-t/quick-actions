@@ -441,7 +441,7 @@ for (const surface of SURFACES) {
 
       const band = await $.ui.mount({ ...BAND, surface })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      // Five pinned, then the first of the rest (translate), six in all.
+      // Five pinned, then the first of the rest (translate-ja), six in all.
       expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       // Nothing was wrong: no toast.
@@ -619,10 +619,10 @@ test('invalid definitions: every result of /quick-actions lists them all', { opt
   expect(JSON.stringify(ignored)).not.toContain('不明なアクション ID')
   listed(ignored)
 
-  // An unknown ID: the IDs that exist, custom ones included, then the list.
-  const unknown = await runCommand($, 'nope')
-  expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: nope')
-  expect(JSON.stringify(unknown)).toContain('mine')
+  // An unknown ID: the actions it matches, custom ones included (by their
+  // label in either language), then the list.
+  const unknown = await runCommand($, 'pirate')
+  expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: pirate（候補: mine）')
   listed(unknown)
 
   expect(s.models).toHaveLength(1)

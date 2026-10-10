@@ -47,7 +47,7 @@ for (const [surface, options, thinking] of SURFACES.flatMap(
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     await reselect(s, clock)
-    await band.press({ key: 'translate' })
+    await band.press({ key: 'translate-ja' })
 
     const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
     expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
@@ -86,7 +86,7 @@ test('a pick in the ⋯ dialog runs on and the newest result is drawn first', as
   await reselect(s, clock)
   await band.press({ key: '_more' })
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'translate' })
+  await picker.select({ key: PICKER_SELECT, value: 'translate-ja' })
   const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
   expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
   await picker.unmount()
@@ -101,7 +101,7 @@ test('the command runs on and the newest result is drawn first', async ($, on) =
 
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: scrolledDown })
   await runCommand($, 'explain')
-  await runCommand($, 'translate')
+  await runCommand($, 'translate-ja')
   const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
   expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
   await pane.unmount()

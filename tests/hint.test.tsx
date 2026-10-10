@@ -61,7 +61,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] unknown IDs are ignored; case, spaces and repeats are tolerated`,
-    { options: { actions: 'nope,translate, EXPLAIN ,translate,,' } },
+    { options: { actions: 'nope,translate-ja, EXPLAIN ,translate-ja,,' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

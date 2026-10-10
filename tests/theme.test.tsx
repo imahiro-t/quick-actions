@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_PANE, SURFACES, reselect, stage, start } from './stage'
+import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, SURFACES, reselect, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -243,8 +243,16 @@ for (const theme of THEMES) {
         expect(shown.map(f => f.props.color)).toEqual([p.body])
         expect(b.props.dimColor).toBeUndefined()
       }
-      // The first takes the focus ring as the dialog takes the keys.
-      expect(buttons.map(b => b.props.autoFocus)).toEqual([true, ...buttons.slice(1).map(() => undefined)])
+      // The filter field takes the focus ring as the dialog takes the keys;
+      // on mobile, which draws no field, the first button does.
+      const field = await picker.find({ key: PICKER_FILTER })
+      if (surface === 'mobile') {
+        expect(field).toBeUndefined()
+        expect(buttons.map(b => b.props.autoFocus)).toEqual([true, ...buttons.slice(1).map(() => undefined)])
+      } else {
+        expect(field?.props.autoFocus).toBe(true)
+        expect(buttons.map(b => b.props.autoFocus)).toEqual(buttons.map(() => undefined))
+      }
 
       const close = await picker.find({ key: PICKER_CLOSE })
       expect(close?.props.label).toBe(t.pickerClose)

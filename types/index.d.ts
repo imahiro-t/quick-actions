@@ -33,8 +33,12 @@ declare module 'claude-code' {
       selection: string | null
       dismissed: string | null
       results: Result[]
-      /** The ⋯ dialog: null while it is closed; open, the text it runs selection actions on (null: none, context actions only). */
-      picking: { text: string | null } | null
+      /**
+       * The ⋯ dialog: null while it is closed; open, the text it runs selection
+       * actions on (null: none, context and standalone actions only) and what
+       * its filter field holds (empty as it opens: every action listed).
+       */
+      picking: { text: string | null; filter: string } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
     }

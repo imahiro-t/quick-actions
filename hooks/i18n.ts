@@ -56,7 +56,8 @@ export type Messages = {
   noAnswer: (reason: string) => string
   failed: (reason: string) => string
   noSelection: string
-  unknownId: (id: string, ids: readonly string[]) => string
+  /** The command's result for an ID no action has: up to ten that match it (none: the pointer to the dialog alone). */
+  unknownId: (id: string, candidates: readonly string[]) => string
   showing: (pane: string, label: string) => string
   commandDescription: string
   emptyPane: string
@@ -74,6 +75,12 @@ export type Messages = {
   pickerNoFocus: string
   /** The ⋯ dialog's close button. */
   pickerClose: string
+  /** Drawn dim in the ⋯ dialog's empty filter field. */
+  pickerFilterPlaceholder: string
+  /** The button beside the filter field that empties it. */
+  pickerFilterClear: string
+  /** Stands for the ⋯ dialog's list when the filter matches no action. */
+  pickerNoMatch: string
   /** The command's result when it opened the ⋯ dialog. */
   pickerOpened: string
   /** The command's result when `/quick-actions hint` opened the hint line. */
@@ -132,7 +139,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     noAnswer: reason => `回答なし (${reason})`,
     failed: reason => `失敗しました: ${reason}`,
     noSelection: '選択されたテキストがありません',
-    unknownId: (id, ids) => `不明なアクション ID です: ${id}（使える ID: ${ids.join(', ')}）`,
+    unknownId: (id, candidates) =>
+      `不明なアクション ID です: ${id}${candidates.length === 0 ? '' : `（候補: ${candidates.join(', ')}）`}。/quick-actions（ID なし）で一覧から検索できます`,
     showing: (pane, label) => `${pane} ペインに ${label} の結果を表示します。`,
     commandDescription:
       '選択中のテキストか今の会話にアクションを実行します。単独のアクションは選択も会話も使わずに実行し、ID の後に引数を書けます（例: timer 5m）。ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で選択がなくてもヒント行を開きます',
@@ -145,6 +153,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerLabel: 'アクション: ',
     pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
+    pickerFilterPlaceholder: '絞り込み（ID・名前・種類）',
+    pickerFilterClear: 'クリア',
+    pickerNoMatch: '一致するアクションがありません',
     pickerOpened: 'ダイアログでアクションを選んでください。',
     hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
     onConversation: '今の会話',
@@ -213,7 +224,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     noAnswer: reason => `No answer (${reason})`,
     failed: reason => `Failed: ${reason}`,
     noSelection: 'No text is selected',
-    unknownId: (id, ids) => `Unknown action ID: ${id} (available IDs: ${ids.join(', ')})`,
+    unknownId: (id, candidates) =>
+      `Unknown action ID: ${id}${candidates.length === 0 ? '' : ` (candidates: ${candidates.join(', ')})`}. Run /quick-actions (no ID) to search the list`,
     showing: (pane, label) => `Showing the ${label} result in the ${pane} pane.`,
     commandDescription:
       'Run an action on the selected text or on this conversation; a standalone action uses neither and takes an argument after its ID (e.g. timer 5m). Without an ID: pick one from every action in a dialog; hint: open the hint line, with or without a selection',
@@ -226,6 +238,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerLabel: 'Action: ',
     pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
+    pickerFilterPlaceholder: 'Filter (ID, name, kind)',
+    pickerFilterClear: 'Clear',
+    pickerNoMatch: 'No action matches',
     pickerOpened: 'Pick an action in the dialog.',
     hintOpened: 'Pick an action on the hint line below the prompt.',
     onConversation: 'this conversation',

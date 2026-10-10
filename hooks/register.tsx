@@ -24,6 +24,7 @@ import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from 
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgValue } from './args'
 import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
+import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
@@ -58,6 +59,13 @@ const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
 const PICKER_SELECT_KEY = '_picker'
 const PICKER_CLOSE_KEY = '_picker-close'
+// The dialog's filter field, and the button beside it that empties it.
+const PICKER_FILTER_KEY = '_filter'
+const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
+// The most candidates an unknown ID is answered with.
+const CANDIDATES = 10
+// The ⋯ dialog's rows at most: past them, the pane scrolls.
+const PICKER_MAX_ROWS = 30
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
 
@@ -525,7 +533,8 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
  */
 async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
   const picked = text === undefined ? await selectionNow($) : text
-  await update($, picking, () => ({ text: picked }))
+  // Every open starts with the filter empty: every action listed.
+  await update($, picking, () => ({ text: picked, filter: '' }))
   // The same width as the results: an open without `columns` resets the dock to
   // its default share, which widens it for as long as the dialog is open.
   await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
@@ -579,8 +588,23 @@ export const register: Register = (on, options) => {
   // The pins and the count alone are read here: they do not depend on the language.
   const pins = parsePins(allSpecs, options.actions)
   const hintCount = parseHintCount(options.hintCount)
-  // Tall enough for every action in the ⋯ dialog, its notice, its legend and its button.
-  const pickerRows = allSpecs.length + 5
+  // Tall enough for every action in the ⋯ dialog, its notice, its legend, its
+  // filter field and its button, up to PICKER_MAX_ROWS: with hundreds of
+  // actions the pane scrolls rather than asks for more rows than there are.
+  const pickerRows = Math.min(allSpecs.length + 6, PICKER_MAX_ROWS)
+
+  // The specs by ID, for the filter: it searches a spec's labels in both
+  // languages, which a definition resolved for one language no longer has.
+  // Made once per load, as the specs are; the search keys are cached on them
+  // (./filter), so a keystroke matches against keys already made.
+  const specById = new Map(allSpecs.map(spec => [spec.id, spec]))
+  /** The definitions of `defs` that match `query`, in their order (one whose ID is the query first). */
+  const filterDefs = (defs: readonly ActionDef[], query: string): readonly ActionDef[] => {
+    if (query.trim() === '') return defs
+    const byId = new Map(defs.map(d => [d.id, d]))
+    const specs = defs.flatMap(d => specById.get(d.id) ?? [])
+    return filterActions(specs, query).flatMap(spec => byId.get(spec.id) ?? [])
+  }
 
   // The order of every action, settled once per load: at session start, or by
   // whichever hook needs it first. Uses during the session do not move it, so
@@ -719,11 +743,14 @@ export const register: Register = (on, options) => {
     // command is where the person can always read why.
     if (def === undefined) {
       // Told once, as the command's result: why its definition was left out,
-      // or else the IDs that do exist.
+      // or else up to CANDIDATES actions the ID matches as the ⋯ dialog's
+      // filter would (in its order, every kind), never the whole list.
       const ignored = problemFor(problems, wanted)
-      const text =
-        ignored === undefined ? t.unknownId(wanted, defs.map(a => a.id)) : t.customIgnoredId(wanted, reasonText(ignored.reason, l))
-      return { text: withProblems(text, problems, l) }
+      if (ignored !== undefined) return { text: withProblems(t.customIgnoredId(wanted, reasonText(ignored.reason, l)), problems, l) }
+      const specs = (await ensureOrder($, orderLoad)).flatMap(id => specById.get(id) ?? [])
+      const laidOut = arrange(specs, pins, true, orderLoad.defaults)
+      const candidates = filterActions(laidOut, wanted).slice(0, CANDIDATES).map(a => a.id)
+      return { text: withProblems(t.unknownId(wanted, candidates), problems, l) }
     }
     if (isStandalone(def)) {
       // The argument is parsed once, here: invalid, it is refused before
@@ -836,11 +863,16 @@ export const register: Register = (on, options) => {
   // The ⋯ dialog: every action, in the hint line's order, as "[icon] label",
   // "<icon> label" or "{icon} label" under a legend of the marks; opened with
   // no text, the context and standalone actions alone.
-  // Opened with focus, a Select takes the keys (arrows move, Enter runs);
-  // Escape closes it through closeOnEscape. Focus is a request the engine
-  // refuses while the composer holds text: then a line says how to get the
-  // keys, and the list and the close button still answer a click. The mobile
-  // app gets no such line: its actions are buttons to tap, and no keys.
+  // A filter field above the list narrows it as the person types (./filter:
+  // ID, labels in both languages, kind names, kind marks), and Enter in it runs
+  // the first action left; Clear beside it, or deleting its text, lists them
+  // all again. The field takes the focus as the dialog opens; the focus ring
+  // moves on to the list, where a Select takes the keys (arrows move, Enter
+  // runs). Escape closes the dialog through closeOnEscape, its filter with it.
+  // Focus is a request the engine refuses while the composer holds text: then
+  // a line says how to get the keys, and the list and the close button still
+  // answer a click. The mobile app draws no field and gets no such line: its
+  // actions are buttons to tap, every one of them, and no keys.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -857,34 +889,79 @@ export const register: Register = (on, options) => {
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
     const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
+    // The filter field: wherever an Input is drawn, a palette's dialog included.
+    const Input = e.surface !== 'mobile' && 'Input' in elements ? elements.Input : undefined
+    const filter = Input === undefined ? '' : (state?.filter ?? '')
+    const shown = filterDefs(ordered, filter)
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
+
+    const setFilter = (value: string) => update($, picking, p => (p === null ? p : { ...p, filter: value }))
+    // Enter in the field: the first action its text leaves, worked out from
+    // that text rather than the last drawn list, in case a change had not
+    // reached the state yet. None left: the dialog stays, with that filter.
+    const submit = async (value: string) => {
+      const first = filterDefs(ordered, value)[0]
+      if (first === undefined) {
+        await setFilter(value)
+        return
+      }
+      await pick($, l, first)
+    }
+    const clear = { label: t.pickerFilterClear, onPress: () => setFilter('') }
 
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
         {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
+        {state !== null && Input !== undefined && (
+          <Box flexDirection="row">
+            <Input
+              key={PICKER_FILTER_KEY}
+              placeholder={t.pickerFilterPlaceholder}
+              value={filter}
+              autoFocus
+              onInput={value => {
+                void setFilter(value)
+              }}
+              onSubmit={value => {
+                void submit(value)
+              }}
+            />
+            {filter !== '' &&
+              (fixed ? (
+                <Button key={PICKER_FILTER_CLEAR_KEY} {...clear}>
+                  <Text color={style.muted}>{t.pickerFilterClear}</Text>
+                </Button>
+              ) : (
+                <Button key={PICKER_FILTER_CLEAR_KEY} {...clear} />
+              ))}
+          </Box>
+        )}
         {state === null ? (
           <Text {...muted(style)}>{t.noSelection}</Text>
+        ) : shown.length === 0 ? (
+          // A Select takes one option at least: with none, this line instead.
+          <Text {...muted(style)}>{t.pickerNoMatch}</Text>
         ) : Select !== undefined ? (
           <Select
             key={PICKER_SELECT_KEY}
             label={t.pickerLabel}
-            autoFocus
-            options={ordered.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
-            onSelect={value => pick($, l, findAction(ordered, value))}
+            options={shown.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
+            onSelect={value => pick($, l, findAction(shown, value))}
           />
         ) : (
           <Box flexDirection="column">
-            {ordered.map((a, i) => {
+            {shown.map((a, i) => {
               const label = `${markedIcon(a)} ${a.label}`
               const button = { label, onPress: () => pick($, l, a) }
-              // With a palette the label is a child Text in its colour, and the
-              // first takes the focus ring as the dialog takes the keys, as the
-              // Select would; otherwise the button stays as it always was.
+              // With a palette the label is a child Text in its colour, and,
+              // with no filter field to take it, the first takes the focus ring
+              // as the dialog takes the keys, as the Select would; otherwise
+              // the button stays as it always was.
               return fixed ? (
-                <Button key={a.id} {...button} {...(i === 0 && { autoFocus: true as const })}>
+                <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
                   <Text color={style.body}>{label}</Text>
                 </Button>
               ) : (

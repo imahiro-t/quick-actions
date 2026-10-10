@@ -44,6 +44,9 @@ export const PICKER = `${PLUGIN}-picker`
 /** The keys of the dialog's list and its close button: never an action's ID. */
 export const PICKER_SELECT = '_picker'
 export const PICKER_CLOSE = '_picker-close'
+/** The dialog's filter field and the button that empties it. */
+export const PICKER_FILTER = '_filter'
+export const PICKER_FILTER_CLEAR = '_filter-clear'
 
 export const PICKER_PANE = {
   ...PANE,
@@ -86,6 +89,8 @@ export type Stage = {
   // Every pane the plugin opened (as $.ui.open was asked) and closed (by id), in order.
   opened: { id: string; title?: string; focus?: true; closeOnEscape?: true; columns?: number }[]
   closed: string[]
+  // The rows the last open of each pane asked for, by id (undefined: none asked).
+  rows: Record<string, number | undefined>
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
 }
@@ -100,7 +105,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], stored: { ...options.store } }
+  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -121,6 +126,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
   on('ui.open', (_$, e) => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
+    s.rows[e.id] = e.rows
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {

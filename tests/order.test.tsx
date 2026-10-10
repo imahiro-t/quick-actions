@@ -163,7 +163,7 @@ test('arrange: the default set, when it leads, comes first, its actions on the s
   const ordered = orderActions(ACTIONS, [], {}, NOW)
   const defaults = DEFAULT_ACTION_IDS.map(id => ({ id }))
   const withSelection = ids(arrange(ordered, [], true, defaults))
-  expect(withSelection.slice(0, 7)).toEqual(['explain', 'translate', 'summarize', 'code', 'recap', 'decisions', 'timer'])
+  expect(withSelection.slice(0, 7)).toEqual(['explain', 'translate-ja', 'summarize', 'code', 'recap', 'decisions', 'timer'])
   // Then the rest, the actions on the selection first.
   expect(withSelection.slice(7, 9)).toEqual(['translate-en', 'eli5'])
   expect(withSelection).toHaveLength(ACTIONS.length)
@@ -213,7 +213,7 @@ test('the hint line follows the stored scores', async ($, on) => {
 
   // tldr then why, then the unused in the order of definition; `web` is no action.
   const icons = await iconsOf($)
-  expect(icons).toEqual([...['tldr', 'why', 'translate', 'translate-en', 'explain', 'eli5'].map(iconOf), '✕', '⋯'])
+  expect(icons).toEqual([...['tldr', 'why', 'translate-ja', 'translate-en', 'explain', 'eli5'].map(iconOf), '✕', '⋯'])
 })
 
 test('a broken store still shows the default order', async ($, on) => {
@@ -345,8 +345,8 @@ test('a settling an earlier load started never becomes a later load\'s order', a
 
   // The reload: a fresh slot, with the new custom action in it.
   const newSlot: OrderSlot = {}
-  finishOld(['explain', 'translate'])
+  finishOld(['explain', 'translate-ja'])
   await oldOrder
-  expect(await settleIn(newSlot, async () => ['explain', 'translate', 'mine'])).toEqual(['explain', 'translate', 'mine'])
-  expect(await oldOrder).toEqual(['explain', 'translate'])
+  expect(await settleIn(newSlot, async () => ['explain', 'translate-ja', 'mine'])).toEqual(['explain', 'translate-ja', 'mine'])
+  expect(await oldOrder).toEqual(['explain', 'translate-ja'])
 })

@@ -9,13 +9,13 @@ import {
   NO_INPUT,
   PANE_ONLY,
   READ_ONLY_TOOLS,
+  REPO_RULES,
   STYLE,
   TIMER_DEFAULT_MS,
   WANT_CODE,
   WANT_LIST,
   WANT_TABLE,
   WANT_TEMPLATE,
-  REPO_RULES,
   WEB_RULES,
   WEB_TOOLS,
   actionsFor,
@@ -934,7 +934,7 @@ const CATALOG_ROWS_STANDALONE_LEARNING: readonly (readonly [string, string, stri
   ['learning-path', '🪜', '学習の道筋', 'Learning path', 'sonnet', 'text?', 'list'],
   ['quiz', '🎯', 'クイズを出題', 'Quiz me', 'haiku', 'text?', 'list'],
   ['algorithm', '🧠', 'アルゴリズムの解説', 'Explain an algorithm', 'sonnet', 'text?', 'prose'],
-  ['design-patterns', '🧱', '設計パターン', 'Design patterns', 'sonnet', 'text?', 'prose'],
+  ['design-patterns', '🧱', '設計パターン', 'Design patterns', 'sonnet', 'text?', 'list'],
   ['english-phrase', '💬', '英語の言い回し', 'English phrases', 'haiku', 'text?', 'list'],
   ['keigo-phrases', '🙇', '敬語の定型表現', 'Polite Japanese phrases', 'haiku', 'text?', 'list'],
   ['prompt-ideas', '🪄', 'プロンプトの例', 'Prompt ideas', 'haiku', 'text?', 'list'],
@@ -954,8 +954,8 @@ test('the seventeen catalog standalone actions on learning, team talk and a brea
   expect(CATALOG_ROWS_STANDALONE_LEARNING).toHaveLength(9 + 4 + 4)
   const forms = CATALOG_ROWS_STANDALONE_LEARNING.map(r => r[6])
   expect(forms.filter(f => f === 'table')).toHaveLength(1)
-  expect(forms.filter(f => f === 'list')).toHaveLength(10)
-  expect(forms.filter(f => f === 'prose')).toHaveLength(6)
+  expect(forms.filter(f => f === 'list')).toHaveLength(11)
+  expect(forms.filter(f => f === 'prose')).toHaveLength(5)
   const env = { now: FIXED_INPUT.now, utcOffsetMinutes: FIXED_INPUT.utcOffsetMinutes }
   const byId = new Map(ACTIONS.map(a => [a.id, a]))
   for (const [id, icon, ja, en, model, input, form] of CATALOG_ROWS_STANDALONE_LEARNING) {
@@ -1013,9 +1013,12 @@ test('the catalog standalone actions on learning, team talk and a break: what th
     return spec.prompt
   }
   expect(promptFor('quick-answer')).toContain('5 to 10 lines')
-  expect(promptFor('quick-answer')).toContain('Your knowledge has a cutoff')
+  expect(promptFor('quick-answer')).toContain('your knowledge has a cutoff')
+  // The trivia is what stands in for a question, not something added to an answer.
+  expect(promptFor('quick-answer')).toContain('5 to 10 lines; otherwise share one piece of programming trivia')
   expect(promptFor('quick-answer')).toContain('programming trivia')
   expect(promptFor('compare-tech')).toContain('SQL and NoSQL')
+  expect(promptFor('compare-tech')).toContain('a column for each technology or tool')
   expect(promptFor('learning-path')).toContain('the goal to reach')
   expect(promptFor('learning-path')).toContain('basics of software development')
   expect(promptFor('quiz')).toContain('5 questions')

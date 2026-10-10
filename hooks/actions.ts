@@ -3216,9 +3216,9 @@ export const ACTIONS: readonly ActionSpec[] = [
       model: 'sonnet',
       arg: textArg('質問（任意。例: HTTP/2 と HTTP/3 の違い。省くと豆知識）', 'a question, e.g. how HTTP/2 and HTTP/3 differ; a bit of trivia when left out'),
       prompt: alone(
-        'If <input> is given, it is a question: answer it briefly, in 5 to 10 lines.',
-        'Your knowledge has a cutoff: where the answer may have changed since then (versions, prices, support status and the like), say so in one line.',
-        'Otherwise share one piece of programming trivia picked at random, in 5 to 10 lines.',
+        'If <input> is given, it is a question: answer it briefly, in 5 to 10 lines;',
+        'otherwise share one piece of programming trivia picked at random, in 5 to 10 lines.',
+        'When answering a question, keep in mind that your knowledge has a cutoff: where the answer may have changed since then (versions, prices, support status and the like), say so in one line.',
       ),
     },
     {
@@ -3233,7 +3233,7 @@ export const ACTIONS: readonly ActionSpec[] = [
         'If <input> is given, it names them (for example, REST GraphQL);',
         'otherwise pick one classic comparison (for example, SQL and NoSQL) and name it on the first line.',
         'Give a table with a row for each point of comparison (purpose, strengths, weaknesses, learning curve, ecosystem and the like)',
-        'and a column for each, then say in a few lines which situations each suits.',
+        'and a column for each technology or tool, then say in a few lines which situations each suits.',
         WANT_TABLE,
       ),
     },
@@ -3292,6 +3292,7 @@ export const ACTIONS: readonly ActionSpec[] = [
         'If <input> is given, it names a design pattern (for example, Strategy):',
         'explain its purpose, its structure, when to use it and what to watch out for, with a short code example in a code block.',
         'Otherwise list the main design patterns, each with a one-line description.',
+        WANT_LIST,
       ),
     },
     {

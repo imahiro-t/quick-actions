@@ -12,7 +12,7 @@ import type { On } from 'claude-code'
 // event, so mock.store's could not be watched. Values go in and out as JSON
 // text, as the engine keeps them.
 
-export const PLUGIN = 'selection-actions'
+export const PLUGIN = 'quick-actions'
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
@@ -27,7 +27,7 @@ export const PANE = {
   component: 'Pane',
   requestId: PLUGIN,
   props: {
-    title: 'Selection Actions',
+    title: 'Quick Actions',
     isFocused: false,
     bodyColumns: 60,
     placement: 'dock',
@@ -173,7 +173,7 @@ export const storedUsage = (s: Stage) => s.stored['usage'] as Record<string, { s
 
 export const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
 
-// `/selection-actions <args>` typed at the prompt of a fullscreen terminal.
+// `/quick-actions <args>` typed at the prompt of a fullscreen terminal.
 export const runCommand = ($: Engine, args: string) =>
   $.command.run({
     command: PLUGIN,

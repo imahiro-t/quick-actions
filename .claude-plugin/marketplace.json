@@ -1,12 +1,12 @@
 {
-  "name": "selection-actions",
-  "description": "Selection Actions: icon actions on the text selected in the Claude Code transcript",
+  "name": "quick-actions",
+  "description": "Quick Actions: icon actions on the text selected in the Claude Code transcript and on the conversation itself",
   "owner": { "name": "Takashi Imahiro" },
   "plugins": [
     {
-      "name": "selection-actions",
+      "name": "quick-actions",
       "source": "./",
-      "description": "Icon actions on the text selected in the Claude Code transcript, chosen and ordered in settings, in English or Japanese"
+      "description": "Icon actions on the text selected in the Claude Code transcript and on the conversation itself, chosen and ordered in settings, in English or Japanese"
     }
   ]
 }

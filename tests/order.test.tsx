@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, DEFAULT_ACTION_IDS } from '../hooks/actions'
+import { ACTIONS, DEFAULT_ACTION_IDS, markedIcon } from '../hooks/actions'
 import {
   DEFAULT_HINT_COUNT,
   HALF_LIFE_MS,
@@ -76,9 +76,9 @@ test('parseUsage: anything but an object is no usage; unusable entries are dropp
 
 test('orderActions: no pins and no usage: the default set leads, the rest in the order of definition', () => {
   const order = ids(orderActions(ACTIONS, [], {}, NOW))
-  expect(order.slice(0, 4)).toEqual([...DEFAULT_ACTION_IDS])
+  expect(order.slice(0, DEFAULT_ACTION_IDS.length)).toEqual([...DEFAULT_ACTION_IDS])
   const rest = ids(ACTIONS).filter(id => !DEFAULT_ACTION_IDS.includes(id))
-  expect(order.slice(4)).toEqual(rest)
+  expect(order.slice(DEFAULT_ACTION_IDS.length)).toEqual(rest)
   expect(order).toHaveLength(ACTIONS.length)
 })
 
@@ -121,7 +121,7 @@ test('orderActions: an old high score decays below a recent low one', () => {
 
 test('orderActions: the score of an action that does not exist is ignored', () => {
   // Only a removed action was used: as good as no usage, so the default set leads.
-  expect(ids(orderActions(ACTIONS, [], { gone: at(50) }, NOW)).slice(0, 4)).toEqual([...DEFAULT_ACTION_IDS])
+  expect(ids(orderActions(ACTIONS, [], { gone: at(50) }, NOW)).slice(0, DEFAULT_ACTION_IDS.length)).toEqual([...DEFAULT_ACTION_IDS])
   // Beside a real one, it changes nothing.
   const order = ids(orderActions(ACTIONS, [], { gone: at(50), why: at(1) }, NOW))
   expect(order[0]).toBe('why')
@@ -143,7 +143,7 @@ test('parseHintCount: a whole number of 1 or more, else 6', () => {
 // ---------------------------------------------------------------------------
 // On the hint line
 
-const iconOf = (id: string) => ACTIONS.find(a => a.id === id)!.icon
+const iconOf = (id: string) => markedIcon(ACTIONS.find(a => a.id === id)!)
 
 const iconsOf = async ($: Engine) => {
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -170,10 +170,10 @@ test('a broken store still shows the default order', async ($, on) => {
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await iconsOf($)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
+  expect(await iconsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
 })
 
-for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', ACTIONS.length], ['0', 6], ['many', 6]] as const) {
+for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', ACTIONS.length], ['0', 6], ['many', 6]] as const) {
   test(`hintCount ${hintCount}: ${shown} actions on the hint line`, { options: { hintCount } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -206,13 +206,13 @@ test('uses during the session are recorded but do not move the hint line', async
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   for (let i = 0; i < 3; i++) {
     await reselect(s, clock)
-    await band.press({ key: 'eli5' })
+    await band.press({ key: 'summarize' })
   }
   await band.unmount()
   await clock.settle()
 
   const usage = await storedUsage(s)
-  expectNear(usage?.['eli5']?.score, 3)
+  expectNear(usage?.['summarize']?.score, 3)
   await reselect(s, clock)
   expect(await iconsOf($)).toEqual(before)
 })

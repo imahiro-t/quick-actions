@@ -76,6 +76,10 @@ export type Messages = {
   pickerClose: string
   /** The command's result when it opened the ⋯ dialog. */
   pickerOpened: string
+  /** The command's result when `/quick-actions hint` opened the hint line. */
+  hintOpened: string
+  /** Stands in the pane heading for the quote of a context action, which has no selected text. */
+  onConversation: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -99,19 +103,21 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `不明なアクション ID です: ${id}（使える ID: ${ids.join(', ')}）`,
     showing: (pane, label) => `${pane} ペインに ${label} の結果を表示します。`,
     commandDescription:
-      'トランスクリプトで選択中のテキストにアクションを実行します（ID を省くと、すべてのアクションから選ぶダイアログを開きます）',
-    emptyPane: 'テキストを選択して、プロンプト下のヒント行のアイコンを押してください。',
+      '選択中のテキストか今の会話にアクションを実行します（ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で選択がなくてもヒント行を開きます）',
+    emptyPane: 'テキストを選択するか /quick-actions hint を実行して、プロンプト下のヒント行のアイコンを押してください。',
     inlineHint: 'ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。',
     quote: text => `「${text}」`,
     close: '閉じる',
     allActions: 'すべてのアクション',
     pickerTitle: 'アクションを選ぶ',
     pickerLabel: 'アクション: ',
-    pickerNoFocus: '入力欄が空のときに ⋯ を押すか /selection-actions を実行すると、キーボードで選べます。クリックでも選べます。',
+    pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
     pickerOpened: 'ダイアログでアクションを選んでください。',
+    hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
+    onConversation: '今の会話',
     languageName: 'Japanese',
-    agentDescription: label => `選択テキストの${label}（selection-actions 専用）`,
+    agentDescription: label => `選択テキストの${label}（Quick Actions 専用）`,
     customReason: r => {
       switch (r.code) {
         case 'json':
@@ -125,7 +131,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'idFormat':
           return 'id は小文字の英数字とハイフンで書いてください（例: review-pr）'
         case 'idReserved':
-          return 'id が標準アクションまたは close と重なっています'
+          return 'id が標準アクション・close・hint のいずれかと重なっています'
         case 'idDuplicate':
           return 'id が先にあるカスタム定義と重なっています'
         case 'missing':
@@ -138,13 +144,17 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `model は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
         case 'tools':
           return `subagent で使えないツール ${r.names.join(', ')} を指定しています（使えるのは ${r.allowed.join(', ')}）`
+        case 'target':
+          return `target は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
+        case 'contextKind':
+          return `target が context の定義は kind を fork にしてください（指定: ${r.kind}）`
         case 'unexpected':
           return `定義を読めませんでした: ${r.detail}`
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
     customIgnoredToast: (count, first) =>
-      `selection-actions: customActions に問題が ${count} 件あり、該当する定義を無視しました（${first}）。全件は /selection-actions を実行すると結果に表示されます`,
+      `Quick Actions: customActions に問題が ${count} 件あり、該当する定義を無視しました（${first}）。全件は /quick-actions を実行すると結果に表示されます`,
     customIgnoredId: (id, reason) => `${id} は customActions の定義が無効なため使えません: ${reason}`,
   },
   en: {
@@ -156,19 +166,21 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `Unknown action ID: ${id} (available IDs: ${ids.join(', ')})`,
     showing: (pane, label) => `Showing the ${label} result in the ${pane} pane.`,
     commandDescription:
-      'Run a selection action on the text selected in the transcript (without an ID: pick one from every action in a dialog)',
-    emptyPane: 'Select some text, then press an icon on the hint line below the prompt.',
+      'Run an action on the selected text or on this conversation (without an ID: pick one from every action in a dialog; hint: open the hint line, with or without a selection)',
+    emptyPane: 'Select some text or run /quick-actions hint, then press an icon on the hint line below the prompt.',
     inlineHint: 'Widen the terminal to 110 columns or more to show this pane on the right (in fullscreen).',
     quote: text => `"${text}"`,
     close: 'Close',
     allActions: 'All actions',
     pickerTitle: 'Pick an action',
     pickerLabel: 'Action: ',
-    pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /selection-actions, to pick with the keyboard. You can also click one.',
+    pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
     pickerOpened: 'Pick an action in the dialog.',
+    hintOpened: 'Pick an action on the hint line below the prompt.',
+    onConversation: 'this conversation',
     languageName: 'English',
-    agentDescription: label => `${label} for the selected text (selection-actions only)`,
+    agentDescription: label => `${label} for the selected text (Quick Actions only)`,
     customReason: r => {
       switch (r.code) {
         case 'json':
@@ -182,7 +194,7 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'idFormat':
           return 'write the id in lowercase letters, digits and hyphens (e.g. review-pr)'
         case 'idReserved':
-          return 'the id is taken by a built-in action or close'
+          return 'the id is taken by a built-in action, close or hint'
         case 'idDuplicate':
           return 'the id is taken by an earlier custom definition'
         case 'missing':
@@ -195,13 +207,17 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `model must be one of ${r.allowed.join(', ')} (given: ${r.value})`
         case 'tools':
           return `tools a subagent cannot have: ${r.names.join(', ')} (allowed: ${r.allowed.join(', ')})`
+        case 'target':
+          return `target must be one of ${r.allowed.join(', ')} (given: ${r.value})`
+        case 'contextKind':
+          return `a definition with target context must have kind fork (given: ${r.kind})`
         case 'unexpected':
           return `the definition could not be read: ${r.detail}`
       }
     },
     customProblemsHeading: 'Ignored in customActions:',
     customIgnoredToast: (count, first) =>
-      `selection-actions: ${count} problem(s) in customActions; the definitions concerned are ignored (${first}). Run /selection-actions to see them all in its result`,
+      `Quick Actions: ${count} problem(s) in customActions; the definitions concerned are ignored (${first}). Run /quick-actions to see them all in its result`,
     customIgnoredId: (id, reason) => `${id} cannot be used: its definition in customActions is invalid: ${reason}`,
   },
 }

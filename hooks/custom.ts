@@ -20,6 +20,9 @@ export const MODELS: readonly string[] = ['haiku', 'sonnet', 'opus']
 
 export const KINDS: readonly string[] = ['complete', 'fork', 'subagent']
 
+/** What a custom action may work on: the selection (the default) or the conversation. */
+export const TARGETS: readonly string[] = ['selection', 'context']
+
 /** The ID format, the same as the built-ins': lowercase letters and digits, joined by single hyphens. */
 export const ID_FORMAT = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
@@ -40,6 +43,8 @@ export type CustomReason =
   | { code: 'kind'; value: string; allowed: readonly string[] }
   | { code: 'model'; value: string; allowed: readonly string[] }
   | { code: 'tools'; names: string[]; allowed: readonly string[] }
+  | { code: 'target'; value: string; allowed: readonly string[] }
+  | { code: 'contextKind'; kind: string }
   | { code: 'unexpected'; detail: string }
 
 /**
@@ -132,6 +137,14 @@ const tools = (d: Record<string, unknown>): string[] | undefined => {
   return [...new Set(list as string[])]
 }
 
+/** Whether the definition's `target` is `context`: left out, null or blank is `selection`; anything else fails. */
+const isContextTarget = (d: Record<string, unknown>): boolean => {
+  const v = d['target']
+  if (absent(v)) return false
+  if (typeof v !== 'string' || !TARGETS.includes(v)) fail({ code: 'target', value: shown(v), allowed: TARGETS })
+  return v === 'context'
+}
+
 /** One definition checked against the IDs already taken; the first reason found if it is not valid. */
 function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<string>): ActionSpec | CustomReason {
   try {
@@ -149,12 +162,17 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     const kind = d['kind']
     if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
     const prompt = required(d, 'prompt')
+    const context = isContextTarget(d)
+    // A context action works on the conversation, which only a fork of the session knows.
+    if (context && kind !== 'fork') fail({ code: 'contextKind', kind: kind as string })
     const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
 
     if (kind === 'fork') {
       const forkPrompt = withoutStyle(prompt)
       if (forkPrompt === '') fail({ code: 'missing', field: 'prompt' })
-      return { ...base, kind: 'fork', prompt: forkPrompt }
+      return context
+        ? { ...base, kind: 'fork', target: 'context', prompt: forkPrompt }
+        : { ...base, kind: 'fork', prompt: forkPrompt }
     }
 
     const m = model(d)
@@ -196,7 +214,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
 
 /**
  * The custom actions in the setting, and what was wrong with it. `reservedIds`
- * are the IDs a custom one may not take (the built-ins' and `close`). An unset
+ * are the IDs a custom one may not take (the built-ins', `close` and `hint`). An unset
  * or blank setting gives nothing and no problem; any other value that is not a
  * string (an array written in settings.json without quoting it, say) leaves
  * them all out and says so. Never throws.

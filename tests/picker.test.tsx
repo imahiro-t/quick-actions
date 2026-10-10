@@ -88,9 +88,8 @@ for (const surface of SURFACES) {
     expect(options.find(o => o.value === 'translate-ja')?.label).toBe('[🌐] 日本語訳')
     expect(options.find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
     // The custom one is in the list too, past the first 64: the filter reaches it.
-    if (!options.some(o => o.value === 'mine')) {
-      await picker.input({ key: PICKER_FILTER, text: 'mine', kind: 'change' })
-    }
+    expect(options.map(o => o.value)).not.toContain('mine')
+    await picker.input({ key: PICKER_FILTER, text: 'mine', kind: 'change' })
     const reached = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
     expect(reached.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
     // The filter field above the list takes the focus, so the list does not.

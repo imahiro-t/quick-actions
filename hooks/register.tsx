@@ -898,10 +898,11 @@ export const register: Register = (on, options) => {
     const shown = filterDefs(ordered, filter)
     // A Select takes 64 options at most: past that it lists the first 64 (in
     // the dialog's order, so the most used come first) and a line under it says
-    // how many more the filter reaches. With no filter field to reach them,
-    // the dialog draws buttons instead, every one of them.
-    const select = Select !== undefined && (shown.length <= SELECT_MAX_OPTIONS || Input !== undefined) ? Select : undefined
-    const listed = select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
+    // how many more the filter reaches. Every surface that draws a Select draws
+    // an Input too (all but mobile carry both, and a table handed out is
+    // completed to every name), so wherever a Select is drawn the filter field
+    // is there to reach the rest; buttons (mobile, a palette) list them all.
+    const listed = Select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
@@ -961,7 +962,7 @@ export const register: Register = (on, options) => {
         ) : shown.length === 0 ? (
           // A Select takes one option at least: with none, this line instead.
           <Text {...muted(style)}>{t.pickerNoMatch}</Text>
-        ) : select !== undefined ? (
+        ) : Select !== undefined ? (
           <Box flexDirection="column">
             <Select
               key={PICKER_SELECT_KEY}

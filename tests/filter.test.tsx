@@ -67,7 +67,7 @@ test('a normalize that throws, or answers no string, falls back the same way', (
 test('the ID, the label in either language, whatever the display language', () => {
   expect(only('deep-dive')).toEqual(['deep-dive'])
   expect(only('日本語訳')).toEqual(['translate-ja', 'translate-last-ja'])
-  expect(only('japanese')).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja'])
+  expect(only('japanese')).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja', 'keigo-phrases'])
   expect(only('handoff')).toEqual(['handoff'])
   expect(only('引き継ぎ')).toEqual(['handoff'])
 })

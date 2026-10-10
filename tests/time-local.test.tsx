@@ -256,37 +256,42 @@ test('ISO weeks across the turn of the year', () => {
   expect(isoWeek({ y: 2026, m: 10, d: 10 })).toEqual({ year: 2026, week: 41 })
 })
 
-test('calendar: the month, Sunday first, the day given in brackets', () => {
+test('calendar: the month, Sunday first, the day given marked with an asterisk', () => {
   expect(textOf(calendar(input({ arg: date(2026, 10, 10) })))).toBe(
     [
       '2026年10月',
       '  日  月  火  水  木  金  土',
       '                   1   2   3',
-      '   4   5   6   7   8   9[10]',
+      '   4   5   6   7   8   9 *10',
       '  11  12  13  14  15  16  17',
       '  18  19  20  21  22  23  24',
       '  25  26  27  28  29  30  31',
       '',
-      '[10] = 2026年10月10日（土）',
+      '*10 = 2026年10月10日（土）',
     ].join('\n'),
   )
   const en = textOf(calendar(input({ arg: date(2026, 10, 1), lang: 'en' }))).split('\n')
   expect(en[0]).toBe('October 2026')
   expect(en[1]).toBe('  Su  Mo  Tu  We  Th  Fr  Sa')
-  expect(en[2]).toBe('                 [1]   2   3')
-  expect(en.at(-1)).toBe('[1] = Thu, 1 Oct 2026')
+  expect(en[2]).toBe('                  *1   2   3')
+  expect(en.at(-1)).toBe('*1 = Thu, 1 Oct 2026')
   // February: 29 days in a leap year, 28 otherwise (February 2026 starts on a Sunday: four full rows).
   const leap = textOf(calendar(input({ arg: date(2024, 2, 29) })))
-  expect(leap).toContain('[29]')
+  expect(leap).toContain(' *29')
   expect(leap).not.toContain('30')
   const feb = textOf(calendar(input({ arg: date(2026, 2, 1) }))).split('\n')
   expect(feb.slice(2, 6)).toEqual([
-    ' [1]   2   3   4   5   6   7',
+    '  *1   2   3   4   5   6   7',
     '   8   9  10  11  12  13  14',
     '  15  16  17  18  19  20  21',
     '  22  23  24  25  26  27  28',
   ])
   expect(feb[6]).toBe('')
+  // A two-digit day given keeps every cell four columns wide and stays apart from the day before.
+  const rows = textOf(calendar(input({ arg: date(2026, 10, 17), lang: 'en' }))).split('\n').slice(2, -2)
+  for (const row of rows) expect(row.length).toBeLessThanOrEqual(7 * 4)
+  expect(rows).toContain('  11  12  13  14  15  16 *17')
+  expect(rows.join('\n')).not.toMatch(/\d\*/)
 })
 
 test('date-info: weekday, ISO week, day of the year, days left, from today, era and sexagenary year', () => {
@@ -331,12 +336,14 @@ test('date-offset: N days from today, in weeks and roughly in months', () => {
   expect(textOf(dateOffset(input({ arg: 36500 })))).toContain('36500 日後: 2126年')
   expect(textOf(dateOffset(input({ arg: -36500 })))).toContain('36500 日前: 1926年')
   expect(textOf(dateOffset(input({ arg: 30, lang: 'en' })))).toBe(
-    ['30 days from today: Mon, 9 Nov 2026', '30 days = 4 weeks 2 days', 'About 1.0 months from today'].join('\n'),
+    ['30 days from today: Mon, 9 Nov 2026', '30 days = 4 weeks 2 days', 'About 1.0 month from today'].join('\n'),
   )
   expect(textOf(dateOffset(input({ arg: -1, lang: 'en' })))).toBe(
     ['1 day before today: Fri, 9 Oct 2026', '1 day = 0 weeks 1 day', 'About 0.0 months before today'].join('\n'),
   )
   expect(textOf(dateOffset(input({ arg: 0, lang: 'en' })))).toBe(['Today: Sat, 10 Oct 2026', '0 days = 0 weeks 0 days'].join('\n'))
+  expect(textOf(dateOffset(input({ arg: -31, lang: 'en' })))).toContain('About 1.0 month before today')
+  expect(textOf(dateOffset(input({ arg: 61, lang: 'en' })))).toContain('About 2.0 months from today')
 })
 
 test('business-days: calendar days and weekdays to the date, today not counted; holidays not taken into account', () => {
@@ -405,7 +412,7 @@ test('wareki: years to eras and back; with none, this year and the table', () =>
   // A closed era names its last year; the current one only its first.
   expect(run('平成32')).toEqual({ error: '平成は元年から 31 年までです。' })
   expect(run('令和0')).toEqual({ error: '令和は元年以降の年を指定してください（西暦 9999 年まで）。' })
-  expect(run('令和0', 'en')).toEqual({ error: 'Reiwa counts from year 1: give a year from 1 on (up to 9999 AD).' })
+  expect(run('令和0', 'en')).toEqual({ error: 'Reiwa begins with year 1: give year 1 or later (up to 9999 AD).' })
   const none = textOf(run(undefined))
   expect(none).toContain('今年: 2026年 = 令和8年')
   expect(none).toContain('明治（M）: 1868年10月23日 から（元年 = 1868年）、45 年まで')

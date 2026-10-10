@@ -313,7 +313,9 @@ const cell = (s: string) => s.padStart(4, ' ')
 
 /**
  * The month holding the date given (today by default), Sunday first, each day
- * four columns wide and the date given in brackets (`[10]`, ` [1]`). The
+ * four columns wide and the date given marked by an asterisk just before its
+ * number (` *10`, `  *1`), which keeps every column four wide and leaves at
+ * least one space between it and the day before. The
  * Japanese weekdays are full width: two columns each, after two spaces.
  */
 export const calendar = (input: LocalInput): LocalOutput => {
@@ -324,10 +326,10 @@ export const calendar = (input: LocalInput): LocalOutput => {
   const header = (lang === 'ja' ? WEEKDAY_JA.map(w => `  ${w}`) : WEEKDAY_EN.map(w => cell(w.slice(0, 2)))).join('')
   const first = weekday({ y: day.y, m: day.m, d: 1 })
   const cells: string[] = Array.from({ length: first }, () => '    ')
-  for (let d = 1; d <= daysIn(day.y, day.m); d++) cells.push(d === day.d ? cell(`[${d}]`) : cell(String(d)))
+  for (let d = 1; d <= daysIn(day.y, day.m); d++) cells.push(d === day.d ? cell(`*${d}`) : cell(String(d)))
   const rows: string[] = []
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7).join('').trimEnd())
-  const mark = lang === 'ja' ? `[${day.d}] = ${formatDay(day, 'ja')}` : `[${day.d}] = ${formatDay(day, 'en')}`
+  const mark = `*${day.d} = ${formatDay(day, lang)}`
   return { text: [heading, header, ...rows, '', mark].join('\n') }
 }
 
@@ -454,7 +456,7 @@ export const dateOffset = (input: LocalInput): LocalOutput => {
     text: [
       `${when}: ${formatDay(day, 'en')}`,
       `${n} ${n === 1 ? 'day' : 'days'} = ${weeks} ${weeks === 1 ? 'week' : 'weeks'} ${rest} ${rest === 1 ? 'day' : 'days'}`,
-      ...(arg === 0 ? [] : [`About ${months} months ${arg > 0 ? 'from' : 'before'} today`]),
+      ...(arg === 0 ? [] : [`About ${months} ${months === '1.0' ? 'month' : 'months'} ${arg > 0 ? 'from' : 'before'} today`]),
     ].join('\n'),
   }
 }
@@ -590,7 +592,7 @@ export const wareki = (input: LocalInput): LocalOutput => {
         index === ERAS.length - 1
           ? lang === 'ja'
             ? `${era.ja}は元年以降の年を指定してください（西暦 9999 年まで）。`
-            : `${era.en} counts from year 1: give a year from 1 on (up to 9999 AD).`
+            : `${era.en} begins with year 1: give year 1 or later (up to 9999 AD).`
           : lang === 'ja'
             ? `${era.ja}は元年から ${last} 年までです。`
             : `${era.en} runs from year 1 to ${last}.`,

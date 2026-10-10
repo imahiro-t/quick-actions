@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { settleQuietly, toLatest } from '../hooks/scroll'
-import { BAND, EN, JA, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
 // Every way an action runs (an icon, its hotkey, the command) goes through
 // run() in register.tsx, which opens the pane and then awaits
@@ -44,7 +44,9 @@ for (const [surface, options, thinking] of SURFACES.flatMap(
 
     const pane = await $.ui.mount({ ...PANE, surface, props: scrolledDown })
     const band = await $.ui.mount({ ...BAND, surface })
+    await reselect(s, clock)
     await band.press({ key: 'explain' })
+    await reselect(s, clock)
     await band.press({ key: 'translate' })
 
     const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
@@ -67,6 +69,7 @@ test('the Button a hotkey presses runs the action', async ($, on) => {
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const first = await band.find({ type: 'Button' })
   expect(first?.props.hotkey).toBe('1')
+  await reselect(s, clock)
   await band.press({ key: String(first?.key) })
   expect(s.models.map(m => m.model)).toEqual(['sonnet'])
   await band.unmount()

@@ -7,8 +7,10 @@ A Claude Code plugin for the text you select in the conversation (the transcript
 ## How it works
 
 1. Select text in the transcript with the mouse
-2. Icons appear on the hint line under the prompt (by default 💡 🌐 🔎 💬). Hover over an icon to see its label
-   - Once Claude Code reports no selection, the icons go within about 0.3 seconds. Claude Code keeps the last selection after its highlight goes, though, so that a press can still read it (until you select something else, clear the selection, or your next prompt or command has run), so the icons can stay a while after the highlight is gone
+2. Icons appear on the hint line under the prompt (by default 💡 🌐 🔎 💬 ✕). Hover over an icon to see its label
+   - Pressing an action's icon or ✕ hides the icons for that selection (selecting other text brings them back)
+   - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run). Clicking away without pressing an icon therefore leaves the icons in place: press ✕ to close them
+   - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds
 3. Press an icon and the result is added at the top of the "Selection Actions" pane. If you had scrolled the pane down, running an action brings it back to the top (the newest result)
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
    - While the hint line has focus, the keys 1 to 9 and 0 press the icons in order (the first ten)
@@ -163,7 +165,7 @@ Common fields:
 
 | Field | Meaning |
 | --- | --- |
-| `id` | The ID written in the setting (lowercase letters, digits and hyphens; unique) |
+| `id` | The ID written in the setting (lowercase letters, digits and hyphens; unique; not `close`, which the ✕ button uses) |
 | `icon` | The icon on the hint line (one emoji) |
 | `label` | The name shown on hover and as the pane heading, in both languages: `{ ja: '…', en: '…' }` |
 | `kind` | How it runs: `complete` / `fork` / `subagent` |

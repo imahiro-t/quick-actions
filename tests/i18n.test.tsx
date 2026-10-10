@@ -3,8 +3,8 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
-import type { Stage } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
 // resolveLanguage: the setting, then Claude Code's language, then the locale.
@@ -71,17 +71,23 @@ const texts = async (ui: { findAll: (q: { type: string }) => Promise<readonly { 
   (await ui.findAll({ type: 'Text' })).map(t => t.text)
 
 /** Runs one icon of each kind (and a failure of each) so every pane text is drawn. */
-const fillPane = async ($: Engine, s: Stage, surface: (typeof SURFACES)[number]) => {
+const fillPane = async ($: Engine, s: Stage, clock: Clock, surface: (typeof SURFACES)[number]) => {
   const band = await $.ui.mount({ ...BAND, surface })
+  await reselect(s, clock)
   await band.press({ key: 'explain' })
+  await reselect(s, clock)
   await band.press({ key: 'ask' })
+  await reselect(s, clock)
   await band.press({ key: 'code' })
   s.answer = 'empty'
+  await reselect(s, clock)
   await band.press({ key: 'explain' })
   s.refuse = 'rate limited'
+  await reselect(s, clock)
   await band.press({ key: 'ask' })
   s.refuse = null
   s.spawnDeny = 'not allowed here'
+  await reselect(s, clock)
   await band.press({ key: 'usages' })
   await band.unmount()
 }
@@ -120,7 +126,7 @@ for (const surface of SURFACES) {
       expect((await texts(band)).join('\n')).not.toMatch(JAPANESE)
       await band.unmount()
 
-      await fillPane($, s, surface)
+      await fillPane($, s, clock, surface)
       pane = await $.ui.mount({ ...PANE, surface })
       const shown = (await texts(pane)).join('\n')
       expect(shown).toContain('Explain "segfault at 0x0"')
@@ -164,7 +170,7 @@ for (const surface of SURFACES) {
       }
       await band.unmount()
 
-      await fillPane($, s, surface)
+      await fillPane($, s, clock, surface)
       const pane = await $.ui.mount({ ...PANE, surface })
       const shown = (await texts(pane)).join('\n')
       expect(shown).toContain('意味 「segfault at 0x0」')
@@ -229,7 +235,10 @@ for (const language of ['en', 'ja'] as const) {
       await clock.advance(400)
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      for (const a of ACTIONS) await band.press({ key: a.id })
+      for (const a of ACTIONS) {
+        await reselect(s, clock)
+        await band.press({ key: a.id })
+      }
       await band.unmount()
 
       const systems = new Map(
@@ -278,7 +287,9 @@ for (const language of ['en', 'ja'] as const) {
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const labels = language === 'en' ? ['To Japanese', 'To English'] : ['日本語訳', '英訳']
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
+      await reselect(s, clock)
       await band.press({ key: 'translate' })
+      await reselect(s, clock)
       await band.press({ key: 'translate-en' })
       await band.unmount()
 

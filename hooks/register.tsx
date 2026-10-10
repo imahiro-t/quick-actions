@@ -54,6 +54,7 @@ const PANE_COLORS = {
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
 // types/index.d.ts types these keys under the same name, so a drift fails tsc.
 const selection = atom({ plugin: 'selection-actions', key: 'selection' } as const, null)
+const dismissed = atom({ plugin: 'selection-actions', key: 'dismissed' } as const, null)
 const results = atom({ plugin: 'selection-actions', key: 'results' } as const, [])
 
 const quoteOf = (text: string) => {
@@ -180,6 +181,9 @@ async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
     $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
+  // Done with this selection: its icons go until another one is made. The
+  // engine keeps answering it after a click elsewhere, so this is what hides them.
+  await update($, dismissed, () => picked)
   await run($, def, lang, picked)
 }
 
@@ -210,13 +214,18 @@ export const register: Register = (on, options) => {
     // The icons follow $.ui.selection(): once it answers undefined, the next
     // poll writes null and the hint line redraws without them. The engine
     // keeps answering the last selection after its highlight goes (so a press
-    // can still read it) until the person selects again, clears it, or
-    // their next prompt or command has run: no event tells the module more.
+    // can still read it) until the person selects again or their next prompt
+    // or command has run: no event tells the module more, so a press of an
+    // action or ✕ hides the icons for that selection (see `dismissed`).
     $.clock.every(POLL_MS, () => {
       void (async () => {
         const text = (await $.ui.selection())?.text.trim() || null
         if (text !== (await read($, selection))) {
           await update($, selection, () => text)
+        }
+        // Gone for good: the same text selected later shows its icons again.
+        if (text === null && (await read($, dismissed)) !== null) {
+          await update($, dismissed, () => null)
         }
       })()
     })
@@ -260,7 +269,7 @@ export const register: Register = (on, options) => {
   // a band above the prompt would add a row mid-drag and shift the transcript.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const text = await read($, selection)
-    if (e.props.isDraft || text === null) {
+    if (e.props.isDraft || text === null || text === (await read($, dismissed))) {
       return next(e)
     }
 
@@ -280,11 +289,23 @@ export const register: Register = (on, options) => {
             />
           </Box>
         ))}
+        <Box key="act-close" hover={{ scope: 'tip-close' }}>
+          <Button
+            key="close"
+            label="✕"
+            dimColor
+            role="dismiss"
+            onPress={() => update($, dismissed, () => text)}
+          />
+        </Box>
         {enabled.map(a => (
           <Box display="none" hover={{ scope: `tip-action-${a.id}`, display: 'flex' }}>
             <Text color="cyan"> {a.label}</Text>
           </Box>
         ))}
+        <Box display="none" hover={{ scope: 'tip-close', display: 'flex' }}>
+          <Text color="cyan"> {MESSAGES[l].close}</Text>
+        </Box>
       </Box>
     )
   })

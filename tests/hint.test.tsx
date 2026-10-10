@@ -37,7 +37,7 @@ for (const surface of SURFACES) {
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '🔎', '💬'])
+    expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '🔎', '💬', '✕'])
   })
 
   test(
@@ -50,7 +50,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['📝', '💡', '💬'])
+      expect(await iconsFor($, surface)).toEqual(['📝', '💡', '💬', '✕'])
     },
   )
 
@@ -64,7 +64,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['🌐', '💡'])
+      expect(await iconsFor($, surface)).toEqual(['🌐', '💡', '✕'])
     },
   )
 
@@ -78,7 +78,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '🔎', '💬'])
+      expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '🔎', '💬', '✕'])
     },
   )
 
@@ -112,20 +112,60 @@ for (const surface of SURFACES) {
     await again.unmount()
   })
 
-  test(`[${surface}] the hint line has the action icons alone: no close button, no "閉じる" label`, { options: JA }, async ($, on) => {
+  test(`[${surface}] ✕ hides the icons for that selection only`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     s.selected = 'exit 137'
     await clock.advance(400)
 
-    const band = await $.ui.mount({ ...BAND, surface })
-    expect(await band.find({ key: 'close' })).toBeUndefined()
-    expect(await band.find({ text: /閉じる/ })).toBeUndefined()
+    let band = await $.ui.mount({ ...BAND, surface })
+    await band.press({ key: 'close' })
+    await band.unmount()
+    band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ type: 'Button' })).toBeUndefined()
+    await band.unmount()
+
+    s.selected = 'exit 1'
+    await clock.advance(400)
+    band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ type: 'Button' })).toBeDefined()
     await band.unmount()
   })
 
-  test(`[${surface}] in English too: no close button, no "Close" label`, { options: EN }, async ($, on) => {
+  // The engine keeps answering a selection after a click elsewhere takes its
+  // highlight down, so pressing an action is what puts its icons away.
+  test(`[${surface}] pressing an action hides the icons until another selection`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'exit 137'
+    await clock.advance(400)
+
+    let band = await $.ui.mount({ ...BAND, surface })
+    await band.press({ key: 'explain' })
+    await clock.advance(400)
+    expect(await band.find({ type: 'Button' })).toBeUndefined()
+    await band.unmount()
+    expect(s.models.length).toBe(1)
+
+    s.selected = 'exit 1'
+    await clock.advance(400)
+    band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ type: 'Button' })).toBeDefined()
+    await band.unmount()
+
+    // Once the selection is cleared, the same text selected again shows them.
+    s.selected = null
+    await clock.advance(400)
+    s.selected = 'exit 137'
+    await clock.advance(400)
+    band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ type: 'Button' })).toBeDefined()
+    await band.unmount()
+  })
+
+  test(`[${surface}] ✕ is labelled 閉じる in Japanese`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -133,9 +173,22 @@ for (const surface of SURFACES) {
     await clock.advance(400)
 
     const band = await $.ui.mount({ ...BAND, surface })
-    expect(await band.find({ type: 'Button' })).toBeDefined()
-    expect(await band.find({ key: 'close' })).toBeUndefined()
-    expect(await band.find({ text: /close/i })).toBeUndefined()
+    expect(await band.find({ key: 'close' })).toBeDefined()
+    expect(await band.find({ text: /閉じる/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test(`[${surface}] and Close in English`, { options: EN }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'exit 137'
+    await clock.advance(400)
+
+    const band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ key: 'close' })).toBeDefined()
+    expect(await band.find({ text: /Close/ })).toBeDefined()
+    expect(await band.find({ text: /閉じる/ })).toBeUndefined()
     await band.unmount()
   })
 }

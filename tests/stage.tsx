@@ -128,3 +128,16 @@ export const runCommand = ($: Engine, args: string) =>
     origin: { kind: 'composer' },
     presentation: { isFullscreen: true, columns: 120 },
   })
+
+/** The mocked clock a test advances (mock.clock), as far as reselect needs it. */
+export type Clock = { advance: (ms: number) => Promise<unknown> }
+
+// A press puts the icons away for that selection, so a test that presses
+// again first clears the selection and makes it anew, as the person would.
+export async function reselect(s: Stage, clock: Clock) {
+  const text = s.selected
+  s.selected = null
+  await clock.advance(400)
+  s.selected = text
+  await clock.advance(400)
+}

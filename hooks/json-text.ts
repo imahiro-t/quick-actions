@@ -7,6 +7,10 @@
 // words on every engine (JSON.parse's messages differ by engine).
 //
 // No recursion: a stack of open containers, so deep nesting cannot overflow.
+// And no unbounded output: indenting costs as much as the depth on every
+// line, so a deeply nested text lays out to its length times its depth (50,000
+// `[` would be billions of spaces); past `maxLength` the layout stops
+// growing, while the rest of the text is still checked.
 
 type Token = { kind: '{' | '}' | '[' | ']' | ':' | ',' | 'value'; raw: string; at: number }
 
@@ -44,6 +48,9 @@ const fail = (text: string, at: number, problem: JsonProblem, found?: string): {
 })
 
 const charAt = (text: string, at: number) => String.fromCodePoint(text.codePointAt(at) ?? 0)
+
+/** A token as an error names it: cut to its first 20 characters. */
+const shown = (tok: Token) => (tok.raw.length > 20 ? `${tok.raw.slice(0, 20)}…` : tok.raw)
 
 const NUMBER = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/y
 
@@ -114,24 +121,39 @@ type Expect = 'value' | 'value-or-close' | 'key' | 'key-or-close' | 'colon' | 'c
  * The JSON text laid out again: with `indent` spaces per level (as
  * JSON.stringify(value, null, indent) lays it out), or on one line with no
  * white space when `indent` is 0. Or why it is not JSON.
+ *
+ * The layout stops growing once it holds `maxLength` UTF-16 units or more:
+ * `cut` then says it is only the beginning (the whole text is still checked,
+ * so an error anywhere in it is still found).
  */
-export function layoutJson(text: string, indent: number): { text: string } | { error: JsonError } {
+export function layoutJson(text: string, indent: number, maxLength = Infinity): { text: string; cut: boolean } | { error: JsonError } {
   const lexed = tokenize(text)
   if ('error' in lexed) return lexed
   const { tokens } = lexed
   if (tokens.length === 0) return fail(text, text.length, 'empty')
-  const pad = (level: number) => (indent > 0 ? `\n${' '.repeat(indent * level)}` : '')
-  const out: string[] = []
+  const parts: string[] = []
+  let size = 0
+  let cut = false
+  const out = {
+    push(part: string) {
+      if (cut) return
+      parts.push(part)
+      size += part.length
+      if (size >= maxLength) cut = true
+    },
+  }
+  // Nothing to build once the layout is cut: no line costs its depth any more.
+  const pad = (level: number) => (indent > 0 && !cut ? `\n${' '.repeat(indent * level)}` : '')
   const stack: ('{' | '[')[] = []
   let expect: Expect = 'value'
   // Whether the container just opened is still empty (so `{}` and `[]` stay on one line).
   let justOpened = false
   const afterValue = (): Expect => (stack.length === 0 ? 'end' : 'comma-or-close')
   for (const tok of tokens) {
-    const unexpected = () => fail(text, tok.at, 'token', tok.raw.length > 20 ? `${tok.raw.slice(0, 20)}…` : tok.raw)
+    const unexpected = () => fail(text, tok.at, 'token', shown(tok))
     switch (expect) {
       case 'end':
-        return fail(text, tok.at, 'trailing', tok.raw.length > 20 ? `${tok.raw.slice(0, 20)}…` : tok.raw)
+        return fail(text, tok.at, 'trailing', shown(tok))
       case 'colon':
         if (tok.kind !== ':') return unexpected()
         out.push(indent > 0 ? ': ' : ':')
@@ -185,5 +207,5 @@ export function layoutJson(text: string, indent: number): { text: string } | { e
     return unexpected()
   }
   if (expect !== 'end') return fail(text, text.length, 'end')
-  return { text: out.join('') }
+  return { text: parts.join(''), cut }
 }

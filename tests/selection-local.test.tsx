@@ -1,9 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ACTIONS } from '../hooks/actions'
+import { ACTIONS, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
 import { base64Decode, base64Encode, toHex, utf8Decode, utf8Encode } from '../hooks/codec'
 import { layoutJson } from '../hooks/json-text'
+import { truncate } from '../hooks/local'
 import {
   base64DecodeText,
   base64EncodeText,
@@ -15,8 +16,11 @@ import {
   decodeJwt,
   dedupeLines,
   epochToDate,
+  escapeControls,
   formatJson,
+  hasControls,
   hashText,
+  JSON_LAYOUT_LIMIT,
   minifyJson,
   parseUrl,
   sortLines,
@@ -497,6 +501,9 @@ test('epoch-to-date: seconds or milliseconds by the digits, in UTC and local tim
   expect(errorOf(run(epochToDate, '123456789012345'))).toContain('15 digits')
   expect(errorOf(run(epochToDate, 'yesterday'))).toContain('Not a UNIX time')
   expect(errorOf(run(epochToDate, '12:00', 'ja'))).toContain('UNIX 時刻として読めません')
+  // Milliseconds take no fraction: it is not dropped without a word.
+  expect(errorOf(run(epochToDate, '1700000000000.9'))).toBe('Not a UNIX time: milliseconds (a whole part of 12 to 14 digits) take no fraction.')
+  expect(errorOf(run(epochToDate, '1700000000000.9', 'ja'))).toContain('ミリ秒（整数部 12〜14 桁）に小数部は付けられません')
 })
 
 test('color-convert: #RGB, #RRGGBB, rgb() and hsl() to all three; errors on others and out of range', () => {
@@ -512,4 +519,117 @@ test('color-convert: #RGB, #RRGGBB, rgb() and hsl() to all three; errors on othe
     expect(errorOf(run(colorConvert, bad))).toContain('Not a readable colour')
     expect(errorOf(run(colorConvert, bad, 'ja'))).toContain('色として読めません')
   }
+})
+
+// C0 but tab and line breaks, DEL and C1: what the pane must never hand the terminal raw.
+const RAW_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
+
+test('decoded text never reaches the pane with a raw control character: escaped as \\u001b, consistent with base64-decode', () => {
+  // The shared helpers.
+  expect(escapeControls('a\u001b[2Jb\u007f\u009b\u0000')).toBe('a\\u001b[2Jb\\u007f\\u009b\\u0000')
+  expect(escapeControls('tab\tline\nreturn\r')).toBe('tab\tline\nreturn\r')
+  expect(hasControls('a\u0085b')).toBe(true)
+  expect(hasControls('日本語\t\n🍣')).toBe(false)
+  expect(hasControls('\u00a0')).toBe(false)
+
+  // url-decode: ESC [ 2 J (clear the screen), OSC 52 (write the clipboard), OSC 8 (a link), the 8-bit CSI, DEL.
+  expect(textOf(run(urlDecode, '%1B%5B2J'))).toBe('\\u001b[2J\n\n(Control characters are shown escaped, as \\u001b.)')
+  expect(textOf(run(urlDecode, '%1B%5B2J', 'ja'))).toBe('\\u001b[2J\n\n（制御文字は \\u001b のような形で表示しています）')
+  expect(textOf(run(urlDecode, '%1B%5D52%3Bc%3BaGk%3D%07'))).toBe('\\u001b]52;c;aGk=\\u0007\n\n(Control characters are shown escaped, as \\u001b.)')
+  expect(textOf(run(urlDecode, 'x%C2%9B31m+%7F'))).toBe(
+    'x\\u009b31m+\\u007f\n\n(Control characters are shown escaped, as \\u001b.)\n\n(A "+" is left as it is, not read as a space.)',
+  )
+  // Tab and line breaks stay as they are, with no note.
+  expect(textOf(run(urlDecode, 'a%09b%0Ac'))).toBe('a\tb\nc')
+
+  // parse-url: the decoded query.
+  const url = textOf(run(parseUrl, 'https://e.com/?x=%1B%5D8%3B%3Bhttps%3A%2F%2Fevil%07&y=%C2%9B2J'))
+  expect(url).toContain('  - x = \\u001b]8;;https://evil\\u0007')
+  expect(url).toContain('  - y = \\u009b2J')
+  expect(url.endsWith('\n\n(Control characters are shown escaped, as \\u001b.)')).toBe(true)
+  expect(textOf(run(parseUrl, 'https://e.com/?x=%1B', 'ja'))).toContain('（制御文字は \\u001b のような形で表示しています）')
+  expect(textOf(run(parseUrl, 'https://e.com/?x=1'))).not.toContain('Control characters')
+
+  // format-json / minify-json: DEL and C1 in a string come out as \u escapes, which are the same JSON.
+  const json = '{"a": "x\u007fy\u009b31m"}'
+  const formatted = textOf(run(formatJson, json))
+  expect(formatted).toBe('{\n  "a": "x\\u007fy\\u009b31m"\n}')
+  expect(JSON.parse(formatted)).toEqual(JSON.parse(json))
+  expect(textOf(run(minifyJson, json))).toBe('{"a":"x\\u007fy\\u009b31m"}')
+  // A JSON error naming such a token escapes it too.
+  expect(errorOf(run(minifyJson, '{"a": 1} "\u009b"'))).toBe('Not valid JSON: line 1, column 10: extra content after the value ""\\u009b"".')
+
+  // decode-jwt: C1 hidden in the Base64URL of the payload.
+  const enc = (o: unknown) => base64Encode(utf8Encode(JSON.stringify(o))).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+  const jwt = textOf(run(decodeJwt, `${enc({ alg: 'none' })}.${enc({ name: '\u009b2J\u007f', exp: 1700003600 })}.`))
+  expect(jwt).toContain('"name": "\\u009b2J\\u007f"')
+  expect(jwt).toContain('- exp: 1700003600 → UTC 2023-11-14T23:13:20Z')
+
+  // base64-decode: still the bytes in hexadecimal, never the text.
+  expect(textOf(run(base64DecodeText, base64Encode(utf8Encode('\u001b[2J'))))).toContain('First 4 bytes (hex): 1b 5b 32 4a')
+
+  // None of them shows a raw one, in either language.
+  for (const lang of ['ja', 'en'] as const) {
+    for (const [compute, text] of [
+      [urlDecode, '%1B%5B2J%C2%9B%7F%00'],
+      [parseUrl, 'https://e.com/?%1B=%C2%9B'],
+      [formatJson, '["\u007f\u0080\u009f"]'],
+      [minifyJson, '["\u007f\u0080\u009f"]'],
+      [decodeJwt, `${enc({ alg: '\u009b' })}.${enc({ a: '\u0085' })}.`],
+      [base64DecodeText, base64Encode(utf8Encode('\u001b\u009b'))],
+    ] as const) {
+      const out = compute({ ...INPUT, lang, text })
+      expect(RAW_CONTROL.test('text' in out ? out.text : out.error)).toBe(false)
+    }
+  }
+})
+
+test('color-convert answers at once on long runs of white space: a length cap and a separator with one way to match', () => {
+  for (const text of [
+    `rgb(1${' '.repeat(50_000)}2${' '.repeat(50_000)}x`,
+    `hsl(1${' '.repeat(50_000)}2%${' '.repeat(50_000)}x`,
+    `rgb(1${' '.repeat(5_000)}x`,
+  ]) {
+    const start = Date.now()
+    expect(errorOf(run(colorConvert, text))).toContain('Not a readable colour')
+    expect(Date.now() - start).toBeLessThan(200)
+  }
+  // Within the cap, white space and commas are still read either way.
+  const spaced = `rgb(1${' '.repeat(55)}2 3)`
+  expect(spaced.length).toBe(64)
+  expect(textOf(run(colorConvert, spaced))).toContain('RGB: rgb(1, 2, 3)')
+  expect(textOf(run(colorConvert, 'rgb( 1 ,  2 ,3 )'))).toContain('RGB: rgb(1, 2, 3)')
+  expect(textOf(run(colorConvert, 'hsl(0 , 0% ,100%)'))).toContain('HEX: #ffffff')
+  // One past it: not tried.
+  expect(errorOf(run(colorConvert, `rgb(1${' '.repeat(56)}2 3)`))).toContain('Not a readable colour')
+  // Matching a pattern that fails on a run of white space does not backtrack: a 60-character run stays cheap.
+  const start = Date.now()
+  for (let k = 0; k < 2000; k++) run(colorConvert, `rgb(1${' '.repeat(25)}2${' '.repeat(25)}x)`)
+  expect(Date.now() - start).toBeLessThan(1000)
+})
+
+test('deep nesting lays out only as far as the pane shows: no output of length times depth, errors still found', () => {
+  const deep = `${'['.repeat(50_000)}${']'.repeat(50_000)}`
+  const start = Date.now()
+  const laid = layoutJson(deep, 2, JSON_LAYOUT_LIMIT)
+  if (!('text' in laid)) throw new Error('expected a layout')
+  expect(laid.cut).toBe(true)
+  expect(laid.text.length).toBeGreaterThanOrEqual(JSON_LAYOUT_LIMIT)
+  expect(laid.text.length).toBeLessThan(JSON_LAYOUT_LIMIT + 2 * 50_000 + 2)
+  expect(laid.text.startsWith('[\n  [\n    [')).toBe(true)
+  // Through the actions: format-json and decode-jwt answer, and the pane says it is cut.
+  const formatted = textOf(run(formatJson, deep))
+  expect(truncate(formatted, 'en').endsWith('\n(truncated)')).toBe(true)
+  const enc = (s: string) => base64Encode(utf8Encode(s)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+  const jwt = textOf(run(decodeJwt, `${enc('{"alg":"none"}')}.${enc(deep)}.`))
+  expect(jwt.split('\n')[0]).toBe('Note: the signature is not verified (the contents are only decoded).')
+  // The rest of the text is still checked: an error past the cut is found.
+  expect(errorOf(run(formatJson, `${deep}x`))).toBe('Not valid JSON: line 1, column 100001: unexpected character "x".')
+  expect(errorOf(run(formatJson, deep.slice(0, -1)))).toContain('unexpected end of the text')
+  expect(Date.now() - start).toBeLessThan(5000)
+  // The pane's limit is within it: what the pane shows is never cut short by the layout.
+  expect(JSON_LAYOUT_LIMIT).toBeGreaterThan(2 * LOCAL_TEXT_LIMIT)
+  // Short of the cap, the layout is whole and not cut.
+  expect(layoutJson('[1]', 2, JSON_LAYOUT_LIMIT)).toEqual({ text: '[\n  1\n]', cut: false })
+  expect(layoutJson('[1]', 0)).toEqual({ text: '[1]', cut: false })
 })

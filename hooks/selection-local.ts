@@ -38,6 +38,29 @@ const linesOf = (text: string) => text.split(/\r\n|\r|\n/)
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
+// Control characters: C0 but tab and line breaks, DEL and C1 (U+009B is the
+// 8-bit CSI). Decoding makes them out of text that showed none (%1B, \u009b in
+// a JWT), and the pane would hand them to the terminal raw: a screen cleared,
+// a link disguised, the clipboard written. So whatever a decoder brings out is
+// either refused (base64-decode shows the bytes in hexadecimal) or shown with
+// each of them escaped, as `\u001b`.
+const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
+
+/** Whether the text holds a control character the pane must not show raw. */
+export const hasControls = (s: string) => s.search(CONTROLS) >= 0
+
+/** The text with each control character (but tab and line breaks) written as `\u001b`: the same in a JSON string. */
+export const escapeControls = (s: string) => s.replace(CONTROLS, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+
+const CONTROLS_NOTE: Texts = {
+  ja: '（制御文字は \\u001b のような形で表示しています）',
+  en: '(Control characters are shown escaped, as \\u001b.)',
+}
+
+/** The decoded text with its control characters escaped, and a note saying so when there were any. */
+const withControlsShown = (decoded: string, lang: Lang): string[] =>
+  hasControls(decoded) ? [escapeControls(decoded), pick(lang, CONTROLS_NOTE)] : [decoded]
+
 // ---------------------------------------------------------------------------
 // count-text
 
@@ -92,15 +115,34 @@ const JSON_PROBLEMS: Record<JsonError['problem'], Texts> = {
 /** A JSON error as the pane shows it: what and where. */
 export function jsonErrorText(err: JsonError, lang: Lang): string {
   const what = pick(lang, JSON_PROBLEMS[err.problem])
-  const found = err.found === undefined ? '' : lang === 'ja' ? `「${err.found}」` : ` "${err.found}"`
+  const token = err.found === undefined ? undefined : escapeControls(err.found)
+  const found = token === undefined ? '' : lang === 'ja' ? `「${token}」` : ` "${token}"`
   return lang === 'ja'
     ? `JSON として読めません: ${err.line} 行 ${err.column} 列目、${what}${found}。`
     : `Not valid JSON: line ${err.line}, column ${err.column}: ${what}${found}.`
 }
 
+/**
+ * How long a layout grows (in UTF-16 units) before it stops: past what the
+ * pane shows (LOCAL_TEXT_LIMIT, 20,000 code points of at most two units), so
+ * the pane still cuts it and says so, and short of what deep nesting would
+ * build (the length times the depth).
+ */
+export const JSON_LAYOUT_LIMIT = 50_000
+
+/**
+ * The JSON laid out, its control characters escaped. Only DEL and C1 can be
+ * there (JSON has no raw C0 in a string), and only in a string, where `\u007f`
+ * means the same: the JSON stays the same JSON.
+ */
+const laidOut = (json: string, indent: number): { text: string } | { error: JsonError } => {
+  const r = layoutJson(json, indent, JSON_LAYOUT_LIMIT)
+  return 'error' in r ? r : { text: escapeControls(r.text) }
+}
+
 const layout = (indent: number) =>
   onText((text, { lang }) => {
-    const r = layoutJson(text, indent)
+    const r = laidOut(text, indent)
     return 'error' in r ? { error: jsonErrorText(r.error, lang) } : { text: r.text }
   })
 
@@ -327,9 +369,10 @@ export const caseVariants = onText((text, { lang }) => {
 /** A Base64 error as the pane shows it. */
 function base64ErrorText(err: Base64Error, lang: Lang): string {
   if (err.reason === 'char') {
+    const char = escapeControls(err.char)
     return lang === 'ja'
-      ? `Base64 として読めません: ${err.index} 文字目の「${err.char}」は Base64 の文字ではありません。`
-      : `Not valid Base64: character ${err.index} ("${err.char}") is not a Base64 character.`
+      ? `Base64 として読めません: ${err.index} 文字目の「${char}」は Base64 の文字ではありません。`
+      : `Not valid Base64: character ${err.index} ("${char}") is not a Base64 character.`
   }
   if (err.reason === 'padding') {
     return lang === 'ja'
@@ -341,15 +384,13 @@ function base64ErrorText(err: Base64Error, lang: Lang): string {
     : 'Not valid Base64: its length is not one Base64 can have.'
 }
 
-/** Whether the decoded text reads as text: no control characters but tab and line breaks. */
-const isPrintable = (s: string) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(s)
 
 /** The Base64 (standard or URL-safe) decoded as UTF-8; bytes that are not text, by their length and first bytes in hexadecimal. */
 export const base64DecodeText = onText((text, { lang }) => {
   const r = base64Decode(text)
   if ('error' in r) return { error: base64ErrorText(r.error, lang) }
   const decoded = utf8Decode(r.bytes)
-  if (decoded !== undefined && isPrintable(decoded)) return { text: decoded }
+  if (decoded !== undefined && !hasControls(decoded)) return { text: decoded }
   const head = toHex(r.bytes.subarray(0, 32), ' ') + (r.bytes.length > 32 ? ' …' : '')
   return {
     text:
@@ -365,7 +406,7 @@ export const base64EncodeText = onText(text => ({ text: base64Encode(utf8Encode(
 // ---------------------------------------------------------------------------
 // url-decode / url-encode
 
-/** The percent-encoded text decoded: each run of %XX read as UTF-8; `+` is left as it is. */
+/** The percent-encoded text decoded: each run of %XX read as UTF-8, control characters escaped; `+` is left as it is. */
 export const urlDecode = onText((text, { lang }) => {
   const out: string[] = []
   let i = 0
@@ -398,11 +439,9 @@ export const urlDecode = onText((text, { lang }) => {
     i += ch.length
     position++
   }
-  const decoded = out.join('')
-  if (!text.includes('+')) return { text: decoded }
-  return {
-    text: `${decoded}\n\n${lang === 'ja' ? '（「+」は空白に変えていません）' : '(A "+" is left as it is, not read as a space.)'}`,
-  }
+  const [shown, ...notes] = withControlsShown(out.join(''), lang)
+  if (text.includes('+')) notes.push(lang === 'ja' ? '（「+」は空白に変えていません）' : '(A "+" is left as it is, not read as a space.)')
+  return { text: [shown, ...notes].join('\n\n') }
 })
 
 /** The text percent-encoded as encodeURIComponent does it. */
@@ -430,7 +469,7 @@ const decodeQueryPart = (s: string): string | undefined => {
   }
 }
 
-/** The URL taken apart: scheme, user (password hidden), host, port, path, query (each key and value decoded) and fragment. */
+/** The URL taken apart: scheme, user (password hidden), host, port, path, query (each key and value decoded, control characters escaped) and fragment. */
 export const parseUrl = onText((text, { lang }) => {
   const ja = lang === 'ja'
   const err = (why: Texts) => ({ error: `${ja ? 'URL として読めません: ' : 'Not a readable URL: '}${pick(lang, why)}` })
@@ -509,7 +548,7 @@ export const parseUrl = onText((text, { lang }) => {
     }
   }
   lines.push(`${ja ? 'フラグメント' : 'Fragment'}: ${fragment === undefined || fragment === '' ? none : fragment}`)
-  return { text: lines.join('\n') }
+  return { text: withControlsShown(lines.join('\n'), lang).join('\n\n') }
 })
 
 // ---------------------------------------------------------------------------
@@ -559,6 +598,13 @@ export const epochToDate = onText((text, input) => {
   if (digits > 14) {
     return { error: ja ? `UNIX 時刻として読めません: 整数部が ${digits} 桁です（秒は 11 桁まで、ミリ秒は 12〜14 桁）。` : `Not a UNIX time: its whole part has ${digits} digits (seconds up to 11, milliseconds 12 to 14).` }
   }
+  if (!seconds && frac !== '') {
+    return {
+      error: ja
+        ? 'UNIX 時刻として読めません: ミリ秒（整数部 12〜14 桁）に小数部は付けられません。'
+        : 'Not a UNIX time: milliseconds (a whole part of 12 to 14 digits) take no fraction.',
+    }
+  }
   const whole = Number(intPart)
   const ms = (seconds ? whole * 1000 + Number(frac.padEnd(3, '0').slice(0, 3)) : whole) * (sign === '-' ? -1 : 1)
   const times = bothTimes(ms, input)
@@ -590,6 +636,7 @@ export const decodeJwt = onText((text, input) => {
     return { error: ja ? `JWT として読めません: 「.」で 3 つに区切られていません（${parts.length} 個）。` : `Not a readable JWT: it is not three parts separated by "." (${parts.length}).` }
   }
   const decoded: string[] = []
+  let payloadJson = ''
   for (const [index, part] of [parts[0]!, parts[1]!].entries()) {
     const name = index === 0 ? (ja ? 'ヘッダ' : 'header') : ja ? 'ペイロード' : 'payload'
     const bytes = base64Decode(part)
@@ -597,13 +644,21 @@ export const decodeJwt = onText((text, input) => {
     if (json === undefined) {
       return { error: ja ? `JWT として読めません: ${name}が Base64URL の UTF-8 テキストではありません。` : `Not a readable JWT: its ${name} is not UTF-8 text in Base64URL.` }
     }
-    const laid = layoutJson(json, 2)
+    const laid = laidOut(json, 2)
     if ('error' in laid) return { error: `${ja ? `JWT の${name}: ` : `The JWT's ${name}: `}${jsonErrorText(laid.error, lang)}` }
     decoded.push(laid.text)
+    payloadJson = json
   }
   const lines = [pick(lang, SIGNATURE_NOTE), '', ja ? 'ヘッダ:' : 'Header:', decoded[0]!, '', ja ? 'ペイロード:' : 'Payload:', decoded[1]!]
-  // Valid JSON by now, so JSON.parse reads it; only the three claims are read from it.
-  const payload: unknown = JSON.parse(decoded[1]!)
+  // Valid JSON by now (the payload as decoded: its layout may be cut short),
+  // so JSON.parse reads it, unless it nests deeper than the engine can go;
+  // only the three claims are read from it.
+  let payload: unknown
+  try {
+    payload = JSON.parse(payloadJson)
+  } catch {
+    payload = undefined
+  }
   if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
     const claims = payload as Record<string, unknown>
     const times: string[] = []
@@ -647,9 +702,15 @@ export const hashText = onText((text, { lang }) => {
 type Rgb = [number, number, number]
 
 const NUM = '([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+))'
-const SEP = '\\s*(?:,\\s*|\\s+)'
+// A comma with white space around it, or white space alone: never white space
+// split between two ways (`\s*` then `\s+` would backtrack polynomially).
+const SEP = '(?:\\s*,\\s*|\\s+)'
+
 const RGB = new RegExp(`^rgb\\(\\s*${NUM}${SEP}${NUM}${SEP}${NUM}\\s*\\)$`, 'i')
 const HSL = new RegExp(`^hsl\\(\\s*${NUM}(?:deg)?${SEP}${NUM}%${SEP}${NUM}%\\s*\\)$`, 'i')
+
+/** The longest text tried as a colour: room to spare (`hsl(359.5deg, 100.0%, 100.0%)` is 30 characters), and no long run for a pattern to try. */
+const COLOR_MAX = 64
 
 function hslToRgb(h: number, s: number, l: number): Rgb {
   const hue = (((h % 360) + 360) % 360) / 360
@@ -696,20 +757,20 @@ export const colorConvert = onText((text, { lang }) => {
       ? '色として読めません: #RGB・#RRGGBB・rgb(r, g, b)（0〜255）・hsl(h, s%, l%)（s・l は 0〜100%）のいずれかを選択してください。'
       : 'Not a readable colour: select #RGB, #RRGGBB, rgb(r, g, b) (0 to 255) or hsl(h, s%, l%) (s and l from 0 to 100%).',
   }
-  const s = text.trim()
+  if (text.length > COLOR_MAX) return unsupported
   let rgb: Rgb | undefined
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s)
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text)
   if (hex !== null) {
     const h = hex[1]!.length === 3 ? [...hex[1]!].map(c => c + c).join('') : hex[1]!
     rgb = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
   }
-  const r = RGB.exec(s)
+  const r = rgb === undefined ? RGB.exec(text) : null
   if (r !== null) {
     const values = [Number(r[1]), Number(r[2]), Number(r[3])]
     if (values.some(v => !(v >= 0 && v <= 255))) return unsupported
     rgb = values.map(v => Math.round(v)) as Rgb
   }
-  const hs = HSL.exec(s)
+  const hs = rgb === undefined ? HSL.exec(text) : null
   if (hs !== null) {
     const [h, sat, light] = [Number(hs[1]), Number(hs[2]), Number(hs[3])]
     if (!Number.isFinite(h) || !(sat >= 0 && sat <= 100) || !(light >= 0 && light <= 100)) return unsupported

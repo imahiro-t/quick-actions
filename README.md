@@ -23,6 +23,7 @@ The selected text itself is not shown on the hint line (so a multi-line selectio
 - `fork` actions (💬 Ask Claude and 🧾 Why so?) pass the current conversation to the model along with the selection
 - Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
 - The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). None of the standard actions can write files or run commands (the one subagent, 🔎 Find the code, has read-only tools)
+- Actions you add in [`customActions`](#customactions) send the selection the same way. A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, and what it read in the repository, to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
 
 ## Install
 
@@ -34,7 +35,7 @@ At the prompt of a Claude Code terminal session, run the following (replace `<ow
 
 1. Answer `y` to `Add marketplace?`
 2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
-3. On the settings screen, set `actions` (leave it empty for the default set) and `language` (default `auto`)
+3. On the settings screen, set `actions` (leave it empty for the default set) and `language` (default `auto`). `customActions` (your own actions) can stay empty
 4. Once `Installed selection-actions. Plugin is now active.` shows, it works in that session right away
 
 ### Try it from a working folder
@@ -75,6 +76,7 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`, or `
 
 - **Unset or empty**: the default set `explain,translate,summarize,code` (💡 🌐 📝 🔎) is shown, one action per purpose
 - **Unknown IDs**: ignored (no error). If no valid ID is left, the default set is shown
+- **Your own actions**: the IDs of the valid definitions in [`customActions`](#customactions) can be written here like the built-ins'
 - **Removed IDs**: the built-ins were narrowed to the ten in [Actions](#actions). The IDs taken out — `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` — are ignored like unknown IDs if your `actions` setting still names them (their icons simply no longer show; if no valid ID is left, the default set is shown)
 - Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
 - To keep the line on one row, eight to ten actions at most is a good limit
@@ -113,13 +115,50 @@ echo '{"language":"en"}' | claude plugin configure selection-actions@selection-a
 
 A change made in `/config` reloads the plugin and takes effect at once (after `claude plugin configure` or an edit to settings.json, restart Claude Code). `auto` detects once per load of the plugin, so a change to Claude Code's language setting or to the locale while it runs takes effect on the next reload or restart.
 
+### `customActions`
+
+Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition is shown once its ID is in `actions`, and runs with `/selection-actions <id>` either way.
+
+In `/config`, under `selection-actions`, enter the array on one line in `customActions`, for example:
+
+```
+[{"id":"pirate","icon":"🦜","label":{"ja":"海賊風に言い換え","en":"Pirate talk"},"kind":"complete","model":"haiku","prompt":"Retell the selected text the way a pirate would."}]
+```
+
+From the command line (the value is a string, so the quotes inside it are escaped):
+
+```sh
+claude plugin configure selection-actions@selection-actions --values-stdin <<'EOF'
+{"actions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
+EOF
+```
+
+Directly in `settings.json`, escaped the same way:
+
+```json
+{
+  "pluginConfigs": {
+    "selection-actions@selection-actions": {
+      "options": {
+        "actions": "explain,pirate",
+        "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
+      }
+    }
+  }
+}
+```
+
+It is read again whenever the plugin reloads, like `actions` and `language`: a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code. Run `/selection-actions` after a change to see whether any definition was ignored, and why.
+
 ## Command
 
 ```
 /selection-actions [action-id]
 ```
 
-Runs an action on the selected text and shows the result in the pane. Without an ID it runs the first action on the hint line (💡 Explain by default). An action that is not on the hint line can still be run by its ID. An unknown ID runs nothing and lists the IDs that exist.
+Runs an action on the selected text and shows the result in the pane. Without an ID it runs the first action on the hint line (💡 Explain by default). An action that is not on the hint line can still be run by its ID, your own included. An unknown ID runs nothing and lists the IDs that exist; the ID of a `customActions` definition that was ignored runs nothing and says why.
+
+When `customActions` has problems, every result of the command (with or without an ID, with nothing selected too) ends with the list of the definitions ignored and why.
 
 ## Actions
 
@@ -148,7 +187,103 @@ The labels above are the English ones (see [README.ja.md](README.ja.md) for the 
 
 ## Adding an action
 
-An action is one more definition in the `ACTIONS` array of `hooks/actions.ts`. The hint line, the pane and the runner (`hooks/register.tsx`) need no change. Put its ID in the `actions` setting to show it.
+There are two ways: in the settings (`customActions`), which needs no change to the plugin, or in the source, for developers of the plugin. Either way the hint line, the pane and the command treat the action like a built-in, and it shows once its ID is in `actions`.
+
+### From the settings (customActions)
+
+Write the definitions as a JSON array in the [`customActions`](#customactions) setting. The examples below are spread over several lines to read; in `/config`, enter the array on one line.
+
+| Field | Required | Kinds | Meaning |
+| --- | --- | --- | --- |
+| `id` | yes | all | The ID written in `actions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button), and not one an earlier custom definition already took |
+| `icon` | yes | all | The icon on the hint line (one emoji) |
+| `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }` |
+| `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Actions](#actions)) |
+| `prompt` | yes | all | complete: the system prompt; fork: the instruction that follows the selection; subagent: its system prompt |
+| `runningText` | no | all | What the pane shows while it runs, as `label` is written (default "Thinking…" / "考え中…") |
+| `model` | complete and subagent | complete, subagent | `haiku`, `sonnet` or `opus` only, lowercase. A fork uses the conversation's model and ignores it |
+| `maxTokens` | no | complete | The longest answer, a whole number from 1 to 32000 (default 1500) |
+| `task` | subagent | subagent | What opens the request the subagent is spawned with; the selection follows it |
+| `description` | no | subagent | What the subagent type says it is for, as `label` is written (default: built from the label) |
+| `tools` | no | subagent | Picked from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch` (names as written here). Default: `["Read", "Grep", "Glob"]`. A definition naming any other tool is ignored as a whole |
+
+Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored.
+
+complete:
+
+```json
+{
+  "id": "pirate",
+  "icon": "🦜",
+  "label": { "ja": "海賊風に言い換え", "en": "Pirate talk" },
+  "kind": "complete",
+  "model": "haiku",
+  "maxTokens": 500,
+  "prompt": "Retell the selected text the way a pirate would."
+}
+```
+
+fork:
+
+```json
+{
+  "id": "cause",
+  "icon": "❓",
+  "label": { "ja": "原因は？", "en": "What caused this?" },
+  "kind": "fork",
+  "prompt": "Explain why this happened, given what we did earlier in this session."
+}
+```
+
+subagent (here with web search added to the read-only tools; see the warning below):
+
+```json
+{
+  "id": "review-pr",
+  "icon": "🧪",
+  "label": { "ja": "コードレビュー", "en": "Code review" },
+  "kind": "subagent",
+  "model": "sonnet",
+  "task": "Review the following code, reading the files around it.",
+  "prompt": "You review code for bugs and risky patterns. Search with Grep and Glob, read with Read, look up documentation with WebSearch and WebFetch; change nothing.",
+  "runningText": { "ja": "レビュー中…", "en": "Reviewing…" },
+  "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
+}
+```
+
+The setting holds the array of them: `[{ …pirate… }, { …cause… }, { …review-pr… }]`.
+
+#### The answer language
+
+Write `{STYLE}` and `{ANSWER_LANGUAGE}` in a prompt literally; at run time `{STYLE}` becomes the answer language and the pane's style (`Answer in English, …` / `Answer in Japanese, …`) and `{ANSWER_LANGUAGE}` the language's name (`English` / `Japanese`), following `language`.
+
+- **complete and subagent**: when `prompt` has neither, ` {STYLE}` is added at its end, so the answer follows the display language even if you say nothing about it. When it has either, nothing is added: you decide. A definition that must answer in a fixed language can use that, e.g. `"Translate the selected text into French. Write any note on it in {ANSWER_LANGUAGE}."`
+- **subagent's `task`**: the placeholders are filled in there too, but nothing is added to it: the answer language goes in through `prompt` (the subagent's system prompt)
+- **fork**: the answer language is always added when it runs, as for the built-ins. A `{STYLE}` in its prompt is dropped (it would say it twice) and only `{ANSWER_LANGUAGE}` is filled in, so a fork cannot be held to a fixed language
+
+#### Invalid definitions
+
+A definition is ignored, alone, when:
+
+- its `id` is missing or not in the format above, is a built-in's ID or `close`, or was taken by an earlier custom definition (the first one keeps it)
+- a required field is missing or empty (`model` and `task` as its kind needs them), or a value is of the wrong shape (`label` with only one of `ja` / `en`, `maxTokens` out of range, `tools` empty or not an array)
+- `kind` is not `complete` / `fork` / `subagent`, or `model` is not `haiku` / `sonnet` / `opus`
+- `tools` names a tool outside the five above: the whole definition is ignored rather than run without it, since that would run something other than what you wrote
+
+When the setting is not valid JSON, or not an array, every custom definition is ignored. The built-ins work as before in every case. To see what was ignored and why:
+
+- **Run `/selection-actions`** (with or without an ID; nothing need be selected): the result ends with every problem, one per line, such as `#3 (review-pr): tools a subagent cannot have: Bash (…)`. The number is the definition's place in the array, from 1. This always works
+- A toast at the start of a session gives the count and the first problem. A change made in `/config` during a session may not show the toast again until the next one: run `/selection-actions` to check
+- While the pane is open, the list also shows at its top, in the error colour
+
+#### A word on the tools
+
+- With `WebFetch` / `WebSearch` allowed, the subagent can send the selected text, and what it read in the repository, to outside sites: on its own, or steered by instructions written in the selection (prompt injection; the selection is only wrapped in `<selected>…</selected>`). Allow them only for actions you will run on text you trust, and keep the default read-only tools otherwise
+- Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted in `customActions`
+
+### In the source (for developers)
+
+A built-in is one more definition in the `ACTIONS` array of `hooks/actions.ts`. The hint line, the pane and the runner (`hooks/register.tsx`) need no change. Put its ID in the `actions` setting to show it.
 
 Common fields:
 
@@ -161,7 +296,7 @@ Common fields:
 | `prompt` | The prompt (its role depends on the kind, below) |
 | `runningText` | What the pane shows while it runs, as `{ ja, en }` (default "考え中…" / "Thinking…") |
 
-### complete
+#### complete
 
 `prompt` is the system prompt; the selection is the user's input.
 
@@ -179,7 +314,7 @@ Common fields:
 
 `sys(...)` joins the sentences and ends them with the answer language and the pane's style (`STYLE`). At run time `STYLE` becomes `Answer in English, …` or `Answer in Japanese, …` to match the display language. Where a prompt needs the answer language's name mid-sentence, use `ANSWER_LANGUAGE` (it becomes `English` or `Japanese`), e.g. `` `Explain the changes in ${ANSWER_LANGUAGE}.` ``.
 
-### fork
+#### fork
 
 `prompt` is the instruction that follows the selection. The conversation's model answers. The answer language is added at run time.
 
@@ -193,7 +328,7 @@ Common fields:
 },
 ```
 
-### subagent
+#### subagent
 
 `prompt` is the subagent's system prompt, and `task` opens the request it is spawned with (the selection follows it). The subagent is registered as the type `selection-actions:<id>`, and the main Claude is not offered it.
 
@@ -221,14 +356,15 @@ claude plugin validate .
 claude plugin test .
 ```
 
-`tests/actions.test.tsx` checks every definition (unique IDs, required fields in both languages) and that, with every ID in the setting, the hint line shows them in definition order and each runs as its kind says. Run it after adding a definition. `tests/i18n.test.tsx` checks the language detection and the display and answer language in both languages.
+`tests/actions.test.tsx` checks every definition (unique IDs, required fields in both languages) and that, with every ID in the setting, the hint line shows them in definition order and each runs as its kind says. Run it after adding a definition. `tests/custom.test.tsx` checks the `customActions` setting: reading and checking the definitions (each kind of invalid one left out alone, broken JSON leaving them all out), their place on the hint line, each kind run by a press and by the command, the answer language, and how the problems are told (the toast, every result of the command, the pane). `tests/i18n.test.tsx` checks the language detection and the display and answer language in both languages.
 
 The README comes in English (README.md) and Japanese (README.ja.md). Update both when changing either.
 
 ## Roadmap
 
 - Actions that need no model, such as "open the URL" or "copy" (a fourth kind)
-- Letting users add actions with their own prompts from the settings
+- Reading custom actions from a file of their own (such as `~/.claude/selection-actions.json`) rather than one setting
+- Letting custom subagents use tools that run commands or change files, once their exposure to prompt injection and the permission prompts are worked out
 
 ## License
 

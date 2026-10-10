@@ -9,7 +9,13 @@
     "actions": {
       "type": "string",
       "title": "Actions",
-      "description": "Comma-separated action IDs to show on the hint line, in this order (e.g. explain,translate,summarize,ask). Leave empty for the default set; unknown IDs are ignored.",
+      "description": "Comma-separated action IDs to show on the hint line, in this order (e.g. explain,translate,summarize,ask). The IDs of your customActions can go here too. Leave empty for the default set; unknown IDs are ignored.",
+      "default": ""
+    },
+    "customActions": {
+      "type": "string",
+      "title": "Custom actions",
+      "description": "JSON array of your own action definitions (see README). Put their IDs in actions to show them. Invalid definitions are ignored with a warning; run /selection-actions to see why.",
       "default": ""
     },
     "language": {

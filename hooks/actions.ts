@@ -1,6 +1,8 @@
-// Action definitions: the only place an action lives. The hint line, the pane
-// and the runner in register.tsx read nothing but these, so adding one entry to
-// ACTIONS makes a new action available (its ID can then go in the setting).
+// Action definitions: the only place a built-in action lives. The hint line,
+// the pane and the runner in register.tsx read nothing but these (and the
+// person's own, from the `customActions` setting, checked in ./custom), so
+// adding one entry to ACTIONS makes a new action available (its ID can then go
+// in the setting).
 //
 // Each definition carries what the person reads in both languages (`label`,
 // `runningText`, `description` as `{ ja, en }`); `actionsFor(lang)` hands out
@@ -268,7 +270,14 @@ export const findAction = <D extends { id: string }>(defs: readonly D[], id: str
 /** The `<plugin>:<name>` a subagent action's type is registered and spawned under: by ID alone, in any language. */
 export const subagentType = (def: { id: string }) => `${PLUGIN}:${def.id}`
 
+/** The definitions given, in their order, resolved for the language (built-ins and custom ones alike). */
+export const resolveAll = (specs: readonly ActionSpec[], lang: Lang): ActionDef[] => specs.map(spec => resolveSpec(spec, lang))
+
 const resolved: Partial<Record<Lang, readonly ActionDef[]>> = {}
 
-/** Every definition in ACTIONS, in its order, resolved for the language (once per language). */
-export const actionsFor = (lang: Lang): readonly ActionDef[] => (resolved[lang] ??= ACTIONS.map(spec => resolveSpec(spec, lang)))
+/**
+ * Every definition in ACTIONS, in its order, resolved for the language (once
+ * per language). The built-ins alone: register.tsx resolves them together with
+ * the custom ones per load, since those change with the setting.
+ */
+export const actionsFor = (lang: Lang): readonly ActionDef[] => (resolved[lang] ??= resolveAll(ACTIONS, lang))

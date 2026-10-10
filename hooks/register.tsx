@@ -6,22 +6,24 @@ import {
   ACTIONS,
   PLUGIN,
   READ_ONLY_TOOLS,
-  actionsFor,
   findAction,
   messageOf,
   resolveActions,
+  resolveAll,
   subagentType,
   wrap,
 } from './actions'
-import type { ActionDef, ResolvedSubagentAction } from './actions'
+import type { ActionDef, ActionSpec, ResolvedSubagentAction } from './actions'
+import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
 import { settleQuietly, toLatest } from './scroll'
 
-// Everything below is driven by the definitions in ./actions: no action is
-// named here, so adding one there needs no change in this file. Every string
-// the person reads comes from MESSAGES or the definitions resolved for the
-// language (actionsFor), never from a literal here.
+// Everything below is driven by the definitions in ./actions and the person's
+// own from the `customActions` setting (./custom): no action is named here, so
+// adding one needs no change in this file. Every string the person reads comes
+// from MESSAGES or the definitions resolved for the language (defsFor), never
+// from a literal here.
 
 const PANE = PLUGIN
 const PANE_TITLE = 'Selection Actions'
@@ -188,17 +190,27 @@ async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
 }
 
 export const register: Register = (on, options) => {
-  // Options change reloads the module, so resolving once here is enough. The
-  // IDs alone are resolved here: they do not depend on the language.
-  const enabledIds = resolveActions(ACTIONS, options.actions).map(a => a.id)
+  // Options change reloads the module, so reading the settings once here is
+  // enough. The custom definitions join the built-ins after them; one that is
+  // invalid is left out, with its reason kept in `problems` to show the person.
+  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close'])
+  const problems = custom.problems
+  const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
+
+  // The IDs alone are resolved here: they do not depend on the language.
+  const enabledIds = resolveActions(allSpecs, options.actions).map(a => a.id)
   const firstId = enabledIds[0]!
+
+  // Per load, not per module: the custom definitions change with the setting.
+  const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
+  const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
 
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
 
   const enabledFor = (l: Lang): ActionDef[] => {
-    const defs = actionsFor(l)
+    const defs = defsFor(l)
     return enabledIds.flatMap(id => findAction(defs, id) ?? [])
   }
 
@@ -210,6 +222,16 @@ export const register: Register = (on, options) => {
       argumentHint: '[action-id]',
       immediate: true,
     })
+
+    // Told once per session, with the first reason; the command's result has
+    // them all. A toast that cannot show must not stop the session starting.
+    if (problems.length > 0) {
+      try {
+        await $.ui.toast(MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l)))
+      } catch {
+        // The command's result still lists them.
+      }
+    }
 
     // The icons follow $.ui.selection(): once it answers undefined, the next
     // poll writes null and the hint line redraws without them. The engine
@@ -234,7 +256,7 @@ export const register: Register = (on, options) => {
   })
 
   // The subagent types exist for the icons alone: the main model is not offered them.
-  for (const def of ACTIONS) {
+  for (const def of allSpecs) {
     if (def.kind !== 'subagent') continue
     on('agent.offer', { agent: subagentType(def) }, () => ({ isOffered: false })).catch(() => ({ isOffered: false }))
   }
@@ -253,16 +275,23 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const l = await ensureLanguage($)
-    const defs = actionsFor(l)
+    const t = MESSAGES[l]
+    const defs = defsFor(l)
     const wanted = e.args.trim().toLowerCase()
     const def = findAction(defs, wanted === '' ? firstId : wanted)
+    // Whatever the result, the custom definitions left out follow it, so this
+    // command is where the person can always read why.
     if (def === undefined) {
-      // Told once, as the command's result, with the IDs that do exist.
-      return { text: MESSAGES[l].unknownId(wanted, defs.map(a => a.id)) }
+      // Told once, as the command's result: why its definition was left out,
+      // or else the IDs that do exist.
+      const ignored = problemFor(problems, wanted)
+      const text =
+        ignored === undefined ? t.unknownId(wanted, defs.map(a => a.id)) : t.customIgnoredId(wanted, reasonText(ignored.reason, l))
+      return { text: withProblems(text, problems, l) }
     }
     await runOnSelection($, def, l)
 
-    return { text: MESSAGES[l].showing(PANE_TITLE, def.label) }
+    return { text: withProblems(t.showing(PANE_TITLE, def.label), problems, l) }
   })
 
   // The icons take the hint line under the prompt, a row that is always there:
@@ -313,13 +342,21 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
-    const defs = actionsFor(l)
+    const defs = defsFor(l)
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, results)
     const colors = e.props.placement === 'inline' ? PANE_COLORS.inline : PANE_COLORS.dock
 
     return (
       <Box flexDirection="column">
+        {problems.length > 0 && (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text bold color={colors.failed}>{t.customProblemsHeading}</Text>
+            {problems.map(p => (
+              <Text color={colors.failed}>- {problemLine(p, l)}</Text>
+            ))}
+          </Box>
+        )}
         {e.props.placement === 'inline' && (
           <Text dimColor>{t.inlineHint}</Text>
         )}

@@ -6,7 +6,7 @@ import {
   ACTIONS,
   PLUGIN,
   READ_ONLY_TOOLS,
-  STYLE,
+  actionsFor,
   findAction,
   messageOf,
   resolveActions,
@@ -14,10 +14,14 @@ import {
   wrap,
 } from './actions'
 import type { ActionDef, SubagentAction } from './actions'
+import { MESSAGES, explicitLanguage, resolveLanguage } from './i18n'
+import type { Lang } from './i18n'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions: no action is
-// named here, so adding one there needs no change in this file.
+// named here, so adding one there needs no change in this file. Every string
+// the person reads comes from MESSAGES or the definitions resolved for the
+// language (actionsFor), never from a literal here.
 
 const PANE = PLUGIN
 const PANE_TITLE = 'Selection Actions'
@@ -38,6 +42,42 @@ const quoteOf = (text: string) => {
   return line.length > 60 ? `${line.slice(0, 57)}...` : line
 }
 
+// The language: settled in register when the setting names one; for `auto`,
+// by the first hook that needs it, whichever event comes first, and once only.
+// A reload loads the module afresh, and register sets these again.
+let languageSetting: unknown
+let lang: Lang | undefined
+let pendingLanguage: Promise<Lang> | undefined
+
+async function readQuietly<T>(read: Promise<T>): Promise<T | undefined> {
+  try {
+    return await read
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * resolveLanguage over what the engine answers: Claude Code's settings and the
+ * locale, each read on its own, a failed read counting as unset. Never rejects.
+ */
+async function detectLanguage($: EngineInterface): Promise<Lang> {
+  const [settings, LC_ALL, LC_MESSAGES, LANG] = await Promise.all([
+    readQuietly($.settings.read()),
+    readQuietly($.env.get('LC_ALL')),
+    readQuietly($.env.get('LC_MESSAGES')),
+    readQuietly($.env.get('LANG')),
+  ])
+  return resolveLanguage(languageSetting, { claudeLanguage: settings?.['language'], LC_ALL, LC_MESSAGES, LANG })
+}
+
+/** The language every hook draws and asks in: detected once, shared by concurrent callers. */
+async function ensureLanguage($: EngineInterface): Promise<Lang> {
+  if (lang !== undefined) return lang
+  pendingLanguage ??= detectLanguage($).then(l => (lang = l))
+  return pendingLanguage
+}
+
 let nextId = 1
 const registeredAgents = new Set<string>()
 const pendingAgents = new Map<string, number>()
@@ -47,11 +87,11 @@ async function settle($: EngineInterface, id: number, ok: boolean, text: string)
   await update($, results, list => list.map(r => (r.id === id ? { ...r, status, text } : r)))
 }
 
-async function ensureAgent($: EngineInterface, def: SubagentAction) {
+async function ensureAgent($: EngineInterface, def: SubagentAction, lang: Lang) {
   if (registeredAgents.has(def.id)) return
   await $.agent.register({
     name: def.id,
-    description: def.description ?? `${def.label} for the selected text (selection-actions only)`,
+    description: def.description ?? MESSAGES[lang].agentDescription(def.label),
     prompt: def.prompt,
     tools: [...(def.tools ?? READ_ONLY_TOOLS)],
     model: def.model,
@@ -60,25 +100,27 @@ async function ensureAgent($: EngineInterface, def: SubagentAction) {
 }
 
 // A subagent answers later, through turn.complete; the others answer here.
-async function startSubagent($: EngineInterface, def: SubagentAction, id: number, text: string) {
+async function startSubagent($: EngineInterface, def: SubagentAction, lang: Lang, id: number, text: string) {
+  const t = MESSAGES[lang]
   try {
-    await ensureAgent($, def)
+    await ensureAgent($, def, lang)
     const spawned = await $.agent.spawn({
       subagentType: subagentType(def),
       description: def.label,
       prompt: `${def.task}\n\n${wrap(text)}`,
     })
     if (spawned.deny !== undefined || spawned.agentId === undefined) {
-      await settle($, id, false, `起動できませんでした: ${spawned.deny ?? 'no agent id'}`)
+      await settle($, id, false, t.couldNotStart(spawned.deny ?? 'no agent id'))
       return
     }
     pendingAgents.set(spawned.agentId, id)
   } catch (err) {
-    await settle($, id, false, `起動できませんでした: ${messageOf(err)}`)
+    await settle($, id, false, t.couldNotStart(messageOf(err)))
   }
 }
 
-async function run($: EngineInterface, def: ActionDef, text: string) {
+async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
+  const t = MESSAGES[lang]
   const id = nextId++
   const result: Result = { id, action: def.id, quote: quoteOf(text), status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
@@ -87,14 +129,14 @@ async function run($: EngineInterface, def: ActionDef, text: string) {
   await settleQuietly($.ui.scroll(toLatest(PANE)))
 
   if (def.kind === 'subagent') {
-    await startSubagent($, def, id, text)
+    await startSubagent($, def, lang, id, text)
     return
   }
 
   try {
     const r =
       def.kind === 'fork'
-        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${STYLE}` })
+        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${t.answerStyle}` })
         : await $.model.complete({
             model: def.model,
             system: def.prompt,
@@ -104,31 +146,42 @@ async function run($: EngineInterface, def: ActionDef, text: string) {
             timeoutMs: 60_000,
           })
 
-    await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : `回答なし (${r.reason})`)
+    await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : t.noAnswer(r.reason))
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
-    await settle($, id, false, `失敗しました: ${messageOf(err)}`)
+    await settle($, id, false, t.failed(messageOf(err)))
   }
 }
 
-async function runOnSelection($: EngineInterface, def: ActionDef) {
+async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
   const picked = (await $.ui.selection())?.text.trim()
   if (!picked) {
-    $.ui.toast('選択されたテキストがありません')
+    $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
-  await run($, def, picked)
+  await run($, def, lang, picked)
 }
 
 export const register: Register = (on, options) => {
-  // Options change reloads the module, so resolving once here is enough.
-  const enabled = resolveActions(ACTIONS, options.actions)
-  const first = enabled[0]!
+  // Options change reloads the module, so resolving once here is enough. The
+  // IDs alone are resolved here: they do not depend on the language.
+  const enabledIds = resolveActions(ACTIONS, options.actions).map(a => a.id)
+  const firstId = enabledIds[0]!
+
+  languageSetting = options.language
+  lang = explicitLanguage(options.language)
+  pendingLanguage = undefined
+
+  const enabledFor = (l: Lang): ActionDef[] => {
+    const defs = actionsFor(l)
+    return enabledIds.flatMap(id => findAction(defs, id) ?? [])
+  }
 
   on('session.start', async ($, e, next) => {
+    const l = await ensureLanguage($)
     await $.command.register({
       name: COMMAND,
-      description: 'Run a selection action on the text selected in the transcript (default: the first enabled action)',
+      description: MESSAGES[l].commandDescription,
       argumentHint: '[action-id]',
       immediate: true,
     })
@@ -160,23 +213,26 @@ export const register: Register = (on, options) => {
     const id = e.agentId === undefined ? undefined : pendingAgents.get(e.agentId)
     if (e.agentId !== undefined && id !== undefined) {
       pendingAgents.delete(e.agentId)
+      const l = await ensureLanguage($)
       const ok = e.reason === 'answer' && e.answer.trim() !== ''
-      await settle($, id, ok, ok ? e.answer.trim() : `回答なし (${e.reason})`)
+      await settle($, id, ok, ok ? e.answer.trim() : MESSAGES[l].noAnswer(e.reason))
     }
 
     return next(e)
   })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
+    const l = await ensureLanguage($)
+    const defs = actionsFor(l)
     const wanted = e.args.trim().toLowerCase()
-    const def = wanted === '' ? first : findAction(ACTIONS, wanted)
+    const def = findAction(defs, wanted === '' ? firstId : wanted)
     if (def === undefined) {
       // Told once, as the command's result, with the IDs that do exist.
-      return { text: `不明なアクション ID です: ${wanted}（使える ID: ${ACTIONS.map(a => a.id).join(', ')}）` }
+      return { text: MESSAGES[l].unknownId(wanted, defs.map(a => a.id)) }
     }
-    await runOnSelection($, def)
+    await runOnSelection($, def, l)
 
-    return { text: `${PANE_TITLE} ペインに ${def.label} の結果を表示します。` }
+    return { text: MESSAGES[l].showing(PANE_TITLE, def.label) }
   })
 
   // The icons take the hint line under the prompt, a row that is always there:
@@ -187,6 +243,8 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
+    const l = await ensureLanguage($)
+    const enabled = enabledFor(l)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     return (
@@ -197,7 +255,7 @@ export const register: Register = (on, options) => {
               key={a.id}
               label={a.icon}
               hotkey={HOTKEYS[i]}
-              onPress={() => runOnSelection($, a)}
+              onPress={() => runOnSelection($, a, l)}
             />
           </Box>
         ))}
@@ -211,28 +269,29 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const l = await ensureLanguage($)
+    const t = MESSAGES[l]
+    const defs = actionsFor(l)
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, results)
 
     return (
       <Box flexDirection="column">
         {e.props.placement === 'inline' && (
-          <Text dimColor>
-            ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。
-          </Text>
+          <Text dimColor>{t.inlineHint}</Text>
         )}
         {list.length === 0 && (
-          <Text dimColor>テキストを選択して、プロンプト下のヒント行のアイコンを押してください。</Text>
+          <Text dimColor>{t.emptyPane}</Text>
         )}
         {list.map(r => {
-          const def = findAction(ACTIONS, r.action)
+          const def = findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
               <Text bold>
-                {def?.icon ?? '•'} {def?.label ?? r.action} <Text dimColor>「{r.quote}」</Text>
+                {def?.icon ?? '•'} {def?.label ?? r.action} <Text dimColor>{t.quote(r.quote)}</Text>
               </Text>
               {r.status === 'running' ? (
-                <Text dimColor>{def?.runningText ?? '考え中…'}</Text>
+                <Text dimColor>{def?.runningText ?? t.thinking}</Text>
               ) : (
                 <Text color={r.status === 'failed' ? 'red' : undefined}>{r.text}</Text>
               )}

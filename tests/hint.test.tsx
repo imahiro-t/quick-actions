@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { BAND, SURFACES, stage, start } from './stage'
+import { BAND, EN, JA, SURFACES, stage, start } from './stage'
 
 // Which icons the hint line shows, for the `actions` setting the test stores.
 const iconsFor = async ($: Engine, surface: (typeof SURFACES)[number]) => {
@@ -112,7 +112,7 @@ for (const surface of SURFACES) {
     await again.unmount()
   })
 
-  test(`[${surface}] the hint line has the action icons alone: no close button, no "閉じる" label`, async ($, on) => {
+  test(`[${surface}] the hint line has the action icons alone: no close button, no "閉じる" label`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -122,6 +122,20 @@ for (const surface of SURFACES) {
     const band = await $.ui.mount({ ...BAND, surface })
     expect(await band.find({ key: 'close' })).toBeUndefined()
     expect(await band.find({ text: /閉じる/ })).toBeUndefined()
+    await band.unmount()
+  })
+
+  test(`[${surface}] in English too: no close button, no "Close" label`, { options: EN }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'exit 137'
+    await clock.advance(400)
+
+    const band = await $.ui.mount({ ...BAND, surface })
+    expect(await band.find({ type: 'Button' })).toBeDefined()
+    expect(await band.find({ key: 'close' })).toBeUndefined()
+    expect(await band.find({ text: /close/i })).toBeUndefined()
     await band.unmount()
   })
 }

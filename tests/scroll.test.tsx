@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { settleQuietly, toLatest } from '../hooks/scroll'
-import { BAND, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 
 // Every way an action runs (an icon, its hotkey, the command) goes through
 // run() in register.tsx, which opens the pane and then awaits
@@ -29,8 +29,13 @@ test('a rejected scroll settles quietly', async () => {
 // The pane as the person left it: scrolled down to older results.
 const scrolledDown = { ...PANE.props, scroll: { offset: 12, bodyRows: 4 } }
 
-for (const surface of SURFACES) {
-  test(`[${surface}] an icon press runs on and the newest result is drawn first`, async ($, on) => {
+// The running text is checked gone in both languages: with the language left
+// to `auto` the test would see English, and the Japanese check would pass on
+// nothing.
+for (const [surface, options, thinking] of SURFACES.flatMap(
+  sf => [[sf, JA, '考え中…'], [sf, EN, 'Thinking…']] as const,
+)) {
+  test(`[${surface}] [${options.language}] an icon press runs on and the newest result is drawn first`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -44,7 +49,7 @@ for (const surface of SURFACES) {
 
     const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
     expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
-    expect(await pane.find({ text: '考え中…' })).toBeUndefined()
+    expect(await pane.find({ text: thinking })).toBeUndefined()
     await band.unmount()
     await pane.unmount()
   })

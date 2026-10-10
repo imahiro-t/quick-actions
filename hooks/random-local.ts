@@ -18,6 +18,7 @@ import type { LocalInput, LocalOutput } from './actions'
 import { base64Encode, toHex } from './codec'
 import type { Lang } from './i18n'
 import { INT_TEXT, invalid, isInt, textOf } from './local-args'
+import type { Texts } from './local-args'
 import { rgbToHsl } from './selection-local'
 
 // ---------------------------------------------------------------------------

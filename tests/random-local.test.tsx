@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { LocalInput, LocalOutput } from '../hooks/actions'
+import type { ArgValue } from '../hooks/args'
 import {
   BREAK_IDEAS,
   CANDIDATES_MAX,
@@ -353,7 +354,7 @@ test('every one answers in both languages, an invalid argument with the usual wo
   ]
   for (const [compute, bad] of withArgs) {
     for (const lang of ['ja', 'en'] as const) {
-      const out = compute(input({ arg: bad, lang })) as { error: string }
+      const out = compute(input({ arg: bad as ArgValue | undefined, lang })) as { error: string }
       expect(out.error.startsWith(lang === 'ja' ? '引数が正しくありません: ' : 'Invalid argument: ')).toBe(true)
     }
   }

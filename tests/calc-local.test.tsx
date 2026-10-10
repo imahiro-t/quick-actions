@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { LocalInput, LocalOutput } from '../hooks/actions'
+import type { ArgValue } from '../hooks/args'
 import {
   UNITS,
   UNIT_ALIASES,
@@ -52,7 +53,7 @@ const isError = (out: LocalOutput) => Object.keys(out).length === 1 && typeof (o
 
 type Compute = (input: LocalInput) => LocalOutput
 
-const run = (compute: Compute, arg: unknown, lang: 'ja' | 'en' = 'ja') => compute(input({ arg, lang }))
+const run = (compute: Compute, arg: unknown, lang: 'ja' | 'en' = 'ja') => compute(input({ arg: arg as ArgValue | undefined, lang }))
 const answer = (compute: Compute, arg: unknown, lang: 'ja' | 'en' = 'ja') => textOf(run(compute, arg, lang))
 
 // ---------------------------------------------------------------------------

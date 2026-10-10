@@ -275,7 +275,7 @@ test('calendar: the month, Sunday first, the day given in brackets', () => {
   expect(en[1]).toBe('  Su  Mo  Tu  We  Th  Fr  Sa')
   expect(en[2]).toBe('                 [1]   2   3')
   expect(en.at(-1)).toBe('[1] = Thu, 1 Oct 2026')
-  // February: 29 days in a leap year, 28 otherwise (2026 starts on a Sunday: four full rows).
+  // February: 29 days in a leap year, 28 otherwise (February 2026 starts on a Sunday: four full rows).
   const leap = textOf(calendar(input({ arg: date(2024, 2, 29) })))
   expect(leap).toContain('[29]')
   expect(leap).not.toContain('30')
@@ -326,13 +326,17 @@ test('date-info: weekday, ISO week, day of the year, days left, from today, era 
 
 test('date-offset: N days from today, in weeks and roughly in months', () => {
   expect(textOf(dateOffset(input({ arg: 30 })))).toBe(['30 日後: 2026年11月9日（月）', '30 日 = 4 週 2 日', '約 1.0 か月後'].join('\n'))
-  expect(textOf(dateOffset(input({ arg: 0 })))).toBe(['今日: 2026年10月10日（土）', '0 日 = 0 週 0 日', '約 0.0 か月'].join('\n'))
+  expect(textOf(dateOffset(input({ arg: 0 })))).toBe(['今日: 2026年10月10日（土）', '0 日 = 0 週 0 日'].join('\n'))
   expect(textOf(dateOffset(input({ arg: -1 })))).toBe(['1 日前: 2026年10月9日（金）', '1 日 = 0 週 1 日', '約 0.0 か月前'].join('\n'))
   expect(textOf(dateOffset(input({ arg: 36500 })))).toContain('36500 日後: 2126年')
   expect(textOf(dateOffset(input({ arg: -36500 })))).toContain('36500 日前: 1926年')
   expect(textOf(dateOffset(input({ arg: 30, lang: 'en' })))).toBe(
-    ['30 days from today: Mon, 9 Nov 2026', '30 days = 4 weeks 2 days', 'About 1.0 months'].join('\n'),
+    ['30 days from today: Mon, 9 Nov 2026', '30 days = 4 weeks 2 days', 'About 1.0 months from today'].join('\n'),
   )
+  expect(textOf(dateOffset(input({ arg: -1, lang: 'en' })))).toBe(
+    ['1 day before today: Fri, 9 Oct 2026', '1 day = 0 weeks 1 day', 'About 0.0 months before today'].join('\n'),
+  )
+  expect(textOf(dateOffset(input({ arg: 0, lang: 'en' })))).toBe(['Today: Sat, 10 Oct 2026', '0 days = 0 weeks 0 days'].join('\n'))
 })
 
 test('business-days: calendar days and weekdays to the date, today not counted; holidays not taken into account', () => {
@@ -398,6 +402,10 @@ test('wareki: years to eras and back; with none, this year and the table', () =>
   for (const s of ['令和0', '平成32', '明治46', '大正16', '1867', '0', 'abc', 'X8', '令和', '20260']) {
     for (const lang of ['ja', 'en'] as const) expect(isError(run(s, lang))).toBe(true)
   }
+  // A closed era names its last year; the current one only its first.
+  expect(run('平成32')).toEqual({ error: '平成は元年から 31 年までです。' })
+  expect(run('令和0')).toEqual({ error: '令和は元年以降の年を指定してください（西暦 9999 年まで）。' })
+  expect(run('令和0', 'en')).toEqual({ error: 'Reiwa counts from year 1: give a year from 1 on (up to 9999 AD).' })
   const none = textOf(run(undefined))
   expect(none).toContain('今年: 2026年 = 令和8年')
   expect(none).toContain('明治（M）: 1868年10月23日 から（元年 = 1868年）、45 年まで')

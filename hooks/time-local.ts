@@ -446,7 +446,7 @@ export const dateOffset = (input: LocalInput): LocalOutput => {
   if (lang === 'ja') {
     const when = arg === 0 ? '今日' : arg > 0 ? `${n} 日後` : `${n} 日前`
     return {
-      text: [`${when}: ${formatDay(day, 'ja')}`, `${n} 日 = ${weeks} 週 ${rest} 日`, `約 ${months} か月${arg === 0 ? '' : arg > 0 ? '後' : '前'}`].join('\n'),
+      text: [`${when}: ${formatDay(day, 'ja')}`, `${n} 日 = ${weeks} 週 ${rest} 日`, ...(arg === 0 ? [] : [`約 ${months} か月${arg > 0 ? '後' : '前'}`])].join('\n'),
     }
   }
   const when = arg === 0 ? 'Today' : arg > 0 ? `${n} ${n === 1 ? 'day' : 'days'} from today` : `${n} ${n === 1 ? 'day' : 'days'} before today`
@@ -454,7 +454,7 @@ export const dateOffset = (input: LocalInput): LocalOutput => {
     text: [
       `${when}: ${formatDay(day, 'en')}`,
       `${n} ${n === 1 ? 'day' : 'days'} = ${weeks} ${weeks === 1 ? 'week' : 'weeks'} ${rest} ${rest === 1 ? 'day' : 'days'}`,
-      `About ${months} months`,
+      ...(arg === 0 ? [] : [`About ${months} months ${arg > 0 ? 'from' : 'before'} today`]),
     ].join('\n'),
   }
 }
@@ -586,7 +586,14 @@ export const wareki = (input: LocalInput): LocalOutput => {
   const last = lastEraYear(index)
   if (n < 1 || n > last) {
     return {
-      error: lang === 'ja' ? `${era.ja}は元年から ${last} 年までです。` : `${era.en} runs from year 1 to ${last}.`,
+      error:
+        index === ERAS.length - 1
+          ? lang === 'ja'
+            ? `${era.ja}は元年以降の年を指定してください（西暦 9999 年まで）。`
+            : `${era.en} counts from year 1: give a year from 1 on (up to 9999 AD).`
+          : lang === 'ja'
+            ? `${era.ja}は元年から ${last} 年までです。`
+            : `${era.en} runs from year 1 to ${last}.`,
     }
   }
   const y = era.start.y + n - 1

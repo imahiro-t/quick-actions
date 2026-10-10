@@ -338,6 +338,13 @@ const standaloneModel = (a: Omit<CompleteAction<Localized>, 'kind' | 'target'>):
   target: 'none',
 })
 
+/** A standalone action run here, with no model: its compute on the argument alone. */
+const standaloneLocal = (a: Omit<LocalAction<Localized>, 'kind' | 'target'>): LocalAction<Localized> => ({
+  ...a,
+  kind: 'local',
+  target: 'none',
+})
+
 /** A free-text argument: optional when `fallback` is left out, else that is its default. */
 const textArg = (ja: string, en: string, fallback?: string): ArgSpec<Localized> =>
   fallback === undefined ? { type: 'text', hint: { ja, en } } : { type: 'text', default: fallback, hint: { ja, en } }
@@ -2684,7 +2691,8 @@ export const ACTIONS: readonly ActionSpec[] = [
 
   // Standalone actions run here, with no model (SELM-00035): runs over time,
   // the clock and the calendar, and reference tables. The local time comes
-  // from utcOffsetMinutes; nothing reaches the network.
+  // from utcOffsetMinutes; nothing reaches the network. `satisfies` keeps the
+  // inline argument literals (type: 'int', ...) from widening to string.
   ...(
     [
       // Runs over time: once a second, the generic toast when done.
@@ -2838,7 +2846,7 @@ export const ACTIONS: readonly ActionSpec[] = [
         compute: portNumbers,
       },
     ] satisfies Omit<LocalAction<Localized>, 'kind' | 'target'>[]
-  ).map((a): LocalAction<Localized> => ({ ...a, kind: 'local', target: 'none' })),
+  ).map(standaloneLocal),
 
   // Standalone actions run by a model: ideas, drafting help, templates and
   // conventions (SELM-00033). One call on the argument alone, in the pane only.

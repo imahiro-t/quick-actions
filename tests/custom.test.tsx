@@ -4,7 +4,7 @@ import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
 // The person's own actions, from the `customActions` setting: read, checked,
 // shown on the hint line and run like the built-ins.
@@ -293,7 +293,7 @@ for (const surface of SURFACES) {
     [{ ...JA, ...WITH_CUSTOM }, ['海賊風の要約', '意味', 'Relate', 'レビュー', 'Look around']],
     [{ ...EN, ...WITH_CUSTOM }, ['Pirate summary', 'Explain', 'Relate', 'Review', 'Look around']],
   ] as const) {
-    test(`[${surface}] [${options.language}] custom actions take their place on the hint line as \`actions\` orders them`, { options }, async ($, on) => {
+    test(`[${surface}] [${options.language}] custom actions take their place on the hint line as \`actions\` pins them`, { options }, async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
       await start($)
@@ -302,7 +302,8 @@ for (const surface of SURFACES) {
 
       const band = await $.ui.mount({ ...BAND, surface })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual(['🪄', '💡', '🧭', '🧪', '👀', '✕'])
+      // Five pinned, then the first of the rest (translate), six in all.
+      expect(icons).toEqual(['🪄', '💡', '🧭', '🧪', '👀', '🌐', '✕', '⋯'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       // Nothing was wrong: no toast.
       expect(s.toasts).toEqual([])
@@ -373,9 +374,11 @@ test('each custom kind runs by `/selection-actions <id>`, in English too', { opt
   expect(s.registered[0]).toMatchObject({ name: 'review-pr', tools: ['Read', 'Grep', 'WebFetch'], prompt: 'You review code and answer in English.' })
   expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:review-pr`])
 
-  // With no ID, the first on the hint line: here a custom one.
-  await runCommand($, '')
-  expect(s.models).toHaveLength(2)
+  // With no ID, the ⋯ dialog opens and nothing runs.
+  const opened = await runCommand($, '')
+  expect(JSON.stringify(opened)).toContain(MESSAGES.en.pickerOpened)
+  expect(s.opened.at(-1)?.id).toBe(PICKER)
+  expect(s.models).toHaveLength(1)
 })
 
 for (const [options, texts] of [
@@ -440,7 +443,8 @@ for (const surface of SURFACES) {
     await clock.advance(400)
 
     const band = await $.ui.mount({ ...BAND, surface })
-    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['🪄', '💡', '✕'])
+    // The valid custom one and explain pinned; the invalid ones nowhere.
+    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['🪄', '💡', '🌐', '🔤', '🧸', '🔬', '✕', '⋯'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])
@@ -520,11 +524,12 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['💡', '🌐', '📝', '🔎', '✕'])
+  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
   await band.unmount()
 
   const r = await runCommand($, '')
-  expect(s.models.map(m => m.model)).toEqual(['sonnet'])
+  expect(s.opened.at(-1)?.id).toBe(PICKER)
+  expect(s.models).toEqual([])
   expect(JSON.stringify(r)).toContain('customActions を JSON として読めません')
 })
 

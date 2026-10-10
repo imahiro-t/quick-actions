@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { BAND, JA, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { MESSAGES } from '../hooks/i18n'
+import { BAND, JA, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
 // The default set has no fork: these name one (💬 ask) beside the complete and subagent defaults.
 const WITH_ASK = { ...JA, actions: 'explain,translate,ask,code' }
@@ -78,7 +79,7 @@ for (const surface of SURFACES) {
   })
 }
 
-// web-check is not in the default set: named in the setting, it joins the hint
+// web-check is not in the default set: pinned in the setting, it joins the hint
 // line, and pressed or run by the command it registers a subagent with the web
 // tools alone, described in the configured language.
 for (const language of ['ja', 'en'] as const) {
@@ -94,7 +95,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual(['💡', '🔎', '📚', '✕'])
+      expect(icons).toEqual(['💡', '🔎', '📚', '🌐', '🔤', '🧸', '✕', '⋯'])
 
       await reselect(s, clock)
       await band.press({ key: 'web-check' })
@@ -130,14 +131,15 @@ test('the empty pane points at the hint line under the prompt', { options: JA },
   expect(await pane.find({ text: /プロンプト下のヒント行/ })).toBeDefined()
 })
 
-test('/selection-actions runs the first enabled action', { options: { ...JA, actions: 'translate,explain' } }, async ($, on) => {
+test('/selection-actions without an ID opens the ⋯ dialog and runs nothing', { options: { ...JA, actions: 'translate,explain' } }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'Bonjour'
 
   const r = await runCommand($, '')
-  expect(s.models.map(m => m.model)).toEqual(['haiku'])
-  expect(JSON.stringify(r)).toContain('日本語訳')
+  expect(s.models).toEqual([])
+  expect(s.opened.map(o => o.id)).toEqual([PICKER])
+  expect(JSON.stringify(r)).toContain(MESSAGES.ja.pickerOpened)
 })
 
 test('/selection-actions <id> runs that action; an unknown ID is told, not run', { options: JA }, async ($, on) => {

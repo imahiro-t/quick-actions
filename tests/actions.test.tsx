@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
+import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, actionsFor, messageOf, resolveSpec, sys } from '../hooks/actions'
+import { parsePins } from '../hooks/order'
 import type { ActionSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
 import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
@@ -119,19 +120,19 @@ test('web-check: a subagent on the web alone, in both languages, answering with 
   expect(others.map(a => a.id)).toEqual(['code'])
   for (const a of others) if (a.kind === 'subagent') expect(a.tools).toBeUndefined()
 
-  // Named in the setting, it is picked like any other; it is not in the default set.
-  expect(resolveActions(ACTIONS, 'web-check').map(a => a.id)).toEqual(['web-check'])
+  // Named in the setting, it is pinned like any other; it is not in the default set.
+  expect(parsePins(ACTIONS, 'web-check').map(a => a.id)).toEqual(['web-check'])
   expect(DEFAULT_ACTION_IDS).not.toContain('web-check')
 })
 
 test('the default set is one per purpose: explain, translate, summarize, code', () => {
   expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'translate', 'summarize', 'code'])
   // A removed ID in the setting is ignored like an unknown one.
-  expect(resolveActions(ACTIONS, 'send,usages').map(a => a.id)).toEqual([...DEFAULT_ACTION_IDS])
-  expect(resolveActions(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
+  expect(parsePins(ACTIONS, 'send,usages')).toEqual([])
+  expect(parsePins(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
 })
 
-test('resolveActions: one more definition is all a new action needs', () => {
+test('parsePins: one more definition is all a new action needs', () => {
   const extra: ActionSpec = {
     id: 'shout',
     icon: '📣',
@@ -141,8 +142,8 @@ test('resolveActions: one more definition is all a new action needs', () => {
     prompt: sys('Shout it.'),
   }
   const defs = [...ACTIONS, extra]
-  expect(resolveActions(defs, 'shout,explain').map(a => a.id)).toEqual(['shout', 'explain'])
-  expect(resolveActions(ACTIONS, 'shout,explain').map(a => a.id)).toEqual(['explain'])
+  expect(parsePins(defs, 'shout,explain').map(a => a.id)).toEqual(['shout', 'explain'])
+  expect(parsePins(ACTIONS, 'shout,explain').map(a => a.id)).toEqual(['explain'])
   // Resolved, it reads in the language and asks for an answer in it.
   expect(resolveSpec(extra, 'en')).toMatchObject({ label: 'Shout', prompt: expect.stringContaining('Answer in English') })
   expect(resolveSpec(extra, 'ja')).toMatchObject({ label: '大声で', prompt: expect.stringContaining('Answer in Japanese') })
@@ -164,23 +165,22 @@ test('resolveSpec: ANSWER_LANGUAGE in a prompt becomes the language name', () =>
   }
 })
 
-test('resolveActions: unset, empty, unknown and odd values never throw', () => {
-  const defaults = [...DEFAULT_ACTION_IDS]
-  expect(resolveActions(ACTIONS, undefined).map(a => a.id)).toEqual(defaults)
-  expect(resolveActions(ACTIONS, '').map(a => a.id)).toEqual(defaults)
-  expect(resolveActions(ACTIONS, ' , ,').map(a => a.id)).toEqual(defaults)
-  expect(resolveActions(ACTIONS, 'nope').map(a => a.id)).toEqual(defaults)
-  expect(resolveActions(ACTIONS, 42).map(a => a.id)).toEqual(defaults)
-  expect(resolveActions(ACTIONS, 'ask, ASK ,nope,summarize').map(a => a.id)).toEqual(['ask', 'summarize'])
+test('parsePins: unset, empty, unknown and odd values pin nothing and never throw', () => {
+  expect(parsePins(ACTIONS, undefined)).toEqual([])
+  expect(parsePins(ACTIONS, '')).toEqual([])
+  expect(parsePins(ACTIONS, ' , ,')).toEqual([])
+  expect(parsePins(ACTIONS, 'nope')).toEqual([])
+  expect(parsePins(ACTIONS, 42)).toEqual([])
+  expect(parsePins(ACTIONS, 'ask, ASK ,nope,summarize').map(a => a.id)).toEqual(['ask', 'summarize'])
 })
 
-// Every definition, enabled through the setting, is drawn and run by the
+// Every definition, pinned through the setting with room for all, is drawn and run by the
 // generic code exactly as its definition says: nothing is wired per action.
 for (const language of ['ja', 'en'] as const) {
   const defs = actionsFor(language)
   test(
     `[${language}] every definition is drawn in order and runs by its kind`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(',') }, timeoutMs: 30_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -190,7 +190,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual([...ACTIONS.map(a => a.icon), '✕'])
+      expect(icons).toEqual([...ACTIONS.map(a => a.icon), '✕', '⋯'])
 
       for (const a of defs) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }

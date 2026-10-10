@@ -64,6 +64,18 @@ export type Messages = {
   quote: (text: string) => string
   /** The hover label of the hint line's ✕ button. */
   close: string
+  /** The hover label of the hint line's ⋯ button, which opens the dialog of every action. */
+  allActions: string
+  /** The title of the ⋯ dialog's pane. */
+  pickerTitle: string
+  /** Drawn before the ⋯ dialog's list. */
+  pickerLabel: string
+  /** Shown in the ⋯ dialog while it does not hold the keyboard. */
+  pickerNoFocus: string
+  /** The ⋯ dialog's close button. */
+  pickerClose: string
+  /** The command's result when it opened the ⋯ dialog. */
+  pickerOpened: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -87,11 +99,17 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `不明なアクション ID です: ${id}（使える ID: ${ids.join(', ')}）`,
     showing: (pane, label) => `${pane} ペインに ${label} の結果を表示します。`,
     commandDescription:
-      'トランスクリプトで選択中のテキストにアクションを実行します（省略時はヒント行の先頭のアクション）',
+      'トランスクリプトで選択中のテキストにアクションを実行します（ID を省くと、すべてのアクションから選ぶダイアログを開きます）',
     emptyPane: 'テキストを選択して、プロンプト下のヒント行のアイコンを押してください。',
     inlineHint: 'ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。',
     quote: text => `「${text}」`,
     close: '閉じる',
+    allActions: 'すべてのアクション',
+    pickerTitle: 'アクションを選ぶ',
+    pickerLabel: 'アクション: ',
+    pickerNoFocus: '入力欄が空のときに ⋯ を押すか /selection-actions を実行すると、キーボードで選べます。クリックでも選べます。',
+    pickerClose: '閉じる',
+    pickerOpened: 'ダイアログでアクションを選んでください。',
     languageName: 'Japanese',
     agentDescription: label => `選択テキストの${label}（selection-actions 専用）`,
     customReason: r => {
@@ -138,11 +156,17 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `Unknown action ID: ${id} (available IDs: ${ids.join(', ')})`,
     showing: (pane, label) => `Showing the ${label} result in the ${pane} pane.`,
     commandDescription:
-      'Run a selection action on the text selected in the transcript (default: the first enabled action)',
+      'Run a selection action on the text selected in the transcript (without an ID: pick one from every action in a dialog)',
     emptyPane: 'Select some text, then press an icon on the hint line below the prompt.',
     inlineHint: 'Widen the terminal to 110 columns or more to show this pane on the right (in fullscreen).',
     quote: text => `"${text}"`,
     close: 'Close',
+    allActions: 'All actions',
+    pickerTitle: 'Pick an action',
+    pickerLabel: 'Action: ',
+    pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /selection-actions, to pick with the keyboard. You can also click one.',
+    pickerClose: 'Close',
+    pickerOpened: 'Pick an action in the dialog.',
     languageName: 'English',
     agentDescription: label => `${label} for the selected text (selection-actions only)`,
     customReason: r => {

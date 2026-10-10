@@ -3,6 +3,14 @@ import type { On } from 'claude-code'
 
 // Stands for the engine beneath the plugin in every test: records what the
 // plugin asks of the models and the agents and answers it.
+//
+// It also answers $.store from memory, empty unless the test hands stage()
+// what it holds at the start: the hint line and every run read and write the
+// usage scores there, so no test may leave $.store unanswered. The store is
+// stage's own (`stored`) rather than mock.store's: a test's $ carries no
+// $.store to read back what the plugin wrote, and the kit takes one hook per
+// event, so mock.store's could not be watched. Values go in and out as JSON
+// text, as the engine keeps them.
 
 export const PLUGIN = 'selection-actions'
 
@@ -26,6 +34,19 @@ export const PANE = {
     scroll: { offset: 0, bodyRows: 30 },
     view: {},
   },
+} as const
+
+/** The ⋯ dialog's pane, as the plugin opens it. */
+export const PICKER = `${PLUGIN}-picker`
+
+/** The keys of the dialog's list and its close button: never an action's ID. */
+export const PICKER_SELECT = '_picker'
+export const PICKER_CLOSE = '_picker-close'
+
+export const PICKER_PANE = {
+  ...PANE,
+  requestId: PICKER,
+  props: { ...PANE.props, title: PICKER, isFocused: true },
 } as const
 
 export const SURFACES = ['terminal', 'desktop'] as const
@@ -60,6 +81,11 @@ export type Stage = {
   // Set to hold every model call (complete and fork) and every subagent
   // registration until it settles: the pane shows it running meanwhile.
   hold: Promise<void> | null
+  // Every pane the plugin opened (as $.ui.open was asked) and closed (by id), in order.
+  opened: { id: string; title?: string; focus?: true; closeOnEscape?: true }[]
+  closed: string[]
+  // What $.store holds, by key: the test's entries, then what the plugin wrote.
+  stored: Record<string, unknown>
 }
 
 const reply = (s: Stage, text: string) => {
@@ -68,8 +94,22 @@ const reply = (s: Stage, text: string) => {
     : ({ isAnswered: true, text, usage } as const)
 }
 
-export const stage = (on: On): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null }
+/** What stage() starts the mocked $.store with: its entries, as `{ usage: { … } }`. */
+export type StageOptions = { store?: Readonly<Record<string, unknown>> }
+
+export const stage = (on: On, options: StageOptions = {}): Stage => {
+  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], stored: { ...options.store } }
+  const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
+  on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
+  on('store.set', (_$, e) => {
+    s.stored[e.key] = json(e.value)
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e) => {
+    delete s.stored[e.key]
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: Object.keys(s.stored) }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
@@ -77,7 +117,14 @@ export const stage = (on: On): Stage => {
     return <Box key="engine" />
   })
   on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_$, e) => {
+    s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape })
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_$, e) => {
+    s.closed.push(e.id)
+    return { value: undefined }
+  })
   on('settings.read', () => {
     s.settingsReads++
     if (s.settingsDeny !== null) return { deny: s.settingsDeny }
@@ -120,6 +167,9 @@ export const stage = (on: On): Stage => {
   })
   return s
 }
+
+/** The usage scores $.store holds now. */
+export const storedUsage = (s: Stage) => s.stored['usage'] as Record<string, { score: number; at: number }> | undefined
 
 export const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
 

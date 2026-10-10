@@ -15,6 +15,8 @@ declare module 'claude-code' {
       selection: string | null
       dismissed: string | null
       results: Result[]
+      /** The text the ⋯ dialog runs on, read as it opened; null while it is closed. */
+      picking: string | null
     }
   }
 }

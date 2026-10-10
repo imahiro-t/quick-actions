@@ -39,6 +39,10 @@ export const PANE = {
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
+/** The keys of the dialog's list and its close button: never an action's ID. */
+export const PICKER_SELECT = '_picker'
+export const PICKER_CLOSE = '_picker-close'
+
 export const PICKER_PANE = {
   ...PANE,
   requestId: PICKER,

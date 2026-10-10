@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { settleQuietly, toLatest } from '../hooks/scroll'
-import { BAND, EN, JA, PANE, PICKER_PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER_PANE, PICKER_SELECT, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
 // Every way an action runs (an icon, the ⋯ dialog, the command) goes through
 // run() in register.tsx, which opens the pane and then awaits
@@ -86,7 +86,7 @@ test('a pick in the ⋯ dialog runs on and the newest result is drawn first', as
   await reselect(s, clock)
   await band.press({ key: '_more' })
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: 'picker', value: 'translate' })
+  await picker.select({ key: PICKER_SELECT, value: 'translate' })
   const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
   expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
   await picker.unmount()

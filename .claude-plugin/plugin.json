@@ -2,9 +2,7 @@
   "name": "selection-actions",
   "version": "0.1.0",
   "description": "Icon actions on the text selected in the Claude Code transcript: translate, explain (simply, in depth or in context), summarize, and find the evidence behind it. The ones you use most come first (pin your own in settings) and every action is under ⋯, in English or Japanese",
-  "author": {
-    "name": "Takashi Imahiro"
-  },
+  "author": { "name": "Takashi Imahiro" },
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -30,11 +28,7 @@
       "type": "string",
       "title": "Language",
       "description": "Display and answer language: auto (follow Claude Code's language setting, then the locale; English unless Japanese is detected), ja or en.",
-      "options": [
-        "auto",
-        "ja",
-        "en"
-      ],
+      "options": ["auto", "ja", "en"],
       "default": "auto"
     }
   }

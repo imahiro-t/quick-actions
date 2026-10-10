@@ -120,3 +120,16 @@ export function parseHintCount(value: unknown): number {
   else return DEFAULT_HINT_COUNT
   return Number.isSafeInteger(n) && n >= 1 ? n : DEFAULT_HINT_COUNT
 }
+
+/** Where one load keeps the order it settles: register makes a fresh one per load. */
+export type OrderSlot = { pending?: Promise<readonly string[]> }
+
+/**
+ * The order kept in `slot`, started by `compute` the first time it is asked
+ * for: every later or concurrent ask answers what that one settles to. A
+ * settling an earlier load started lands in that load's slot alone, so it is
+ * never a later load's order.
+ */
+export function settleIn(slot: OrderSlot, compute: () => Promise<readonly string[]>): Promise<readonly string[]> {
+  return (slot.pending ??= compute())
+}

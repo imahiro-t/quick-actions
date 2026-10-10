@@ -11,9 +11,11 @@ import {
   parsePins,
   parseUsage,
   recordUse,
+  settleIn,
 } from '../hooks/order'
+import type { OrderSlot } from '../hooks/order'
 import type { Usage } from '../hooks/order'
-import { BAND, PICKER_PANE, reselect, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, PICKER_PANE, PICKER_SELECT, reselect, runCommand, stage, start, storedUsage } from './stage'
 
 // The hint line's order: pins, then the usage score (halving every 30 days),
 // ties in the order of definition; with no pin and no usage, the default set
@@ -240,7 +242,7 @@ test('every way of running records a use: the hint line, the ⋯ dialog and the 
   await band.press({ key: '_more' })
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: 'picker', value: 'tldr' })
+  await picker.select({ key: PICKER_SELECT, value: 'tldr' })
   await picker.unmount()
   await clock.settle()
 
@@ -262,4 +264,37 @@ test('a use adds to the decayed score kept from before', async ($, on) => {
   const usage = await storedUsage(s)
   expectNear(usage?.['why']?.score, 3)
   expect(usage?.['why']?.at).toBe(NOW)
+})
+
+// ---------------------------------------------------------------------------
+// The settled order belongs to the load that settled it.
+
+test('settleIn computes once per slot and shares it with every ask', async () => {
+  const slot: OrderSlot = {}
+  let calls = 0
+  const compute = async () => {
+    calls++
+    return ['explain']
+  }
+  const [a, b] = await Promise.all([settleIn(slot, compute), settleIn(slot, compute)])
+  expect(await settleIn(slot, compute)).toEqual(['explain'])
+  expect(a).toEqual(['explain'])
+  expect(b).toEqual(['explain'])
+  expect(calls).toBe(1)
+})
+
+// A reload (a settings change) gives the new load a slot of its own: a
+// settling the earlier load started, finishing after the reload, lands in the
+// earlier slot and never becomes the new load's order.
+test('a settling an earlier load started never becomes a later load\'s order', async () => {
+  let finishOld: (ids: readonly string[]) => void = () => {}
+  const oldSlot: OrderSlot = {}
+  const oldOrder = settleIn(oldSlot, () => new Promise(resolve => (finishOld = resolve)))
+
+  // The reload: a fresh slot, with the new custom action in it.
+  const newSlot: OrderSlot = {}
+  finishOld(['explain', 'translate'])
+  await oldOrder
+  expect(await settleIn(newSlot, async () => ['explain', 'translate', 'mine'])).toEqual(['explain', 'translate', 'mine'])
+  expect(await oldOrder).toEqual(['explain', 'translate'])
 })

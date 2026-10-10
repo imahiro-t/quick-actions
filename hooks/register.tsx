@@ -16,7 +16,8 @@ import type { ActionDef, ActionSpec, ResolvedSubagentAction } from './actions'
 import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
-import { USAGE_KEY, orderActions, parseHintCount, parsePins, parseUsage, recordUse } from './order'
+import { USAGE_KEY, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
+import type { OrderSlot } from './order'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -31,13 +32,14 @@ const PANE_COLUMNS = 56
 const COMMAND = PLUGIN
 const POLL_MS = 300
 const KEEP = 20
-// The ⋯ dialog: a pane of its own beside the results. Its button's key on the
-// hint line is never an action's ID (those are lowercase letters, digits and
-// hyphens), so no custom action can take it.
+// The ⋯ dialog: a pane of its own beside the results. The keys of what it
+// adds (⋯ on the hint line, the dialog's list and close button) start with
+// `_`, which no action's ID can (those are lowercase letters, digits and
+// hyphens), so no custom action's element ever shares one.
 const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
-const PICKER_SELECT_KEY = 'picker'
-const PICKER_CLOSE_KEY = 'picker-close'
+const PICKER_SELECT_KEY = '_picker'
+const PICKER_CLOSE_KEY = '_picker-close'
 
 // The pane's text colours, by placement. Docked on the right,
 // the pane sits on a background core paints in the theme
@@ -228,24 +230,20 @@ async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
   if (picked !== undefined) await runOnText($, def, lang, picked)
 }
 
-// The order of every action (./order), settled once per load from the usage
-// scores as they stand: at session start, or by whichever hook needs it
-// first. Uses during the session do not move it, so an icon stays where the
-// person reaches for it. register clears it, so a reload (a settings change)
-// settles it anew; hooks read it only through ensureOrder.
-let orderedIds: readonly string[] | undefined
-let pendingOrder: Promise<readonly string[]> | undefined
+/** The order of `specs` (every action of this load) by ID, `pins` first, from the usage scores as they stand now. Never rejects. */
+async function computeOrder($: EngineInterface, specs: readonly ActionSpec[], pins: readonly ActionSpec[]): Promise<readonly string[]> {
+  // An unreadable store counts as no usage: the actions still show.
+  const usage = parseUsage(await readQuietly($.store.get(USAGE_KEY)))
+  const now = (await readQuietly($.clock.now())) ?? 0
+  return orderActions(specs, pins, usage, now).map(a => a.id)
+}
 
-/** The settled order of `specs` (every action of this load) by ID, `pins` first. */
-async function ensureOrder($: EngineInterface, specs: readonly ActionSpec[], pins: readonly ActionSpec[]): Promise<readonly string[]> {
-  if (orderedIds !== undefined) return orderedIds
-  pendingOrder ??= (async () => {
-    // An unreadable store counts as no usage: the actions still show.
-    const usage = parseUsage(await readQuietly($.store.get(USAGE_KEY)))
-    const now = (await readQuietly($.clock.now())) ?? 0
-    return (orderedIds = orderActions(specs, pins, usage, now).map(a => a.id))
-  })()
-  return pendingOrder
+/** What one load orders: every action of it, its pins, and where its settled order is kept. */
+type OrderLoad = { specs: readonly ActionSpec[]; pins: readonly ActionSpec[]; slot: OrderSlot }
+
+/** The settled order of `load`'s actions by ID, computed the first time it is asked for. Never rejects. */
+async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonly string[]> {
+  return settleIn(load.slot, () => computeOrder($, load.specs, load.pins))
 }
 
 /**
@@ -298,8 +296,13 @@ export const register: Register = (on, options) => {
   const hintCount = parseHintCount(options.hintCount)
   // Tall enough for every action in the ⋯ dialog, its notice and its button.
   const pickerRows = allSpecs.length + 4
-  orderedIds = undefined
-  pendingOrder = undefined
+
+  // The order of every action, settled once per load: at session start, or by
+  // whichever hook needs it first. Uses during the session do not move it, so
+  // an icon stays where the person reaches for it. Kept with this load, not in
+  // the module: a settling an earlier load started (with its own definitions)
+  // may finish after a reload, and must not become this load's order.
+  const orderLoad: OrderLoad = { specs: allSpecs, pins, slot: {} }
 
   // Kept here, with this load's settings, rather than in a module-level cache
   // like actionsFor's: the custom definitions change with the setting, and
@@ -320,7 +323,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
     // The order for this session, from the usage so far.
-    await ensureOrder($, allSpecs, pins)
+    await ensureOrder($, orderLoad)
     await $.command.register({
       name: COMMAND,
       description: MESSAGES[l].commandDescription,
@@ -417,7 +420,7 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     // The first hintCount in the order; pins beyond it too wait under ⋯.
-    const enabled = inOrder(await ensureOrder($, allSpecs, pins), l).slice(0, hintCount)
+    const enabled = inOrder(await ensureOrder($, orderLoad), l).slice(0, hintCount)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     return (
@@ -440,7 +443,7 @@ export const register: Register = (on, options) => {
             onPress={() => update($, dismissed, () => text)}
           />
         </Box>
-        <Box key="act-more" hover={{ scope: 'tip-more' }}>
+        <Box key={`act-${MORE_KEY}`} hover={{ scope: 'tip-more' }}>
           <Button
             key={MORE_KEY}
             label="⋯"
@@ -471,11 +474,12 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const text = await read($, picking)
-    const ordered = inOrder(await ensureOrder($, allSpecs, pins), l)
+    const ordered = inOrder(await ensureOrder($, orderLoad), l)
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
-    // Every surface but mobile has a Select; there the actions are buttons.
-    const Select = 'Select' in elements ? elements.Select : undefined
+    // The mobile app draws no Select (though its table names one): there the
+    // actions are buttons.
+    const Select = e.surface !== 'mobile' && 'Select' in elements ? elements.Select : undefined
 
     return (
       <Box flexDirection="column">
@@ -497,7 +501,7 @@ export const register: Register = (on, options) => {
             ))}
           </Box>
         )}
-        <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} dimColor onPress={() => closePicker($)} />
+        <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} dimColor role="dismiss" onPress={() => closePicker($)} />
       </Box>
     )
   })

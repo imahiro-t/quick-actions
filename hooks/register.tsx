@@ -7,6 +7,8 @@ import {
   PLUGIN,
   READ_ONLY_TOOLS,
   findAction,
+  isContext,
+  markedIcon,
   messageOf,
   resolveAll,
   subagentType,
@@ -27,9 +29,12 @@ import { settleQuietly, toLatest } from './scroll'
 // from a literal here.
 
 const PANE = PLUGIN
-const PANE_TITLE = 'Selection Actions'
+const PANE_TITLE = 'Quick Actions'
 const PANE_COLUMNS = 56
 const COMMAND = PLUGIN
+// `/quick-actions hint`: the hint line without a selection. Reserved, so no
+// custom action can take it as its ID.
+const HINT_ARG = 'hint'
 const POLL_MS = 300
 const KEEP = 20
 // The ⋯ dialog: a pane of its own beside the results. The keys of what it
@@ -63,10 +68,11 @@ const PANE_COLORS = {
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
 // types/index.d.ts types these keys under the same name, so a drift fails tsc.
-const selection = atom({ plugin: 'selection-actions', key: 'selection' } as const, null)
-const dismissed = atom({ plugin: 'selection-actions', key: 'dismissed' } as const, null)
-const results = atom({ plugin: 'selection-actions', key: 'results' } as const, [])
-const picking = atom({ plugin: 'selection-actions', key: 'picking' } as const, null)
+const selection = atom({ plugin: 'quick-actions', key: 'selection' } as const, null)
+const dismissed = atom({ plugin: 'quick-actions', key: 'dismissed' } as const, null)
+const results = atom({ plugin: 'quick-actions', key: 'results' } as const, [])
+const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
+const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
 
 const quoteOf = (text: string) => {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -172,12 +178,17 @@ function recordUsage($: EngineInterface, id: string): Promise<void> {
 }
 
 // Every way an action runs (an icon, the ⋯ dialog, the command) comes here.
+// `text` is the selected text a selection action runs on; a context action
+// runs on the conversation and reads none. Any run closes the hint line that
+// `/quick-actions hint` opened.
 async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
   const t = MESSAGES[lang]
+  const context = isContext(def)
   // Not awaited: the score must not hold up the answer.
   void recordUsage($, def.id)
+  await update($, hint, () => null)
   const id = nextId++
-  const result: Result = { id, action: def.id, quote: quoteOf(text), status: 'running', text: '' }
+  const result: Result = { id, action: def.id, quote: context ? '' : quoteOf(text), status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
   await $.ui.open({ id: PANE, title: PANE_TITLE, columns: PANE_COLUMNS })
   // Back to the top, where this newest result is drawn (see ./scroll).
@@ -191,7 +202,9 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
   try {
     const r =
       def.kind === 'fork'
-        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${answerStyle(lang)}` })
+        ? await $.model.fork({
+            prompt: context ? `${def.prompt} ${answerStyle(lang)}` : `${wrap(text)}\n\n${def.prompt} ${answerStyle(lang)}`,
+          })
         : await $.model.complete({
             model: def.model,
             system: def.prompt,
@@ -225,9 +238,22 @@ async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, text: s
   await run($, def, lang, text)
 }
 
-async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
+/** Runs `def` on the text selected now; false (and a toast saying so) when there is none. */
+async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang): Promise<boolean> {
   const picked = await selectedText($, lang)
-  if (picked !== undefined) await runOnText($, def, lang, picked)
+  if (picked === undefined) return false
+  await runOnText($, def, lang, picked)
+  return true
+}
+
+/** A context action: on the conversation, with no selection to read. */
+async function runOnConversation($: EngineInterface, def: ActionDef, lang: Lang) {
+  await run($, def, lang, '')
+}
+
+/** The text selected now, trimmed; null when there is none. No toast. */
+async function selectionNow($: EngineInterface): Promise<string | null> {
+  return (await $.ui.selection())?.text.trim() || null
 }
 
 /** The order of `specs` (every action of this load) by ID, `pins` first, from the usage scores as they stand now. Never rejects. */
@@ -247,18 +273,17 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
 }
 
 /**
- * Opens the ⋯ dialog on `text`, or on the text selected now. The text is
- * kept in `picking` as it opens, so a pick runs on it however the selection
- * changes meanwhile. With none, a toast says so and nothing opens.
+ * Opens the ⋯ dialog on `text` (null: none), or, left out, on the text
+ * selected now. The text is kept in `picking` as it opens, so a pick runs on
+ * it however the selection changes meanwhile. With no text, the dialog lists
+ * the context actions alone.
  */
-async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string): Promise<boolean> {
-  const picked = text ?? (await selectedText($, lang))
-  if (picked === undefined) return false
-  await update($, picking, () => picked)
+async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
+  const picked = text === undefined ? await selectionNow($) : text
+  await update($, picking, () => ({ text: picked }))
   // The same width as the results: an open without `columns` resets the dock to
   // its default share, which widens it for as long as the dialog is open.
   await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
-  return true
 }
 
 /**
@@ -273,23 +298,30 @@ async function closePicker($: EngineInterface) {
 
 /**
  * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on, read
- * before the dialog closes and lets go of it.
+ * before the dialog closes and lets go of it; a context action, on the
+ * conversation. Either way, that text's icons go, as after a press on them.
  */
 async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) {
-  const text = await read($, picking)
+  const text = (await read($, picking))?.text ?? null
   await closePicker($)
+  if (def === undefined) return
+  if (isContext(def)) {
+    if (text !== null) await update($, dismissed, () => text)
+    await runOnConversation($, def, lang)
+    return
+  }
   if (text === null) {
     $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
-  if (def !== undefined) await runOnText($, def, lang, text)
+  await runOnText($, def, lang, text)
 }
 
 export const register: Register = (on, options) => {
   // Options change reloads the module, so reading the settings once here is
   // enough. The custom definitions join the built-ins after them; one that is
   // invalid is left out, with its reason kept in `problems` to show the person.
-  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close'])
+  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close', HINT_ARG])
   const problems = custom.problems
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
@@ -329,7 +361,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: COMMAND,
       description: MESSAGES[l].commandDescription,
-      argumentHint: '[action-id]',
+      argumentHint: `[action-id | ${HINT_ARG}]`,
       immediate: true,
     })
 
@@ -339,11 +371,28 @@ export const register: Register = (on, options) => {
     // can still read it) until the person selects again or their next prompt
     // or command has run: no event tells the module more, so a press of an
     // action or ✕ hides the icons for that selection (see `dismissed`).
+    //
+    // The hint line `/quick-actions hint` opened (`hint`) holds the text
+    // selected as the command ran, since running the command is itself what
+    // makes the engine stop answering that selection: its going closes
+    // nothing. A selection made after it opened arms it (one whose text is the
+    // held one does not: that may be the held selection itself, seen late),
+    // and that selection going closes it, as a selection's going hides its icons.
     $.clock.every(POLL_MS, () => {
       void (async () => {
-        const text = (await $.ui.selection())?.text.trim() || null
-        if (text !== (await read($, selection))) {
+        const text = await selectionNow($)
+        // Read before the write below, so the change is seen.
+        const previous = await read($, selection)
+        if (text !== previous) {
           await update($, selection, () => text)
+        }
+        const opened = await read($, hint)
+        if (opened !== null) {
+          if (!opened.armed && text !== null && text !== previous && text !== opened.text) {
+            await update($, hint, h => (h === null ? h : { ...h, armed: true }))
+          } else if (opened.armed && previous !== null && text === null) {
+            await update($, hint, () => null)
+          }
         }
         // Gone for good: the same text selected later shows its icons again.
         if (text === null && (await read($, dismissed)) !== null) {
@@ -390,10 +439,18 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     const defs = defsFor(l)
     const wanted = e.args.trim().toLowerCase()
-    // Without an ID: the ⋯ dialog, on the text selected now.
+    // Without an ID: the ⋯ dialog, on the text selected now (with none, the context actions).
     if (wanted === '') {
-      const opened = await openPicker($, l, pickerRows)
-      return { text: withProblems(opened ? t.pickerOpened : t.noSelection, problems, l) }
+      await openPicker($, l, pickerRows)
+      return { text: withProblems(t.pickerOpened, problems, l) }
+    }
+    // `hint`: the hint line, on the text selected now, held here while the
+    // engine still answers it (see the poll in session.start).
+    if (wanted === HINT_ARG) {
+      const held = await selectionNow($)
+      await update($, hint, () => ({ text: held, armed: false }))
+      await update($, dismissed, () => null)
+      return { text: withProblems(t.hintOpened, problems, l) }
     }
     const def = findAction(defs, wanted)
     // Whatever the result, the custom definitions left out follow it, so this
@@ -406,24 +463,50 @@ export const register: Register = (on, options) => {
         ignored === undefined ? t.unknownId(wanted, defs.map(a => a.id)) : t.customIgnoredId(wanted, reasonText(ignored.reason, l))
       return { text: withProblems(text, problems, l) }
     }
-    await runOnSelection($, def, l)
+    if (isContext(def)) await runOnConversation($, def, l)
+    else if (!(await runOnSelection($, def, l))) return { text: withProblems(t.noSelection, problems, l) }
 
     return { text: withProblems(t.showing(PANE_TITLE, def.label), problems, l) }
   })
 
   // The icons take the hint line under the prompt, a row that is always there:
   // a band above the prompt would add a row mid-drag and shift the transcript.
+  //
+  // Shown on the text selected now, both kinds of action; else, while
+  // `/quick-actions hint` holds it open, on the text it held (both kinds) or,
+  // with none, the context actions alone.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const text = await read($, selection)
-    if (e.props.isDraft || text === null || text === (await read($, dismissed))) {
-      return next(e)
-    }
+    if (e.props.isDraft) return next(e)
+    const selected = await read($, selection)
+    const current = selected !== null && selected !== (await read($, dismissed)) ? selected : null
+    const opened = await read($, hint)
+    if (current === null && opened === null) return next(e)
+    // What a selection action on this line runs on.
+    const text = current ?? opened?.text ?? null
 
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
-    // The first hintCount in the order; pins beyond it too wait under ⋯.
-    const enabled = inOrder(await ensureOrder($, orderLoad), l).slice(0, hintCount)
+    // The first hintCount in the order, of the kinds that apply; pins beyond it too wait under ⋯.
+    const ordered = inOrder(await ensureOrder($, orderLoad), l)
+    const enabled = (text === null ? ordered.filter(isContext) : ordered).slice(0, hintCount)
     const { Box, Button, Text } = $.ui.resolve(e)
+
+    // A press puts this line away, whichever kind it runs: the selection's
+    // icons (dismissed) and the line `hint` opened.
+    const press = async (a: ActionDef) => {
+      if (isContext(a)) {
+        if (current !== null) await update($, dismissed, () => current)
+        await runOnConversation($, a, l)
+      } else if (current !== null) {
+        await runOnSelection($, a, l)
+      } else if (text !== null) {
+        await run($, a, l, text)
+      }
+    }
+    const close = async () => {
+      if (current !== null) await update($, dismissed, () => current)
+      await update($, hint, () => null)
+    }
 
     return (
       <Box flexDirection="row">
@@ -431,8 +514,8 @@ export const register: Register = (on, options) => {
           <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
             <Button
               key={a.id}
-              label={a.icon}
-              onPress={() => runOnSelection($, a, l)}
+              label={markedIcon(a)}
+              onPress={() => press(a)}
             />
           </Box>
         ))}
@@ -442,7 +525,7 @@ export const register: Register = (on, options) => {
             label="✕"
             dimColor
             role="dismiss"
-            onPress={() => update($, dismissed, () => text)}
+            onPress={close}
           />
         </Box>
         <Box key={`act-${MORE_KEY}`} hover={{ scope: 'tip-more' }}>
@@ -467,7 +550,8 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The ⋯ dialog: every action, in the hint line's order, as "icon label".
+  // The ⋯ dialog: every action, in the hint line's order, as "[icon] label" or
+  // "<icon> label"; opened with no text, the context actions alone.
   // Opened with focus, a Select takes the keys (arrows move, Enter runs);
   // Escape closes it through closeOnEscape. Focus is a request the engine
   // refuses while the composer holds text: then a line says how to get the
@@ -476,8 +560,9 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
-    const text = await read($, picking)
-    const ordered = inOrder(await ensureOrder($, orderLoad), l)
+    const state = await read($, picking)
+    const all = inOrder(await ensureOrder($, orderLoad), l)
+    const ordered = state?.text === null ? all.filter(isContext) : all
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     // The mobile app draws no Select (though its table names one): there the
@@ -488,20 +573,20 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {keyboardNotice && <Text dimColor>{t.pickerNoFocus}</Text>}
-        {text === null ? (
+        {state === null ? (
           <Text dimColor>{t.noSelection}</Text>
         ) : Select !== undefined ? (
           <Select
             key={PICKER_SELECT_KEY}
             label={t.pickerLabel}
             autoFocus
-            options={ordered.map(a => ({ value: a.id, label: `${a.icon} ${a.label}` }))}
+            options={ordered.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
             onSelect={value => pick($, l, findAction(ordered, value))}
           />
         ) : (
           <Box flexDirection="column">
             {ordered.map(a => (
-              <Button key={a.id} label={`${a.icon} ${a.label}`} onPress={() => pick($, l, a)} />
+              <Button key={a.id} label={`${markedIcon(a)} ${a.label}`} onPress={() => pick($, l, a)} />
             ))}
           </Box>
         )}
@@ -532,7 +617,7 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color={colors.failed}>{t.customProblemsHeading}</Text>
             {problems.map((p, i) => (
-              <Text key={i} color={colors.failed}>- {problemLine(p, l)}</Text>
+              <Text key={String(i)} color={colors.failed}>- {problemLine(p, l)}</Text>
             ))}
           </Box>
         )}
@@ -547,7 +632,8 @@ export const register: Register = (on, options) => {
           return (
             <Box flexDirection="column" marginBottom={1}>
               <Text bold color={colors.heading}>
-                {def?.icon ?? '•'} {def?.label ?? r.action} <Text dimColor>{t.quote(r.quote)}</Text>
+                {def?.icon ?? '•'} {def?.label ?? r.action}{' '}
+                <Text dimColor>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
               </Text>
               {r.status === 'running' ? (
                 <Text dimColor>{def?.runningText ?? t.thinking}</Text>

@@ -2,9 +2,12 @@
 // score it follows: pure functions over plain data, nothing here reaches `$`
 // or throws. register.tsx reads and writes the score through `$.store`.
 //
-// The order: the actions the `actions` setting names (pinned), in its order;
-// then the rest by their usage score, highest first, a tie or an unused one
-// keeping the order of definition (built-ins, then custom ones). With no pin
+// One order for both kinds of action, those on the selection and those on the
+// conversation, mixed: the actions the `actions` setting names (pinned, of
+// either kind), in its order; then the rest by their usage score, highest
+// first, a tie or an unused one keeping the order of definition (built-ins on
+// the selection, built-ins on the conversation, then custom ones). Where only
+// the context actions apply (no selection), register.tsx filters this order. With no pin
 // and no usage of any action that exists, the default set leads instead.
 // Each use adds 1 to the action's score, and a score halves every 30 days, so
 // the order follows what the person uses lately.

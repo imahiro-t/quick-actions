@@ -1,14 +1,15 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor } from '../hooks/actions'
+import { ACTIONS, actionsFor, isContext, markedIcon } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, in the hint line's order, picked with the
-// keyboard or a click, run on the text selected as it opened. Opened by the
-// hint line's ⋯ and by /selection-actions without an ID.
+// keyboard or a click, run on the text selected as it opened (with none, the
+// context actions alone, on the conversation). Opened by the hint line's ⋯
+// and by /quick-actions without an ID.
 
 const MORE = '_more'
 
@@ -19,7 +20,7 @@ const CUSTOM = {
   ]),
 }
 
-async function openByMore($: Engine, s: Stage, clock: Clock, surface: (typeof SURFACES)[number] = 'terminal') {
+async function openByMore($: Engine, s: Stage, clock: Clock, surface: (typeof SURFACES)[number] | 'mobile' = 'terminal') {
   s.selected = 'ECONNREFUSED 127.0.0.1:3306'
   await clock.advance(400)
   const band = await $.ui.mount({ ...BAND, surface })
@@ -58,7 +59,7 @@ for (const surface of SURFACES) {
     expect(dialog?.columns).toBe(results?.columns)
   })
 
-  test(`[${surface}] the dialog lists every action, custom ones too, in the hint line's order, as icon and label`, { options: { ...JA, ...CUSTOM } }, async ($, on) => {
+  test(`[${surface}] the dialog lists every action, custom ones too, in the hint line's order, as marked icon and label`, { options: { ...JA, ...CUSTOM } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -76,9 +77,11 @@ for (const surface of SURFACES) {
     expect(options.map(o => o.value)).toContain('mine')
     for (const o of options) {
       const def = defs.find(d => d.id === o.value)
-      if (def !== undefined) expect(o.label).toBe(`${def.icon} ${def.label}`)
+      if (def !== undefined) expect(o.label).toBe(`${markedIcon(def)} ${def.label}`)
     }
-    expect(options.find(o => o.value === 'mine')?.label).toBe('🪄 海賊風の要約')
+    expect(options.find(o => o.value === 'translate')?.label).toBe('[🌐] 日本語訳')
+    expect(options.find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
+    expect(options.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
     expect(select?.props.autoFocus).toBe(true)
     await picker.unmount()
   })
@@ -230,10 +233,10 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 }
 
 // ---------------------------------------------------------------------------
-// /selection-actions without an ID
+// /quick-actions without an ID
 
 for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
-  test(`[${options.language}] /selection-actions without an ID opens the dialog and runs nothing`, { options }, async ($, on) => {
+  test(`[${options.language}] /quick-actions without an ID opens the dialog and runs nothing`, { options }, async ($, on) => {
     const s = stage(on)
     await start($)
     s.selected = 'Bonjour'
@@ -245,18 +248,32 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(s.toasts).toEqual([])
   })
 
-  test(`[${options.language}] /selection-actions without an ID and nothing selected: a toast, and no dialog`, { options }, async ($, on) => {
+  test(`[${options.language}] /quick-actions without an ID and nothing selected: the dialog opens on the context actions alone`, { options }, async ($, on) => {
     const s = stage(on)
     await start($)
 
     const r = await runCommand($, '')
-    expect(s.toasts).toEqual([t.noSelection])
-    expect(JSON.stringify(r)).toContain(t.noSelection)
-    expect(s.opened).toEqual([])
+    expect(s.toasts).toEqual([])
+    expect(JSON.stringify(r)).toContain(t.pickerOpened)
+    expect(s.opened).toEqual([{ id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
+
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+    const listed = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
+    const context = actionsFor(options.language).filter(isContext)
+    expect(listed.map(o => o.value)).toEqual(expect.arrayContaining(context.map(d => d.id)))
+    expect(listed).toHaveLength(context.length)
+    for (const o of listed) expect(o.label.startsWith('<')).toBe(true)
+    // Picked, a context action runs on the conversation: a fork with no selection in it.
+    await picker.select({ key: PICKER_SELECT, value: 'recap' })
+    await picker.unmount()
+    expect(s.closed).toEqual([PICKER])
+    expect(s.forks).toHaveLength(1)
+    expect(s.forks[0]).not.toContain('<selected>')
+    expect(s.models).toEqual([])
   })
 }
 
-test('a pick after /selection-actions runs on the text selected when the command ran', async ($, on) => {
+test('a pick after /quick-actions runs on the text selected when the command ran', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -290,8 +307,8 @@ test('[mobile] the dialog lists every action as a button, and a press runs it', 
   const defs = actionsFor('ja')
   // Every action, icon and label, then the close button.
   expect(labels).toHaveLength(ACTIONS.length + 2)
-  expect(labels).toContain('🪄 海賊風の要約')
-  for (const def of defs) expect(labels).toContain(`${def.icon} ${def.label}`)
+  expect(labels).toContain('[🪄] 海賊風の要約')
+  for (const def of defs) expect(labels).toContain(`${markedIcon(def)} ${def.label}`)
   expect(labels.at(-1)).toBe(MESSAGES.ja.pickerClose)
 
   await picker.press({ key: 'tldr' })
@@ -394,7 +411,7 @@ test('the close button is a dismiss control', async ($, on) => {
 
 // Without the keyboard, the notice names the way that needs no pointer.
 for (const lang of ['ja', 'en'] as const) {
-  test(`[${lang}] the notice without the keyboard names /selection-actions`, () => {
-    expect(MESSAGES[lang].pickerNoFocus).toContain('/selection-actions')
+  test(`[${lang}] the notice without the keyboard names /quick-actions`, () => {
+    expect(MESSAGES[lang].pickerNoFocus).toContain('/quick-actions')
   })
 }

@@ -104,14 +104,14 @@ for (const surface of SURFACES) {
       // Registered in English: the command and the subagent types.
       expect(s.commands).toEqual([{ name: PLUGIN, description: MESSAGES.en.commandDescription }])
 
-      // Nothing selected: the empty pane and the toast.
+      // Nothing selected: the empty pane, and the toast for an action on the selection.
       let pane = await $.ui.mount({ ...PANE, surface })
       expect(await pane.find({ text: MESSAGES.en.emptyPane })).toBeDefined()
       await pane.unmount()
       pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement: 'inline' } })
       expect(await pane.find({ text: MESSAGES.en.inlineHint })).toBeDefined()
       await pane.unmount()
-      const none = await runCommand($, '')
+      const none = await runCommand($, 'explain')
       expect(s.toasts).toEqual(['No text is selected'])
       expect(JSON.stringify(none)).toContain(MESSAGES.en.noSelection)
 
@@ -137,7 +137,7 @@ for (const surface of SURFACES) {
 
       // The command's answers.
       const ran = await runCommand($, 'translate')
-      expect(JSON.stringify(ran)).toContain('Showing the To Japanese result in the Selection Actions pane.')
+      expect(JSON.stringify(ran)).toContain('Showing the To Japanese result in the Quick Actions pane.')
       const unknown = await runCommand($, 'nope')
       expect(JSON.stringify(unknown)).toContain('Unknown action ID: nope (available IDs: ')
       for (const r of [none, ran, unknown]) expect(JSON.stringify(r)).not.toMatch(JAPANESE)
@@ -158,7 +158,7 @@ for (const surface of SURFACES) {
       await start($)
       expect(s.commands).toEqual([{ name: PLUGIN, description: MESSAGES.ja.commandDescription }])
 
-      const none = await runCommand($, '')
+      const none = await runCommand($, 'explain')
       expect(s.toasts).toEqual(['選択されたテキストがありません'])
       expect(JSON.stringify(none)).toContain(MESSAGES.ja.noSelection)
 
@@ -374,7 +374,7 @@ test('auto, before session.start: the command answers in the detected language',
   const s = stage(on)
   const r = await runCommand($, 'nope')
   expect(JSON.stringify(r)).toContain('不明なアクション ID です: nope')
-  await runCommand($, '')
+  await runCommand($, 'explain')
   expect(s.toasts).toEqual(['選択されたテキストがありません'])
 })
 

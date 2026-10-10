@@ -44,22 +44,104 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // a link disguised, the clipboard written. So whatever a decoder brings out is
 // either refused (base64-decode shows the bytes in hexadecimal) or shown with
 // each of them escaped, as `\u001b`.
+//
+// Bidirectional controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to
+// U+2069) and zero-width or invisible format characters (U+200B, U+200C,
+// U+200D, U+2060 to U+2064, the deprecated U+206A to U+206F, U+FEFF, the
+// interlinear annotation marks U+FFF9 to U+FFFB, U+180E) work no terminal, but
+// they disguise what is shown: a host or a token read backwards, a word split
+// where none shows. A decoder's output is there to show what the text holds,
+// so they are escaped the same way (together with the controls, "hidden"
+// characters below). The one exception is a ZWJ (U+200D) inside an emoji
+// sequence (an emoji, at most one U+FE0F or skin tone modifier, the ZWJ, an
+// emoji: man ZWJ woman, white flag U+FE0F ZWJ rainbow): there it only joins
+// the emoji into one, which can disguise nothing, and escaping it would break
+// the emoji.
+//
+// Two ways to show them, by what the output is:
+// - JSON (format-json, minify-json, decode-jwt, a JSON error's token):
+//   `escapeHidden`, the hidden characters alone escaped, as `\u202e`. Inside
+//   a JSON string that is the same value, and a backslash of the text is
+//   already written `\\` there, so the two never look alike.
+// - Not JSON (url-decode, parse-url and its port error, base64-decode as
+//   text): `showHidden`.
+//   There a backslash of the text would look like an escape (the text's
+//   `\u001b` and a real ESC alike), so once anything is escaped, each
+//   backslash of the text is shown doubled, `\\`, in the same one pass.
+//   Output with nothing hidden is left as it is, backslashes and all.
+// A base64 error names one character only (a backslash, or six characters of
+// an escape: never both), so `escapeHidden` is enough there.
 const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 
 /** Whether the text holds a control character the pane must not show raw. */
 export const hasControls = (s: string) => s.search(CONTROLS) >= 0
 
-/** The text with each control character (but tab and line breaks) written as `\u001b`: the same in a JSON string. */
-export const escapeControls = (s: string) => s.replace(CONTROLS, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+// The hidden characters: the controls above, the bidirectional controls and
+// the zero-width and invisible format characters (U+200D among them: whether
+// a ZWJ is kept is `joinsEmoji`'s to say).
+const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}]/gu
 
-const CONTROLS_NOTE: Texts = {
-  ja: '（制御文字は \\u001b のような形で表示しています）',
-  en: '(Control characters are shown escaped, as \\u001b.)',
+// The same, or a backslash: what `showHidden` writes anew, in one pass.
+const SHOWN = new RegExp(`\\\\|${HIDDEN.source}`, 'gu')
+
+const PICTOGRAPHIC = /^\p{Extended_Pictographic}$/u
+const EMOJI_TAIL = /^[\u{fe0f}\p{Emoji_Modifier}]$/u
+
+/** The code point that ends just before `end`, and where it starts. */
+function codePointBefore(s: string, end: number): { char: string; start: number } | undefined {
+  if (end <= 0) return undefined
+  const low = s.charCodeAt(end - 1)
+  const high = end >= 2 ? s.charCodeAt(end - 2) : 0
+  const start = low >= 0xdc00 && low <= 0xdfff && high >= 0xd800 && high <= 0xdbff ? end - 2 : end - 1
+  return { char: s.slice(start, end), start }
 }
 
-/** The decoded text with its control characters escaped, and a note saying so when there were any. */
-const withControlsShown = (decoded: string, lang: Lang): string[] =>
-  hasControls(decoded) ? [escapeControls(decoded), pick(lang, CONTROLS_NOTE)] : [decoded]
+/** Whether the ZWJ at `at` joins two emoji: an emoji, at most one U+FE0F or skin tone modifier, the ZWJ, an emoji. */
+function joinsEmoji(s: string, at: number): boolean {
+  const next = s.codePointAt(at + 1)
+  if (next === undefined || !PICTOGRAPHIC.test(String.fromCodePoint(next))) return false
+  let before = codePointBefore(s, at)
+  if (before !== undefined && EMOJI_TAIL.test(before.char)) before = codePointBefore(s, before.start)
+  return before !== undefined && PICTOGRAPHIC.test(before.char)
+}
+
+/** Whether the hidden character `c` at `at` in `s` is to be escaped: all but a ZWJ joining emoji. */
+const escapes = (s: string, c: string, at: number) => c !== '\u{200d}' || !joinsEmoji(s, at)
+
+/** One hidden character (all in the BMP) as `\u202e`. */
+const escapeOne = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`
+
+/** Whether the text holds a hidden character the pane must not show raw. */
+export function hasHidden(s: string): boolean {
+  for (const m of s.matchAll(HIDDEN)) if (escapes(s, m[0], m.index!)) return true
+  return false
+}
+
+/** The text with each hidden character written as `\u202e`, backslashes left alone: the same in a JSON string. For JSON. */
+export const escapeHidden = (s: string) => s.replace(HIDDEN, (c: string, at: number) => (escapes(s, c, at) ? escapeOne(c) : c))
+
+/**
+ * For what is not JSON: the text as it is when nothing in it is hidden;
+ * otherwise each hidden character written as `\u202e` and each backslash of
+ * the text as `\\` (in one pass, so the escapes' own backslashes stay
+ * single), with `escaped` saying a note is due.
+ */
+export function showHidden(s: string): { shown: string; escaped: boolean } {
+  if (!hasHidden(s)) return { shown: s, escaped: false }
+  const shown = s.replace(SHOWN, (c: string, at: number) => (c === '\\' ? '\\\\' : escapes(s, c, at) ? escapeOne(c) : c))
+  return { shown, escaped: true }
+}
+
+const HIDDEN_NOTE: Texts = {
+  ja: '（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）',
+  en: '(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)',
+}
+
+/** The decoded text with its hidden characters (and then its backslashes) escaped, and a note saying so when there were any. */
+const withHiddenShown = (decoded: string, lang: Lang): string[] => {
+  const { shown, escaped } = showHidden(decoded)
+  return escaped ? [shown, pick(lang, HIDDEN_NOTE)] : [decoded]
+}
 
 // ---------------------------------------------------------------------------
 // count-text
@@ -115,7 +197,12 @@ const JSON_PROBLEMS: Record<JsonError['problem'], Texts> = {
 /** A JSON error as the pane shows it: what and where. */
 export function jsonErrorText(err: JsonError, lang: Lang): string {
   const what = pick(lang, JSON_PROBLEMS[err.problem])
-  const token = err.found === undefined ? undefined : escapeControls(err.found)
+  // The token is the JSON as written (a string token cut at 20 characters,
+  // before it is escaped, so no escape is cut short), so a backslash of the
+  // text is already `\\` there and a hidden character's escape is told from it
+  // as in the layout. A string cut just after a lone backslash (the first half
+  // of an escape) ends in one: it shows only the token's start, so that is left.
+  const token = err.found === undefined ? undefined : escapeHidden(err.found)
   const found = token === undefined ? '' : lang === 'ja' ? `「${token}」` : ` "${token}"`
   return lang === 'ja'
     ? `JSON として読めません: ${err.line} 行 ${err.column} 列目、${what}${found}。`
@@ -131,13 +218,14 @@ export function jsonErrorText(err: JsonError, lang: Lang): string {
 export const JSON_LAYOUT_LIMIT = 50_000
 
 /**
- * The JSON laid out, its control characters escaped. Only DEL and C1 can be
- * there (JSON has no raw C0 in a string), and only in a string, where `\u007f`
+ * The JSON laid out, its hidden characters escaped. Only DEL, C1 and the
+ * bidirectional and zero-width characters can be there (JSON has no raw C0 in
+ * a string, and a leading BOM is skipped), and only in a string, where `\u007f`
  * means the same: the JSON stays the same JSON.
  */
 const laidOut = (json: string, indent: number): { text: string } | { error: JsonError } => {
   const r = layoutJson(json, indent, JSON_LAYOUT_LIMIT)
-  return 'error' in r ? r : { text: escapeControls(r.text) }
+  return 'error' in r ? r : { text: escapeHidden(r.text) }
 }
 
 const layout = (indent: number) =>
@@ -369,7 +457,7 @@ export const caseVariants = onText((text, { lang }) => {
 /** A Base64 error as the pane shows it. */
 function base64ErrorText(err: Base64Error, lang: Lang): string {
   if (err.reason === 'char') {
-    const char = escapeControls(err.char)
+    const char = escapeHidden(err.char)
     return lang === 'ja'
       ? `Base64 として読めません: ${err.index} 文字目の「${char}」は Base64 の文字ではありません。`
       : `Not valid Base64: character ${err.index} ("${char}") is not a Base64 character.`
@@ -390,7 +478,9 @@ export const base64DecodeText = onText((text, { lang }) => {
   const r = base64Decode(text)
   if ('error' in r) return { error: base64ErrorText(r.error, lang) }
   const decoded = utf8Decode(r.bytes)
-  if (decoded !== undefined && !hasControls(decoded)) return { text: decoded }
+  // Control characters: the bytes. Bidirectional and zero-width ones only (a
+  // BOM, say): the text, with them escaped and a note.
+  if (decoded !== undefined && !hasControls(decoded)) return { text: withHiddenShown(decoded, lang).join('\n\n') }
   const head = toHex(r.bytes.subarray(0, 32), ' ') + (r.bytes.length > 32 ? ' …' : '')
   return {
     text:
@@ -406,7 +496,7 @@ export const base64EncodeText = onText(text => ({ text: base64Encode(utf8Encode(
 // ---------------------------------------------------------------------------
 // url-decode / url-encode
 
-/** The percent-encoded text decoded: each run of %XX read as UTF-8, control characters escaped; `+` is left as it is. */
+/** The percent-encoded text decoded: each run of %XX read as UTF-8, hidden characters (and then backslashes) escaped; `+` is left as it is. */
 export const urlDecode = onText((text, { lang }) => {
   const out: string[] = []
   let i = 0
@@ -439,7 +529,7 @@ export const urlDecode = onText((text, { lang }) => {
     i += ch.length
     position++
   }
-  const [shown, ...notes] = withControlsShown(out.join(''), lang)
+  const [shown, ...notes] = withHiddenShown(out.join(''), lang)
   if (text.includes('+')) notes.push(lang === 'ja' ? '（「+」は空白に変えていません）' : '(A "+" is left as it is, not read as a space.)')
   return { text: [shown, ...notes].join('\n\n') }
 })
@@ -469,7 +559,7 @@ const decodeQueryPart = (s: string): string | undefined => {
   }
 }
 
-/** The URL taken apart: scheme, user (password hidden), host, port, path, query (each key and value decoded, control characters escaped) and fragment. */
+/** The URL taken apart: scheme, user (password hidden), host, port, path, query (each key and value decoded; hidden characters, and then backslashes, escaped) and fragment. */
 export const parseUrl = onText((text, { lang }) => {
   const ja = lang === 'ja'
   const err = (why: Texts) => ({ error: `${ja ? 'URL として読めません: ' : 'Not a readable URL: '}${pick(lang, why)}` })
@@ -518,7 +608,11 @@ export const parseUrl = onText((text, { lang }) => {
       if (colon >= 0) port = authority.slice(colon + 1)
     }
     if (port !== undefined && port !== '' && (!/^[0-9]{1,5}$/.test(port) || Number(port) > 65535)) {
-      return err({ ja: `ポート「${port}」は 0〜65535 の数ではありません。`, en: `its port "${port}" is not a number from 0 to 65535.` })
+      // Any text but white space can be there, a backslash and a hidden
+      // character alike: shown as the body is, with the same note.
+      const { shown, escaped } = showHidden(port)
+      const why = err({ ja: `ポート「${shown}」は 0〜65535 の数ではありません。`, en: `its port "${shown}" is not a number from 0 to 65535.` })
+      return escaped ? { error: `${why.error}\n\n${pick(lang, HIDDEN_NOTE)}` } : why
     }
   }
   const none = ja ? '（なし）' : '(none)'
@@ -548,7 +642,7 @@ export const parseUrl = onText((text, { lang }) => {
     }
   }
   lines.push(`${ja ? 'フラグメント' : 'Fragment'}: ${fragment === undefined || fragment === '' ? none : fragment}`)
-  return { text: withControlsShown(lines.join('\n'), lang).join('\n\n') }
+  return { text: withHiddenShown(lines.join('\n'), lang).join('\n\n') }
 })
 
 // ---------------------------------------------------------------------------

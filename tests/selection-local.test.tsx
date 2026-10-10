@@ -1,10 +1,10 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { ACTIONS, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
 import { base64Decode, base64Encode, toHex, utf8Decode, utf8Encode } from '../hooks/codec'
 import { layoutJson } from '../hooks/json-text'
-import { truncate } from '../hooks/local'
+import { runLocal, truncate } from '../hooks/local'
 import {
   base64DecodeText,
   base64EncodeText,
@@ -16,19 +16,22 @@ import {
   decodeJwt,
   dedupeLines,
   epochToDate,
-  escapeControls,
+  escapeHidden,
   formatJson,
   hasControls,
+  hasHidden,
   hashText,
   JSON_LAYOUT_LIMIT,
   minifyJson,
   parseUrl,
+  showHidden,
   sortLines,
   urlDecode,
   urlEncode,
   wordsOf,
 } from '../hooks/selection-local'
 import { sha1, sha256 } from '../hooks/sha'
+import { PANE, runCommand, stage, start } from './stage'
 
 // The local actions on the selection (SELM-00029), checked directly: every
 // value of the input fixed, the time, the zone and the offset included.
@@ -526,18 +529,18 @@ const RAW_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 
 test('decoded text never reaches the pane with a raw control character: escaped as \\u001b, consistent with base64-decode', () => {
   // The shared helpers.
-  expect(escapeControls('a\u001b[2Jb\u007f\u009b\u0000')).toBe('a\\u001b[2Jb\\u007f\\u009b\\u0000')
-  expect(escapeControls('tab\tline\nreturn\r')).toBe('tab\tline\nreturn\r')
+  expect(escapeHidden('a\u001b[2Jb\u007f\u009b\u0000')).toBe('a\\u001b[2Jb\\u007f\\u009b\\u0000')
+  expect(escapeHidden('tab\tline\nreturn\r')).toBe('tab\tline\nreturn\r')
   expect(hasControls('a\u0085b')).toBe(true)
   expect(hasControls('日本語\t\n🍣')).toBe(false)
   expect(hasControls('\u00a0')).toBe(false)
 
   // url-decode: ESC [ 2 J (clear the screen), OSC 52 (write the clipboard), OSC 8 (a link), the 8-bit CSI, DEL.
-  expect(textOf(run(urlDecode, '%1B%5B2J'))).toBe('\\u001b[2J\n\n(Control characters are shown escaped, as \\u001b.)')
-  expect(textOf(run(urlDecode, '%1B%5B2J', 'ja'))).toBe('\\u001b[2J\n\n（制御文字は \\u001b のような形で表示しています）')
-  expect(textOf(run(urlDecode, '%1B%5D52%3Bc%3BaGk%3D%07'))).toBe('\\u001b]52;c;aGk=\\u0007\n\n(Control characters are shown escaped, as \\u001b.)')
+  expect(textOf(run(urlDecode, '%1B%5B2J'))).toBe('\\u001b[2J\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')
+  expect(textOf(run(urlDecode, '%1B%5B2J', 'ja'))).toBe('\\u001b[2J\n\n（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）')
+  expect(textOf(run(urlDecode, '%1B%5D52%3Bc%3BaGk%3D%07'))).toBe('\\u001b]52;c;aGk=\\u0007\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')
   expect(textOf(run(urlDecode, 'x%C2%9B31m+%7F'))).toBe(
-    'x\\u009b31m+\\u007f\n\n(Control characters are shown escaped, as \\u001b.)\n\n(A "+" is left as it is, not read as a space.)',
+    'x\\u009b31m+\\u007f\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)\n\n(A "+" is left as it is, not read as a space.)',
   )
   // Tab and line breaks stay as they are, with no note.
   expect(textOf(run(urlDecode, 'a%09b%0Ac'))).toBe('a\tb\nc')
@@ -546,9 +549,9 @@ test('decoded text never reaches the pane with a raw control character: escaped 
   const url = textOf(run(parseUrl, 'https://e.com/?x=%1B%5D8%3B%3Bhttps%3A%2F%2Fevil%07&y=%C2%9B2J'))
   expect(url).toContain('  - x = \\u001b]8;;https://evil\\u0007')
   expect(url).toContain('  - y = \\u009b2J')
-  expect(url.endsWith('\n\n(Control characters are shown escaped, as \\u001b.)')).toBe(true)
-  expect(textOf(run(parseUrl, 'https://e.com/?x=%1B', 'ja'))).toContain('（制御文字は \\u001b のような形で表示しています）')
-  expect(textOf(run(parseUrl, 'https://e.com/?x=1'))).not.toContain('Control characters')
+  expect(url.endsWith('\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')).toBe(true)
+  expect(textOf(run(parseUrl, 'https://e.com/?x=%1B', 'ja'))).toContain('（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）')
+  expect(textOf(run(parseUrl, 'https://e.com/?x=1'))).not.toContain('Control, bidirectional')
 
   // format-json / minify-json: DEL and C1 in a string come out as \u escapes, which are the same JSON.
   const json = '{"a": "x\u007fy\u009b31m"}'
@@ -579,7 +582,196 @@ test('decoded text never reaches the pane with a raw control character: escaped 
       [base64DecodeText, base64Encode(utf8Encode('\u001b\u009b'))],
     ] as const) {
       const out = compute({ ...INPUT, lang, text })
-      expect(RAW_CONTROL.test('text' in out ? out.text : out.error)).toBe(false)
+      expect(RAW_CONTROL.test('error' in out ? out.error : textOf(out))).toBe(false)
+    }
+  }
+})
+
+// SELM-00042: the bidirectional controls and the zero-width and invisible
+// format characters are escaped as the controls are, and a backslash of the
+// text stays told apart from an escape. Every such character is written here
+// as a \u{...} escape, never raw, so the source reads as it runs.
+
+// Every hidden character: the controls, the bidirectional controls, the
+// zero-width and invisible format characters (a ZWJ included: the samples
+// below never put one between emoji).
+const RAW_HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}]/u
+
+const NOTE_EN = '(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)'
+const NOTE_JA = '（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）'
+
+const RLO = '\u{202e}'
+// Emoji joined by a ZWJ: man woman girl, the rainbow flag (with U+FE0F), a woman technologist (with a skin tone), a heart on fire.
+const FAMILY = '\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}'
+const FLAG = '\u{1f3f3}\u{fe0f}\u{200d}\u{1f308}'
+const CODER = '\u{1f469}\u{1f3fd}\u{200d}\u{1f4bb}'
+const HEART = '\u{2764}\u{fe0f}\u{200d}\u{1f525}'
+
+const b64 = (s: string) => base64Encode(utf8Encode(s))
+const b64url = (s: string) => b64(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+
+test('hasHidden / escapeHidden / showHidden: the edges of each range, what is left alone, one pass for backslashes', () => {
+  const edges = [0x61c, 0x200b, 0x200c, 0x200e, 0x200f, 0x202a, 0x202e, 0x2060, 0x2064, 0x2066, 0x2069, 0x206a, 0x206f, 0xfeff, 0xfff9, 0xfffb, 0x180e, 0x200d]
+  for (const cp of edges) {
+    const c = String.fromCharCode(cp)
+    const escaped = `\\u${cp.toString(16).padStart(4, '0')}`
+    expect(hasHidden(`a${c}b`)).toBe(true)
+    expect(escapeHidden(`a${c}b`)).toBe(`a${escaped}b`)
+    expect(showHidden(`a\\${c}b`)).toEqual({ shown: `a\\\\${escaped}b`, escaped: true })
+  }
+  // The controls are hidden too, in the same form.
+  expect(escapeHidden('\u{1b}\u{7f}\u{9b}')).toBe('\\u001b\\u007f\\u009b')
+  // Not hidden: tab and line breaks, a no-break space, the unassigned U+2065, the object replacement character, text and emoji.
+  for (const s of ['tab\tline\nreturn\r', 'a\u{a0}b', 'a\u{2065}b', 'a\u{fffc}b', '日本語のテキスト', '🍣🍺', 'C:\\Users\\me', FAMILY, FLAG, CODER, HEART]) {
+    expect(hasHidden(s)).toBe(false)
+    expect(escapeHidden(s)).toBe(s)
+    // With nothing hidden, a backslash stays single.
+    expect(showHidden(s)).toEqual({ shown: s, escaped: false })
+  }
+  // A backslash of the text and a real U+202E: alike under escapeHidden (fine in JSON, where the text's backslash is written doubled), told apart by showHidden.
+  expect(showHidden(`a\\u202e${RLO}`)).toEqual({ shown: 'a\\\\u202e\\u202e', escaped: true })
+  expect(escapeHidden(`a\\u202e${RLO}`)).toBe('a\\u202e\\u202e')
+})
+
+test('a ZWJ between emoji is kept; anywhere else it is escaped', () => {
+  for (const joined of [FAMILY, FLAG, CODER, HEART]) {
+    expect(escapeHidden(`x${joined}y`)).toBe(`x${joined}y`)
+    // Through url-decode and base64-decode: as it is, with no note.
+    expect(textOf(run(urlDecode, encodeURIComponent(joined)))).toBe(joined)
+    expect(textOf(run(base64DecodeText, b64(joined)))).toBe(joined)
+  }
+  const ZWJ = '\u{200d}'
+  expect(escapeHidden(`a${ZWJ}b`)).toBe('a\\u200db')
+  expect(escapeHidden(`${ZWJ}a`)).toBe('\\u200da')
+  expect(escapeHidden(`a${ZWJ}`)).toBe('a\\u200d')
+  expect(escapeHidden(`\u{1f468}${ZWJ}${ZWJ}\u{1f469}`)).toBe('\u{1f468}\\u200d\\u200d\u{1f469}')
+  expect(escapeHidden(`\u{1f468}${ZWJ}a`)).toBe('\u{1f468}\\u200da')
+  expect(escapeHidden(`a${ZWJ}\u{1f469}`)).toBe('a\\u200d\u{1f469}')
+  // At most one U+FE0F or modifier before it.
+  expect(escapeHidden(`\u{1f469}\u{fe0f}\u{fe0f}${ZWJ}\u{1f4bb}`)).toBe('\u{1f469}\u{fe0f}\u{fe0f}\\u200d\u{1f4bb}')
+  expect(textOf(run(urlDecode, encodeURIComponent(`a${ZWJ}b`)))).toBe(`a\\u200db\n\n${NOTE_EN}`)
+  expect(textOf(run(base64DecodeText, b64(`a${ZWJ}b`)))).toBe(`a\\u200db\n\n${NOTE_EN}`)
+})
+
+test('url-decode and parse-url: hidden characters escaped, and then a backslash of the text shown as \\\\', () => {
+  // The text's backslash + u001b, then a real ESC.
+  expect(textOf(run(urlDecode, '%5Cu001b%1B'))).toBe(`\\\\u001b\\u001b\n\n${NOTE_EN}`)
+  expect(textOf(run(urlDecode, '%5Cu001b%1B', 'ja'))).toBe(`\\\\u001b\\u001b\n\n${NOTE_JA}`)
+  // Nothing hidden: the backslash as it is, no note.
+  expect(textOf(run(urlDecode, '%5Cu001b'))).toBe('\\u001b')
+  expect(textOf(run(urlDecode, 'a%E2%80%AEb%E2%80%8Bc'))).toBe(`a\\u202eb\\u200bc\n\n${NOTE_EN}`)
+
+  // parse-url: the whole output by the one rule, the path's backslash too.
+  const url = textOf(run(parseUrl, 'https://e.com/a\\b?x=%E2%80%AE&y=%5C'))
+  expect(url).toContain('Path: /a\\\\b')
+  expect(url).toContain('  - x = \\u202e')
+  expect(url).toContain('  - y = \\\\')
+  expect(url.endsWith(`\n\n${NOTE_EN}`)).toBe(true)
+  expect(textOf(run(parseUrl, 'https://e.com/?x=%E2%81%A6', 'ja')).endsWith(`\n\n${NOTE_JA}`)).toBe(true)
+  // Nothing hidden: as before.
+  const plain = textOf(run(parseUrl, 'https://e.com/a\\b?y=%5C'))
+  expect(plain).toContain('Path: /a\\b')
+  expect(plain).toContain('  - y = \\')
+  expect(plain).not.toContain('Control, bidirectional')
+})
+
+test("parse-url's port error: a backslash of the text and a real U+202E told apart, with the note; the pane shows it whole", { options: { language: 'en', actions: 'parse-url' } }, async ($, on) => {
+  const text = `https://e.com:\\u202e${RLO}/`
+  const en = errorOf(run(parseUrl, text))
+  expect(en).toBe(`Not a readable URL: its port "\\\\u202e\\u202e" is not a number from 0 to 65535.\n\n${NOTE_EN}`)
+  expect(en.includes(RLO)).toBe(false)
+  expect(errorOf(run(parseUrl, text, 'ja'))).toBe(`URL として読めません: ポート「\\\\u202e\\u202e」は 0〜65535 の数ではありません。\n\n${NOTE_JA}`)
+  // Only a backslash, nothing hidden: as before, one line.
+  expect(errorOf(run(parseUrl, 'https://e.com:8\\0/'))).toBe('Not a readable URL: its port "8\\0" is not a number from 0 to 65535.')
+  // A control character in the port is escaped too (it is not white space).
+  expect(errorOf(run(parseUrl, 'https://e.com:8\u{1b}/'))).toBe(`Not a readable URL: its port "8\\u001b" is not a number from 0 to 65535.\n\n${NOTE_EN}`)
+
+  // As a run on the selection, the error of several lines reaches the pane whole, as a failure.
+  const def = ACTIONS.find(a => a.id === 'parse-url')
+  if (def === undefined || def.kind !== 'local') throw new Error('expected parse-url')
+  expect(runLocal(def, { ...INPUT, text }, { selection: true, lang: 'en' })).toEqual({ kind: 'settle', ok: false, text: en })
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.selected = text
+  await clock.advance(400)
+  await runCommand($, 'parse-url')
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const shown = (await pane.findAll({ type: 'Text' })).filter(t => t.text === en)
+  expect(shown.map(t => t.props.color)).toEqual(['error'])
+  await pane.unmount()
+})
+
+test('format-json, minify-json and decode-jwt: different values never look alike, and the value is kept', () => {
+  // The JSON's escaped backslash + u007f, and a raw DEL.
+  const json = '["\\\\u007f", "\u{7f}"]'
+  const formatted = textOf(run(formatJson, json))
+  expect(formatted).toBe('[\n  "\\\\u007f",\n  "\\u007f"\n]')
+  expect(JSON.parse(formatted)).toEqual(JSON.parse(json))
+  const minified = textOf(run(minifyJson, json))
+  expect(minified).toBe('["\\\\u007f","\\u007f"]')
+  expect(JSON.parse(minified)).toEqual(JSON.parse(json))
+
+  // Bidirectional and zero-width characters in a string: escaped, the same value.
+  const bidi = `{"a": "x${RLO}y\u{200b}z\u{feff}\u{206a}\u{fff9}", "b": "\\\\u202e"}`
+  const laid = textOf(run(formatJson, bidi))
+  expect(laid).toBe('{\n  "a": "x\\u202ey\\u200bz\\ufeff\\u206a\\ufff9",\n  "b": "\\\\u202e"\n}')
+  expect(JSON.parse(laid)).toEqual(JSON.parse(bidi))
+  expect(JSON.parse(textOf(run(minifyJson, bidi)))).toEqual(JSON.parse(bidi))
+  // A ZWJ between emoji stays, raw, in the string: still the same JSON.
+  expect(textOf(run(minifyJson, `["${FAMILY}"]`))).toBe(`["${FAMILY}"]`)
+
+  // decode-jwt: a real U+202E and the text's backslash + u202e.
+  const jwt = textOf(run(decodeJwt, `${b64url('{"alg":"none"}')}.${b64url(JSON.stringify({ a: RLO, b: '\\u202e' }))}.`))
+  expect(jwt).toContain('"a": "\\u202e"')
+  expect(jwt).toContain('"b": "\\\\u202e"')
+  expect(jwt.includes(RLO)).toBe(false)
+
+  // A JSON error's string token: the real one escaped, the JSON's own backslash as written.
+  const error = errorOf(run(minifyJson, `[1] "${RLO}\\\\"`))
+  expect(error).toBe('Not valid JSON: line 1, column 5: extra content after the value ""\\u202e\\\\"".')
+  expect(error.includes(RLO)).toBe(false)
+})
+
+test('base64-decode: bidirectional and zero-width only, the text escaped with the note; controls still the bytes', () => {
+  expect(textOf(run(base64DecodeText, b64(`a${RLO}b\u{200b}`)))).toBe(`a\\u202eb\\u200b\n\n${NOTE_EN}`)
+  expect(textOf(run(base64DecodeText, b64(`a${RLO}b`), 'ja'))).toBe(`a\\u202eb\n\n${NOTE_JA}`)
+  // A text with a BOM: not bytes, the text with \ufeff (and its backslashes then doubled).
+  expect(textOf(run(base64DecodeText, b64('\u{feff}C:\\tmp')))).toBe(`\\ufeffC:\\\\tmp\n\n${NOTE_EN}`)
+  // Nothing hidden: as it is, its backslash too.
+  expect(textOf(run(base64DecodeText, b64('C:\\tmp')))).toBe('C:\\tmp')
+  // A control character: the bytes in hexadecimal, as before.
+  expect(textOf(run(base64DecodeText, b64(`\u{1b}${RLO}`)))).toContain('First 4 bytes (hex): 1b e2 80 ae')
+  // A bidirectional character that is no Base64 character: named escaped.
+  const error = errorOf(run(base64DecodeText, `ab${RLO}c`))
+  expect(error).toBe('Not valid Base64: character 3 ("\\u202e") is not a Base64 character.')
+  expect(errorOf(run(base64DecodeText, `ab\u{200d}c`, 'ja'))).toContain('「\\u200d」')
+})
+
+test('no decoder shows a raw bidirectional or zero-width character, in either language, as a text or an error', () => {
+  // Each hidden kind beyond the controls; no ZWJ between emoji.
+  const hidden = `x${RLO}\u{2066}\u{2069}\u{61c}\u{200e}\u{200f}\u{200b}\u{200c}\u{200d}\u{2060}\u{2064}\u{206a}\u{206f}\u{fff9}\u{fffb}\u{180e}\u{feff}y`
+  // White space ends a URL before its port is read, and U+FEFF is white space to JavaScript.
+  const inPort = hidden.replace('\u{feff}', '')
+  for (const lang of ['ja', 'en'] as const) {
+    for (const [compute, text, kind] of [
+      [urlDecode, encodeURIComponent(hidden), 'text'],
+      [urlDecode, hidden, 'text'],
+      [parseUrl, `https://e.com/?q=${encodeURIComponent(hidden)}`, 'text'],
+      [parseUrl, `https://e.com:${inPort}/`, 'error'],
+      [formatJson, JSON.stringify([hidden]), 'text'],
+      [minifyJson, JSON.stringify({ [hidden]: hidden }), 'text'],
+      [formatJson, `[1] ${JSON.stringify(inPort.slice(0, 8))}`, 'error'],
+      [minifyJson, `"${RLO}`, 'error'],
+      [decodeJwt, `${b64url('{"alg":"none"}')}.${b64url(JSON.stringify({ a: hidden }))}.`, 'text'],
+      [decodeJwt, `${b64url('{"alg":"none"}')}.${b64url(`{"a": 1} "${RLO}"`)}.`, 'error'],
+      [base64DecodeText, b64(hidden), 'text'],
+      [base64DecodeText, `ab${RLO}`, 'error'],
+      [base64DecodeText, `ab\u{2066}`, 'error'],
+    ] as const) {
+      const out = compute({ ...INPUT, lang, text })
+      const shown = kind === 'text' ? textOf(out) : errorOf(out)
+      expect(RAW_HIDDEN.test(shown)).toBe(false)
     }
   }
 })

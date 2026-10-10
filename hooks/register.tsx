@@ -275,7 +275,9 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
 async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
   const picked = text === undefined ? await selectionNow($) : text
   await update($, picking, () => ({ text: picked }))
-  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows })
+  // The same width as the results: an open without `columns` resets the dock to
+  // its default share, which widens it for as long as the dialog is open.
+  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
 }
 
 /**

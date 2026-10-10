@@ -20,6 +20,8 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { USAGE_KEY, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { OrderSlot } from './order'
+import { paneStyle, parsePaneTheme } from './palette'
+import type { PaneStyle } from './palette'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -46,24 +48,16 @@ const MORE_KEY = '_more'
 const PICKER_SELECT_KEY = '_picker'
 const PICKER_CLOSE_KEY = '_picker-close'
 
-// The pane's text colours, by placement. Docked on the right,
-// the pane sits on a background core paints in the theme
-// (composerSidebarBackground), while text with no colour is drawn in the
-// terminal's own foreground: when the theme and the terminal disagree (a dark
-// terminal on the light theme, or the other way round) that text vanishes.
-// A theme key is drawn in the same theme as that background, so it reads
-// either way. Inline, nothing paints the background, so the heading and body
-// keep the terminal's foreground there, which suits the terminal's own
-// background. A failure follows the same split: docked it is the theme's
-// `error`; inline it stays the raw name `red`, as it was, which the terminal
-// draws from its own palette, tuned to its own background where the theme's
-// `error` is not (a colour prop admits a theme key, a name or hex, never an
-// `ansi:` value). dimColor needs nothing: core draws it in the theme's
-// `inactive`.
-const PANE_COLORS = {
-  dock: { heading: 'text', body: 'text', failed: 'error' },
-  inline: { heading: undefined, body: undefined, failed: 'red' },
-} as const
+// The colours of the result pane and the ⋯ dialog (the `paneTheme` setting)
+// are worked out in ./palette, why they are as they are included. These two
+// add no prop at all where the style leaves it to core (auto, inline), so
+// those draw exactly as they always have.
+
+/** The Box props that paint the style's background: none when it has none. */
+const painted = (style: PaneStyle) => (style.background === undefined ? {} : { backgroundColor: style.background })
+
+/** The Text props of a secondary text: the palette's muted colour, or dimColor as before. */
+const muted = (style: PaneStyle) => (style.muted === undefined ? { dimColor: true } : { color: style.muted })
 
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
@@ -350,6 +344,9 @@ export const register: Register = (on, options) => {
     return ids.flatMap(id => findAction(defs, id) ?? [])
   }
 
+  // The pane's colours: Claude Code's theme (auto), or a fixed palette.
+  const paneTheme = parsePaneTheme(options.paneTheme)
+
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
@@ -567,14 +564,20 @@ export const register: Register = (on, options) => {
     const { Box, Button, Text } = elements
     // The mobile app draws no Select (though its table names one): there the
     // actions are buttons.
-    const Select = e.surface !== 'mobile' && 'Select' in elements ? elements.Select : undefined
+    // A palette draws buttons too: a Select takes no colour, and core's (the
+    // theme's) need not read on the palette's background.
+    const style = paneStyle(paneTheme, e.props.placement)
+    const fixed = style.background !== undefined
+    const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
+    // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
+    const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
 
     return (
-      <Box flexDirection="column">
-        {keyboardNotice && <Text dimColor>{t.pickerNoFocus}</Text>}
+      <Box flexDirection="column" {...painted(style)}>
+        {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
         {state === null ? (
-          <Text dimColor>{t.noSelection}</Text>
+          <Text {...muted(style)}>{t.noSelection}</Text>
         ) : Select !== undefined ? (
           <Select
             key={PICKER_SELECT_KEY}
@@ -585,12 +588,29 @@ export const register: Register = (on, options) => {
           />
         ) : (
           <Box flexDirection="column">
-            {ordered.map(a => (
-              <Button key={a.id} label={`${markedIcon(a)} ${a.label}`} onPress={() => pick($, l, a)} />
-            ))}
+            {ordered.map((a, i) => {
+              const label = `${markedIcon(a)} ${a.label}`
+              const button = { label, onPress: () => pick($, l, a) }
+              // With a palette the label is a child Text in its colour, and the
+              // first takes the focus ring as the dialog takes the keys, as the
+              // Select would; otherwise the button stays as it always was.
+              return fixed ? (
+                <Button key={a.id} {...button} {...(i === 0 && { autoFocus: true as const })}>
+                  <Text color={style.body}>{label}</Text>
+                </Button>
+              ) : (
+                <Button key={a.id} {...button} />
+              )
+            })}
           </Box>
         )}
-        <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} dimColor role="dismiss" onPress={() => closePicker($)} />
+        {fixed ? (
+          <Button key={PICKER_CLOSE_KEY} {...close}>
+            <Text color={style.muted}>{t.pickerClose}</Text>
+          </Button>
+        ) : (
+          <Button key={PICKER_CLOSE_KEY} {...close} dimColor />
+        )}
       </Box>
     )
   })
@@ -609,15 +629,15 @@ export const register: Register = (on, options) => {
     const defs = defsFor(l)
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, results)
-    const colors = e.props.placement === 'inline' ? PANE_COLORS.inline : PANE_COLORS.dock
+    const style = paneStyle(paneTheme, e.props.placement)
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" {...painted(style)}>
         {problems.length > 0 && (
           <Box flexDirection="column" marginBottom={1}>
-            <Text bold color={colors.failed}>{t.customProblemsHeading}</Text>
+            <Text bold color={style.failed}>{t.customProblemsHeading}</Text>
             {problems.map((p, i) => (
-              <Text key={String(i)} color={colors.failed}>- {problemLine(p, l)}</Text>
+              <Text key={String(i)} color={style.failed}>- {problemLine(p, l)}</Text>
             ))}
           </Box>
         )}
@@ -625,20 +645,20 @@ export const register: Register = (on, options) => {
           <Text dimColor>{t.inlineHint}</Text>
         )}
         {list.length === 0 && (
-          <Text dimColor>{t.emptyPane}</Text>
+          <Text {...muted(style)}>{t.emptyPane}</Text>
         )}
         {list.map(r => {
           const def = findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
-              <Text bold color={colors.heading}>
+              <Text bold color={style.heading}>
                 {def?.icon ?? '•'} {def?.label ?? r.action}{' '}
-                <Text dimColor>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
+                <Text {...muted(style)}>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
               </Text>
               {r.status === 'running' ? (
-                <Text dimColor>{def?.runningText ?? t.thinking}</Text>
+                <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
               ) : (
-                <Text color={r.status === 'failed' ? colors.failed : colors.body}>{r.text}</Text>
+                <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
             </Box>
           )

@@ -75,13 +75,14 @@ test('the ID, the label in either language, whatever the display language', () =
 test('the names of the kinds, in both languages', () => {
   const selection = ids(ACTIONS.filter(a => a.target === undefined || a.target === 'selection'))
   const context = ids(ACTIONS.filter(a => a.target === 'context'))
+  const standalone = ids(ACTIONS.filter(a => a.target === 'none'))
   expect(only('選択')).toEqual(selection)
   expect(only('selection')).toEqual(selection)
   expect(only('会話')).toEqual(context)
   expect(only('context')).toEqual(context)
-  for (const word of ['単独', 'コンテキストなし', 'standalone', 'none']) expect(only(word)).toEqual(['timer'])
+  for (const word of ['単独', 'コンテキストなし', 'standalone', 'none']) expect(only(word)).toEqual(standalone)
   // コンテキスト is part of コンテキストなし: the context actions and the standalone ones.
-  expect(only('コンテキスト')).toEqual([...context, 'timer'])
+  expect(only('コンテキスト')).toEqual([...context, ...standalone])
 })
 
 test('a custom action\'s single label is searched as it is', () => {
@@ -120,12 +121,13 @@ test('an empty query, or spaces alone, keeps every action in its order', () => {
 test('a kind mark narrows to that kind, rather than matching text', () => {
   const selection = ids(ACTIONS.filter(a => a.target === undefined || a.target === 'selection'))
   const context = ids(ACTIONS.filter(a => a.target === 'context'))
+  const standalone = ids(ACTIONS.filter(a => a.target === 'none'))
   expect(only('[')).toEqual(selection)
   expect(only('[]')).toEqual(selection)
   expect(only('<')).toEqual(context)
   expect(only('<>')).toEqual(context)
-  expect(only('{')).toEqual(['timer'])
-  expect(only('{}')).toEqual(['timer'])
+  expect(only('{')).toEqual(standalone)
+  expect(only('{}')).toEqual(standalone)
   expect(parseQuery('[ 要約')).toEqual({ words: ['要約'], target: 'selection' })
 })
 

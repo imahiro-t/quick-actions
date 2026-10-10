@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, isContext, markedIcon } from '../hooks/actions'
+import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon } from '../hooks/actions'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
 import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -406,9 +406,9 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.unmount()
   picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  // The context actions and the standalone one: nothing that needs a selection. A Select takes 64 options
+  // The context actions and the standalone ones: nothing that needs a selection. A Select takes 64 options
   // at most (more than that many need no selection now); the filter reaches the rest.
-  const free = [...CONTEXT.map(c => c.id), 'timer']
+  const free = [...CONTEXT.map(c => c.id), ...ACTIONS.filter(isStandalone).map(a => a.id)]
   expect(listed).toHaveLength(Math.min(free.length, 64))
   for (const o of listed) expect(free).toContain(o.value)
   await picker.input({ key: '_filter', text: 'session-release-check', kind: 'change' })

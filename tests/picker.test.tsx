@@ -280,7 +280,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
       expect(await picker.find({ text: t.pickerMore(free.length - SELECT_MAX_OPTIONS) })).toBeDefined()
     }
     expect(free.filter(isContext).length).toBeGreaterThan(0)
-    expect(free.filter(isStandalone).map(d => d.id)).toEqual(['timer'])
+    expect(free.filter(isStandalone).map(d => d.id)).toEqual(ACTIONS.filter(isStandalone).map(a => a.id))
     for (const o of listed) expect(o.label.startsWith('<') || o.label.startsWith('{')).toBe(true)
     // The legend names the kinds listed: no [ ] with no selection.
     expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()

@@ -2,12 +2,19 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import {
   ACTIONS,
+  ALONE,
   ANSWER_LANGUAGE,
   DEFAULT_ACTION_IDS,
   LOOK_ONLY,
+  NO_INPUT,
+  PANE_ONLY,
   READ_ONLY_TOOLS,
   STYLE,
   TIMER_DEFAULT_MS,
+  WANT_CODE,
+  WANT_LIST,
+  WANT_TABLE,
+  WANT_TEMPLATE,
   WEB_RULES,
   WEB_TOOLS,
   actionsFor,
@@ -21,7 +28,9 @@ import {
   sys,
   timerCompute,
   translateInto,
+  wrapInput,
 } from '../hooks/actions'
+import { parseArg } from '../hooks/args'
 import { parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
@@ -74,7 +83,15 @@ const ON_CONVERSATION = [
   'contradictions', 'code-map', 'workflow-diagram', 'environment', 'packages', 'links',
 ]
 // The standalone built-ins (on neither), last.
-const STANDALONE = ['timer']
+const STANDALONE = [
+  'timer',
+  'brainstorm', 'project-names', 'fermi', 'decision-matrix', 'color-palette', 'sample-data',
+  'cron-build', 'regex-build', 'shell-oneliner', 'git-recipe', 'sql-build', 'api-design', 'schema-design',
+  'gitignore-template', 'dockerfile-template', 'ci-template', 'makefile-template', 'readme-template', 'pr-template',
+  'issue-template', 'adr-template', 'test-plan-template', 'meeting-agenda', 'email-template',
+  'commit-convention', 'naming-conventions', 'code-review-checklist', 'security-checklist', 'debug-checklist',
+  'release-checklist', 'cheatsheet',
+]
 const BUILT_IN = [...ON_SELECTION, ...ON_CONVERSATION, ...STANDALONE]
 
 // What a local action's compute is handed in these tests: every value fixed.
@@ -95,13 +112,14 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the two hundred and seven built-ins (a hundred and four on the selection, a hundred and two on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the two hundred and thirty-eight built-ins (a hundred and four on the selection, a hundred and two on the conversation, thirty-two standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(207)
+  expect(ids).toHaveLength(238)
   expect(ON_SELECTION).toHaveLength(104)
   expect(ON_CONVERSATION).toHaveLength(102)
+  expect(STANDALONE).toHaveLength(32)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -756,15 +774,164 @@ test('the ten model actions on data, learning and checks: converted data without
   expect(promptFor('calc-check')).toContain('give the correct value and show the working')
 })
 
+// The catalog's standalone actions run by a model (SELM-00033), as the catalog has them:
+// [id, icon, ja, en, model, input, form]. `input` is the catalog's input column (`none`, `text?`,
+// `text(<default>)`, `choice[bug|feature](bug)`); `form` is what the content is, which the prompt
+// asks for over STYLE.
+type Form = 'list' | 'table' | 'code' | 'template'
+const CATALOG_ROWS_STANDALONE_MODEL: readonly (readonly [string, string, string, string, string, string, Form])[] = [
+  // Ideas
+  ['brainstorm', '🌟', 'アイデア出し', 'Brainstorm', 'sonnet', 'text?', 'list'],
+  ['project-names', '🔖', 'プロジェクト名の案', 'Project name ideas', 'haiku', 'text?', 'list'],
+  ['fermi', '🤔', 'フェルミ推定', 'Fermi estimate', 'sonnet', 'text?', 'list'],
+  ['decision-matrix', '🧭', '意思決定表', 'Decision matrix', 'sonnet', 'text?', 'table'],
+  ['color-palette', '🎨', '配色案', 'Color palette', 'haiku', 'text?', 'table'],
+  ['sample-data', '🍱', 'サンプルデータ', 'Sample data', 'haiku', 'text?', 'code'],
+  // Drafting commands and code
+  ['cron-build', '⏰', 'cron式を作る', 'Build a cron expression', 'haiku', 'text?', 'code'],
+  ['regex-build', '🧵', '正規表現を作る', 'Build a regex', 'sonnet', 'text?', 'code'],
+  ['shell-oneliner', '🐚', 'コマンドを考える', 'Shell one-liner', 'sonnet', 'text?', 'code'],
+  ['git-recipe', '🌿', 'gitの操作方法', 'Git recipe', 'sonnet', 'text?', 'code'],
+  ['sql-build', '💾', 'SQLを考える', 'Write SQL', 'sonnet', 'text?', 'code'],
+  ['api-design', '🔌', 'API設計案', 'API design', 'sonnet', 'text?', 'table'],
+  ['schema-design', '🏢', 'テーブル設計案', 'Database schema', 'sonnet', 'text?', 'table'],
+  // Templates
+  ['gitignore-template', '🙈', '.gitignore の雛形', '.gitignore template', 'haiku', 'text(node)', 'code'],
+  ['dockerfile-template', '🐳', 'Dockerfile の雛形', 'Dockerfile template', 'sonnet', 'text(node)', 'code'],
+  ['ci-template', '🤖', 'CI設定の雛形', 'CI workflow template', 'sonnet', 'text(node)', 'code'],
+  ['makefile-template', '🔨', 'Makefileの雛形', 'Makefile template', 'haiku', 'text?', 'code'],
+  ['readme-template', '📘', 'READMEの雛形', 'README template', 'haiku', 'text?', 'template'],
+  ['pr-template', '📬', 'PRテンプレート', 'PR template', 'haiku', 'text?', 'template'],
+  ['issue-template', '🐞', 'Issueテンプレート', 'Issue template', 'haiku', 'choice[bug|feature](bug)', 'template'],
+  ['adr-template', '📒', 'ADRの雛形', 'ADR template', 'haiku', 'text?', 'template'],
+  ['test-plan-template', '🧪', 'テスト計画の雛形', 'Test plan template', 'haiku', 'text?', 'template'],
+  ['meeting-agenda', '📢', '会議のアジェンダ', 'Meeting agenda', 'haiku', 'text?', 'list'],
+  ['email-template', '📧', 'メールの文例', 'Email template', 'haiku', 'text?', 'code'],
+  // Conventions and checklists
+  ['commit-convention', '📜', 'コミット規約', 'Commit conventions', 'haiku', 'none', 'list'],
+  ['naming-conventions', '🔤', '命名規則', 'Naming conventions', 'haiku', 'text(typescript)', 'table'],
+  ['code-review-checklist', '✅', 'レビュー観点の一覧', 'Code review checklist', 'haiku', 'text?', 'list'],
+  ['security-checklist', '🔒', 'セキュリティの点検項目', 'Web security checklist', 'sonnet', 'text?', 'list'],
+  ['debug-checklist', '🔦', 'デバッグの手順', 'Debugging checklist', 'sonnet', 'text?', 'list'],
+  ['release-checklist', '🚢', 'リリース前の確認項目', 'Release checklist', 'haiku', 'text?', 'list'],
+  ['cheatsheet', '📋', 'チートシート', 'Cheat sheet', 'haiku', 'text(git)', 'table'],
+]
+
+// Those that show something and stop there: the drafting help, the templates, and the sample data.
+const SHOW_ONLY = new Set([
+  'sample-data',
+  'cron-build', 'regex-build', 'shell-oneliner', 'git-recipe', 'sql-build', 'api-design', 'schema-design',
+  'gitignore-template', 'dockerfile-template', 'ci-template', 'makefile-template', 'readme-template', 'pr-template',
+  'issue-template', 'adr-template', 'test-plan-template', 'meeting-agenda', 'email-template',
+])
+
+const WANT: Record<Form, string> = { list: WANT_LIST, table: WANT_TABLE, code: WANT_CODE, template: WANT_TEMPLATE }
+
+test('the thirty-one catalog standalone actions run by a model (ideas, drafting help, templates, conventions): as the catalog has them', () => {
+  expect(CATALOG_ROWS_STANDALONE_MODEL).toHaveLength(6 + 7 + 11 + 7)
+  const forms = CATALOG_ROWS_STANDALONE_MODEL.map(r => r[6])
+  expect(forms.filter(f => f === 'list')).toHaveLength(9)
+  expect(forms.filter(f => f === 'table')).toHaveLength(6)
+  expect(forms.filter(f => f === 'code')).toHaveLength(11)
+  expect(forms.filter(f => f === 'template')).toHaveLength(5)
+  expect(SHOW_ONLY.size).toBe(19)
+  const env = { now: FIXED_INPUT.now, utcOffsetMinutes: FIXED_INPUT.utcOffsetMinutes }
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en, model, input, form] of CATALOG_ROWS_STANDALONE_MODEL) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'complete', target: 'none', model })
+    if (spec?.kind !== 'complete') throw new Error(`${id} is not complete`)
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+
+    // The argument, as the input column says.
+    const withDefault = /^text\((.+)\)$/.exec(input)
+    if (input === 'none') {
+      expect(spec.arg).toBeUndefined()
+    } else if (input === 'text?') {
+      expect(spec.arg).toMatchObject({ type: 'text' })
+      expect(spec.arg?.default).toBeUndefined()
+    } else if (withDefault !== null) {
+      expect(spec.arg).toMatchObject({ type: 'text', default: withDefault[1] })
+    } else {
+      expect(input).toBe('choice[bug|feature](bug)')
+      expect(spec.arg).toMatchObject({ type: 'choice', choices: ['bug', 'feature'], default: 'bug' })
+    }
+    // Its default (or none) parses.
+    if (spec.arg !== undefined) expect(parseArg(spec.arg, undefined, env).ok).toBe(true)
+
+    // The prompt: ALONE first, the form over STYLE, STYLE last, and nothing it is not given.
+    const prompt = spec.prompt
+    expect(prompt.startsWith(ALONE)).toBe(true)
+    expect(prompt.endsWith(STYLE)).toBe(true)
+    expect(prompt.indexOf(WANT[form])).toBeGreaterThan(-1)
+    expect(prompt.indexOf(WANT[form])).toBeLessThan(prompt.indexOf(STYLE))
+    for (const other of Object.values(WANT)) if (other !== WANT[form]) expect(prompt).not.toContain(other)
+    expect(prompt).not.toMatch(/selected|selection|conversation/i)
+    // No current date reaches the model.
+    expect(prompt).not.toMatch(/today|latest|this year|current date/i)
+    // Past ALONE, the argument is named by all but commit-convention, which takes none.
+    expect(prompt.slice(ALONE.length).includes('<input>')).toBe(input !== 'none')
+    expect(prompt.includes(PANE_ONLY)).toBe(SHOW_ONLY.has(id))
+    for (const lang of ['ja', 'en'] as const) {
+      expect(resolveSpec(spec, lang).prompt).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
+    }
+  }
+  // In the catalog's order, right after timer.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('timer') + 1
+  expect(ids.slice(at, at + 31)).toEqual(CATALOG_ROWS_STANDALONE_MODEL.map(r => r[0]))
+  // No two standalone actions share an icon.
+  const icons = ACTIONS.filter(isStandalone).map(a => a.icon)
+  expect(new Set(icons).size).toBe(icons.length)
+})
+
+test('the catalog standalone actions run by a model: what their content column asks for', () => {
+  const promptFor = (id: string) => {
+    const spec = ACTIONS.find(a => a.id === id)
+    if (spec?.kind !== 'complete') throw new Error(`${id} is not complete`)
+    return spec.prompt
+  }
+  expect(PANE_ONLY).toContain('do not create or change any file')
+  expect(PANE_ONLY).toContain('do not run anything')
+  expect(PANE_ONLY).toContain('do not put anything in the input field')
+  for (const id of ['brainstorm', 'project-names']) expect(promptFor(id)).toContain('Give 10')
+  expect(promptFor('brainstorm')).toContain('pick a random topic about software development and name it on the first line')
+  expect(promptFor('sample-data')).toContain('JSON')
+  expect(promptFor('sample-data')).toContain('use no real personal data')
+  expect(promptFor('sample-data')).toContain('example.com')
+  expect(promptFor('cron-build')).toContain('Do not work out or show next run times on particular dates')
+  expect(promptFor('git-recipe')).toContain('Warn clearly')
+  expect(promptFor('dockerfile-template')).toContain('base image tags are examples only: say they must be checked')
+  expect(promptFor('dockerfile-template')).toContain('multi-stage')
+  expect(promptFor('ci-template')).toContain('examples only: say they must be checked')
+  expect(promptFor('ci-template')).toContain('GitHub Actions')
+  expect(promptFor('email-template')).toContain('subject line and the body apart')
+  expect(promptFor('issue-template')).toContain('For bug:')
+  expect(promptFor('issue-template')).toContain('For feature:')
+  expect(promptFor('commit-convention')).toContain('Conventional Commits')
+  // A default named in the input column is the one the prompt falls back to.
+  expect(promptFor('gitignore-template')).toContain('if there is none, make it for node')
+  expect(promptFor('naming-conventions')).toContain('if there is none, use typescript')
+  expect(promptFor('cheatsheet')).toContain('if there is none, use git')
+})
+
 test('the kinds and how each may run: target of three values, kind of four', () => {
   for (const a of ACTIONS) {
     // local: standalone, or on the selection (target left out); never on the conversation.
     if (a.kind === 'local') expect([undefined, 'none']).toContain(a.target)
     // A fork carries the conversation, so it is never standalone.
     if (isStandalone(a)) expect(a.kind).not.toBe('fork')
-    // An argument is a standalone action's alone; a model one takes free text only.
+    // An argument is a standalone action's alone; a model one takes free text or a choice.
     if (needsSelection(a) || isContext(a)) expect('arg' in a && a.arg !== undefined).toBe(false)
-    if (isStandalone(a) && (a.kind === 'complete' || a.kind === 'subagent') && a.arg !== undefined) expect(a.arg.type).toBe('text')
+    if (isStandalone(a) && (a.kind === 'complete' || a.kind === 'subagent') && a.arg !== undefined) {
+      expect(['text', 'choice']).toContain(a.arg.type)
+      // A choice lists its values, its default among them.
+      if (a.arg.type === 'choice') {
+        expect(a.arg.choices?.length ?? 0).toBeGreaterThan(0)
+        expect(a.arg.choices).toContain(a.arg.default)
+      }
+    }
     // An int argument is always bounded.
     if ('arg' in a && a.arg?.type === 'int') {
       expect(typeof a.arg.min).toBe('number')
@@ -998,6 +1165,13 @@ for (const language of ['ja', 'en'] as const) {
           expect(s.models.length).toBe(before.models)
           expect(s.forks.length).toBe(before.forks)
           expect(s.spawned.length).toBe(before.spawned)
+        } else if (a.kind === 'complete' && isStandalone(a)) {
+          // Standalone: the selection is not sent; the default argument, or NO_INPUT with none.
+          expect(s.models.length).toBe(before.models + 1)
+          expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
+          expect(s.models.at(-1)?.prompt).not.toContain('TypeError: x is undefined')
+          expect(s.models.at(-1)?.prompt).not.toContain('<selected>')
+          expect(s.models.at(-1)?.prompt).toBe(a.arg?.default === undefined ? NO_INPUT : wrapInput(a.arg.default))
         } else if (a.kind === 'complete') {
           expect(s.models.length).toBe(before.models + 1)
           expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })

@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { ACTIONS, isStandalone } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, JA, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
@@ -329,7 +330,8 @@ test('candidates are matched by label in either language and by kind name', { op
   expect(candidatesIn(await runCommand($, 'translate'))).toEqual(ON_SELECTION_TRANSLATIONS)
   // By the English label too: Plain Japanese.
   expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja'])
-  expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(['timer'])
+  // The standalone actions, in the order of definition (timer, of the default set, first), ten at most.
+  expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(ACTIONS.filter(isStandalone).map(a => a.id).slice(0, 10))
 })
 
 test('the candidates follow the order the dialog shows, pins first', { options: { ...JA, actions: 'translate-last,translate-en' } }, async ($, on) => {

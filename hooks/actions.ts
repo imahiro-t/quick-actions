@@ -55,8 +55,8 @@ export type Target = 'selection' | 'context' | 'none'
 /**
  * One model call on its own: `prompt` is the system prompt, the selection the
  * user turn; for a standalone action (`target: 'none'`), its argument in
- * `<input>` or NO_INPUT. `arg` (a standalone action's only, of type `text`)
- * is the argument it takes.
+ * `<input>` or NO_INPUT. `arg` (a standalone action's only, of type `text` or
+ * `choice`) is the argument it takes.
  */
 export type CompleteAction<T = string> = ActionBase<T> & {
   kind: 'complete'
@@ -85,7 +85,7 @@ export type ContextAction<T = string> = ForkAction<T> & { target: 'context' }
 export type SubagentAction<T = string> = ActionBase<T> & {
   kind: 'subagent'
   target?: 'selection' | 'none'
-  /** A standalone subagent's argument (of type `text`), added to its task in `<input>`. */
+  /** A standalone subagent's argument (of type `text` or `choice`), added to its task in `<input>`. */
   arg?: ArgSpec<T>
   model: string
   prompt: string
@@ -286,6 +286,42 @@ const contextAction = (a: Omit<ContextAction<Localized>, 'kind' | 'target'>): Co
 
 /** Joins the lines and ends them with the answer language and style, filled in by language. */
 export const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
+
+/**
+ * What every standalone action run by a model says first: it has its argument
+ * in `<input>` at most, and nothing else to go on.
+ */
+export const ALONE = 'Work only from the text in <input> if there is one; nothing else is given.'
+
+/**
+ * What a standalone action that only shows something (a template, a command, a
+ * query, a design) says: it stays in the pane, nothing is made or run.
+ */
+export const PANE_ONLY =
+  'Only show it here: do not create or change any file, do not run anything, and do not put anything in the input field.'
+
+// What a standalone action whose content is a list, a table, code or a
+// template says over STYLE (plain prose, no headings, no tables): each comes
+// before STYLE in the prompt, so "below" holds.
+export const WANT_LIST = 'The list is wanted here, whatever the style below says.'
+export const WANT_TABLE = 'A table is wanted here, whatever the style below says.'
+export const WANT_CODE = 'Show it in a code block, ready to copy, whatever the style below says.'
+export const WANT_TEMPLATE =
+  'Show the template as Markdown in a code block, headings and tables included, ready to copy, whatever the style below says.'
+
+/** A standalone action's prompt: ALONE, the lines, then STYLE. */
+const alone = (...lines: string[]) => sys(ALONE, ...lines)
+
+/** A standalone action from what tells it apart: one model call on its argument alone. */
+const standaloneModel = (a: Omit<CompleteAction<Localized>, 'kind' | 'target'>): CompleteAction<Localized> => ({
+  ...a,
+  kind: 'complete',
+  target: 'none',
+})
+
+/** A free-text argument: optional when `fallback` is left out, else that is its default. */
+const textArg = (ja: string, en: string, fallback?: string): ArgSpec<Localized> =>
+  fallback === undefined ? { type: 'text', hint: { ja, en } } : { type: 'text', default: fallback, hint: { ja, en } }
 
 /** A prompt with its STYLE and ANSWER_LANGUAGE filled in for the language. */
 export const localizePrompt = (prompt: string, lang: Lang) =>
@@ -2592,6 +2628,558 @@ export const ACTIONS: readonly ActionSpec[] = [
     },
     compute: timerCompute,
   },
+
+  // Standalone actions run by a model: ideas, drafting help, templates and
+  // conventions (SELM-00033). One call on the argument alone, in the pane only.
+  // No current date reaches the model: nothing here asks for what is new or
+  // when something runs next, and versions in a template are examples.
+  ...[
+    // Ideas.
+    {
+      id: 'brainstorm',
+      icon: '🌟',
+      label: { ja: 'アイデア出し', en: 'Brainstorm' },
+      model: 'sonnet',
+      arg: textArg(
+        '題材（任意。例: 社内勉強会の企画。省くとソフトウェア開発のランダムな題材）',
+        'a topic, e.g. a team study session; a random software development topic when left out',
+      ),
+      prompt: alone(
+        'Brainstorm ideas.',
+        'If <input> is given, use it as the topic;',
+        'otherwise pick a random topic about software development and name it on the first line, before the ideas.',
+        'Give 10 ideas as a numbered list, each with a short explanation of one line.',
+        'Make them varied: some safe, some bold.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'project-names',
+      icon: '🔖',
+      label: { ja: 'プロジェクト名の案', en: 'Project name ideas' },
+      model: 'haiku',
+      arg: textArg(
+        'プロジェクトの説明（任意。例: ログを検索する CLI。省くと架空の開発ツール）',
+        'what the project is, e.g. a CLI that searches logs; a fictional developer tool when left out',
+      ),
+      prompt: alone(
+        'Suggest names for a project, tool or service.',
+        'If <input> is given, it describes the project;',
+        'otherwise imagine a fictional developer tool, describe it in one line first, and name that.',
+        'Give 10 names as a numbered list, each with a one-line note on where the name comes from.',
+        'Prefer names that are short, easy to say and easy to search for.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'fermi',
+      icon: '🤔',
+      label: { ja: 'フェルミ推定', en: 'Fermi estimate' },
+      model: 'sonnet',
+      arg: textArg(
+        '見積もる問い（任意。例: 日本にあるエレベーターの数。省くと定番の問い）',
+        'a question, e.g. how many elevators there are in Japan; a classic one when left out',
+      ),
+      prompt: alone(
+        'Make a Fermi estimate.',
+        'If <input> is given, it is the question to estimate (for example, how many elevators there are in Japan);',
+        'otherwise pick one classic Fermi question, state it first, and solve it.',
+        'List the assumptions and each step of the calculation as bullet points, with round numbers and their units,',
+        'then give the estimate as an order of magnitude and say how far off it could be.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'decision-matrix',
+      icon: '🧭',
+      label: { ja: '意思決定表', en: 'Decision matrix' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        '比較する選択肢（任意。例: PostgreSQL / MySQL / SQLite。省くと記入用の雛形）',
+        'the options, e.g. PostgreSQL / MySQL / SQLite; a blank matrix to fill in when left out',
+      ),
+      prompt: alone(
+        'Build a weighted decision matrix.',
+        'If <input> is given, it lists the options to choose between (for example, PostgreSQL / MySQL / SQLite), perhaps with the situation:',
+        'set up the criteria that matter for them, give each a weight, score each option on each criterion,',
+        'show the scores and the weighted totals in a table, then name the likely choice and when another would win instead.',
+        'Otherwise show a blank decision matrix to fill in (options as columns, criteria and weights as rows)',
+        'and explain in a few lines how to use it.',
+        'Keep it to about 30 lines.',
+        WANT_TABLE,
+      ),
+    },
+    {
+      id: 'color-palette',
+      icon: '🎨',
+      label: { ja: '配色案', en: 'Color palette' },
+      model: 'haiku',
+      arg: textArg(
+        '雰囲気・用途（任意。例: 落ち着いた管理画面。省くと汎用の明るいテーマ）',
+        'a mood or use, e.g. a calm admin dashboard; a general light theme when left out',
+      ),
+      prompt: alone(
+        'Suggest a color palette.',
+        'If <input> is given, it describes the mood or the use (for example, a calm admin dashboard);',
+        'otherwise make a general-purpose light theme.',
+        'Give 5 or 6 colors in a table, each with its HEX code and its role (background, body text, accent, border and so on).',
+        'Add one line on the contrast between the text and the background.',
+        WANT_TABLE,
+      ),
+    },
+    {
+      id: 'sample-data',
+      icon: '🍱',
+      label: { ja: 'サンプルデータ', en: 'Sample data' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg(
+        'データの説明（任意。例: 注文 5 件、id,name,price。省くとユーザー 5 件）',
+        'the data, e.g. 5 orders with id,name,price; 5 users when left out',
+      ),
+      prompt: alone(
+        'Generate fictional sample data as JSON.',
+        'If <input> is given, it describes the data (for example, 5 orders with id, name, price);',
+        'otherwise generate 5 users, each with an id, a name, an email address and a sign-up date.',
+        'Every value is made up: use no real personal data, and only example domains such as example.com for email addresses.',
+        'Give valid JSON (an array of objects), then one plain line on what it holds.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+
+    // Drafting commands and code.
+    {
+      id: 'cron-build',
+      icon: '⏰',
+      label: { ja: 'cron式を作る', en: 'Build a cron expression' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg(
+        '実行したいタイミング（任意。例: 平日の 9 時半。省くとよく使う例 10 個）',
+        'when to run, e.g. weekdays at 9:30; 10 common examples when left out',
+      ),
+      prompt: alone(
+        'Write cron expressions.',
+        'If <input> is given, it says in words when something should run (for example, weekdays at 9:30):',
+        'turn it into a standard five-field cron expression, then explain what each field means.',
+        'Otherwise give 10 commonly used cron expressions, each with what it means.',
+        'Do not work out or show next run times on particular dates.',
+        'Note anything the words leave open, such as the time zone.',
+        'Put the explanations in plain lines outside the code block.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'regex-build',
+      icon: '🧵',
+      label: { ja: '正規表現を作る', en: 'Build a regex' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        '一致させたいパターン（任意。例: 日本の郵便番号。省くとよく使う例 10 個）',
+        'the pattern, e.g. a Japanese postal code; 10 common examples when left out',
+      ),
+      prompt: alone(
+        'Write a regular expression.',
+        'If <input> is given, it describes the pattern to match (for example, a Japanese postal code):',
+        'give a regular expression for it, explain it part by part, and list strings it matches and strings it does not.',
+        'Otherwise give 10 commonly used regular expressions, each with what it matches.',
+        'Say which flavor it assumes (for example, JavaScript) where that matters.',
+        'Put the explanations in plain lines outside the code block.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'shell-oneliner',
+      icon: '🐚',
+      label: { ja: 'コマンドを考える', en: 'Shell one-liner' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        'やりたいこと（任意。例: 1 週間以上前のログを探す。省くと便利なワンライナー 10 個）',
+        'what to do, e.g. find logs older than a week; 10 handy one-liners when left out',
+      ),
+      prompt: alone(
+        'Suggest shell commands.',
+        'If <input> is given, it says what to do (for example, find logs older than a week):',
+        'give a shell command that does it, explain each part, and note the pitfalls',
+        '(anything destructive, differences between GNU and BSD or macOS tools).',
+        'Otherwise give 10 handy one-liners often used in development, each with what it does.',
+        'Put the explanations in plain lines outside the code block.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'git-recipe',
+      icon: '🌿',
+      label: { ja: 'gitの操作方法', en: 'Git recipe' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        'やりたいこと（任意。例: 直前のコミットを取り消す。省くとよくある困りごとの対処一覧）',
+        'what to do, e.g. undo the last commit; the usual troubles when left out',
+      ),
+      prompt: alone(
+        'Show how to do something with git.',
+        'If <input> is given, it says what to do (for example, undo the last commit): give the git steps that do it, in order.',
+        'Otherwise list the usual troubles (undoing, recovering lost work, resolving conflicts), each with how to deal with it.',
+        'Warn clearly before any step that rewrites history or can lose work (reset --hard, push --force, clean and the like),',
+        'and say how to back out of it.',
+        'Put the explanations in plain lines outside the code blocks.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'sql-build',
+      icon: '💾',
+      label: { ja: 'SQLを考える', en: 'Write SQL' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        'やりたい処理（任意。例: 月別の売上合計。テーブル定義を含めてもよい。省くとよく使う書き方の例）',
+        'the query, e.g. monthly sales totals, table definitions welcome; common examples when left out',
+      ),
+      prompt: alone(
+        'Write SQL.',
+        'If <input> is given, it describes the query (for example, monthly sales totals), perhaps with table definitions:',
+        'write SQL that does it, say which dialect it assumes and what it takes the tables to look like, and explain how it works.',
+        'Otherwise show examples of commonly used SQL (aggregation, joins and window functions), each explained briefly.',
+        'Put the explanations in plain lines outside the code blocks.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'api-design',
+      icon: '🔌',
+      label: { ja: 'API設計案', en: 'API design' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg(
+        'リソース・機能（任意。例: 予約管理。省くと ToDo 管理）',
+        'a resource or feature, e.g. reservation management; a to-do app when left out',
+      ),
+      prompt: alone(
+        'Design a REST API.',
+        'If <input> is given, it names the resource or feature (for example, reservation management);',
+        'otherwise use a to-do list app as the example.',
+        'Show the endpoints in a table with the method, the path, the main request and response fields, and the status codes,',
+        'then add a few lines on the design choices (naming, paging, errors).',
+        WANT_TABLE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'schema-design',
+      icon: '🏢',
+      label: { ja: 'テーブル設計案', en: 'Database schema' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg('業務の説明（任意。例: 図書館の貸出。省くとブログ）', 'the domain, e.g. lending at a library; a blog when left out'),
+      prompt: alone(
+        'Design a database schema.',
+        'If <input> is given, it describes the domain (for example, lending at a library);',
+        'otherwise use a blog with posts, users, comments and tags as the example.',
+        'Give a table for each table of the schema, listing its columns, their types and the keys (primary, foreign, unique),',
+        'then explain how the tables relate and which indexes are worth adding.',
+        WANT_TABLE,
+        PANE_ONLY,
+      ),
+    },
+
+    // Templates, shown in the pane alone.
+    {
+      id: 'gitignore-template',
+      icon: '🙈',
+      label: { ja: '.gitignore の雛形', en: '.gitignore template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('言語・環境（例: node、python macos。省くと node）', 'languages or environments, e.g. node, python macos; node when left out', 'node'),
+      prompt: alone(
+        'Show a .gitignore template.',
+        'The text in <input> names the languages, frameworks or environments it is for (for example, node, or python macos);',
+        'if there is none, make it for node.',
+        'Group the entries, each group or entry with a short comment on what it ignores.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'dockerfile-template',
+      icon: '🐳',
+      label: { ja: 'Dockerfile の雛形', en: 'Dockerfile template' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg('言語・用途（例: node、python fastapi。省くと node）', 'a language and use, e.g. node, python fastapi; node when left out', 'node'),
+      prompt: alone(
+        'Show a Dockerfile template.',
+        'The text in <input> names the language and the use (for example, node, or python fastapi); if there is none, make it for node.',
+        'Make it a multi-stage build (a build stage, then a small runtime image running as a non-root user),',
+        'and explain each line in plain lines after the code block.',
+        'The base image tags are examples only: say they must be checked before use.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'ci-template',
+      icon: '🤖',
+      label: { ja: 'CI設定の雛形', en: 'CI workflow template' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg('言語（例: node、go。省くと node）', 'a language, e.g. node, go; node when left out', 'node'),
+      prompt: alone(
+        'Show a GitHub Actions workflow template that runs the tests and the build.',
+        'The text in <input> names the language (for example, node, or go); if there is none, make it for node.',
+        'Explain each part in plain lines after the code block.',
+        'The versions of the actions and tools it uses are examples only: say they must be checked before use.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'makefile-template',
+      icon: '🔨',
+      label: { ja: 'Makefileの雛形', en: 'Makefile template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('プロジェクトの種類（任意。例: Go の CLI。省くと汎用）', 'the kind of project, e.g. a Go CLI; a general one when left out'),
+      prompt: alone(
+        'Show a Makefile template with the usual targets (build, test, lint, clean and the like), each with a short comment.',
+        'If <input> is given, it names the kind of project (for example, a Go CLI); otherwise make a general-purpose one.',
+        'Add one plain line reminding that recipe lines start with a tab.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'readme-template',
+      icon: '📘',
+      label: { ja: 'READMEの雛形', en: 'README template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('プロジェクトの説明（任意。例: 画像を圧縮する CLI。省くと汎用）', 'what the project is, e.g. a CLI that compresses images; a general one when left out'),
+      prompt: alone(
+        'Show a README template: its sections (overview, installation, usage, configuration, license and the like),',
+        'each with an opening line to build on.',
+        'If <input> is given, it describes the project: write the template for it;',
+        'otherwise make a general-purpose one with placeholders.',
+        WANT_TEMPLATE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'pr-template',
+      icon: '📬',
+      label: { ja: 'PRテンプレート', en: 'PR template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('チームの事情（任意。例: モバイルアプリ。省くと汎用）', 'the team or project, e.g. a mobile app; a general one when left out'),
+      prompt: alone(
+        'Show a pull request template with the sections summary, changes, how to verify, and a checklist.',
+        'If <input> is given, it describes the team or the project (for example, a mobile app): fit the sections and the checklist to it;',
+        'otherwise make a general-purpose one.',
+        WANT_TEMPLATE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'issue-template',
+      icon: '🐞',
+      label: { ja: 'Issueテンプレート', en: 'Issue template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: {
+        type: 'choice' as const,
+        choices: ['bug', 'feature'],
+        default: 'bug',
+        hint: { ja: 'bug または feature（省くと bug）', en: 'bug or feature; bug when left out' },
+      },
+      prompt: alone(
+        'Show an issue template.',
+        'The text in <input> is bug or feature; if there is none, use bug.',
+        'For bug: steps to reproduce, expected and actual behavior, and the environment.',
+        'For feature: background, proposal, and alternatives considered.',
+        WANT_TEMPLATE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'adr-template',
+      icon: '📒',
+      label: { ja: 'ADRの雛形', en: 'ADR template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg(
+        '判断の題材（任意。例: 状態管理ライブラリの選定。省くと記入前の雛形）',
+        'the decision, e.g. choosing a state management library; a blank template when left out',
+      ),
+      prompt: alone(
+        'Show an Architecture Decision Record (ADR) template with the sections title, context, decision, reasons and consequences.',
+        'If <input> is given, it is the decision to record: fill the template in with it as a worked example;',
+        'otherwise leave placeholders, each with a short note on what goes there.',
+        WANT_TEMPLATE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'test-plan-template',
+      icon: '🧪',
+      label: { ja: 'テスト計画の雛形', en: 'Test plan template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('機能（任意。例: パスワードの再設定。省くとログイン機能）', 'a feature, e.g. resetting a password; a login feature when left out'),
+      prompt: alone(
+        'Show a test plan template with the sections scope, what to test, a table of test cases (ID, steps, expected result),',
+        'and exit criteria.',
+        'If <input> is given, it names the feature to plan for; otherwise use a login feature as the example.',
+        WANT_TEMPLATE,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'meeting-agenda',
+      icon: '📢',
+      label: { ja: '会議のアジェンダ', en: 'Meeting agenda' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg(
+        '会議の目的（任意。例: 設計レビュー 30 分。省くと 30 分の定例）',
+        'the meeting, e.g. a 30-minute design review; a 30-minute weekly meeting when left out',
+      ),
+      prompt: alone(
+        'Draft a meeting agenda.',
+        'If <input> is given, it says what the meeting is for and perhaps how long it is (for example, a 30-minute design review);',
+        'otherwise use a 30-minute weekly team meeting.',
+        'List the items in order, each with its time slot and the goal it should reach, the times adding up to the length of the meeting.',
+        WANT_LIST,
+        PANE_ONLY,
+      ),
+    },
+    {
+      id: 'email-template',
+      icon: '📧',
+      label: { ja: 'メールの文例', en: 'Email template' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg(
+        '用件（任意。例: 納期の延長のお願い。省くとよく使う用件 3 つ）',
+        'the purpose, e.g. asking to extend a deadline; 3 common ones when left out',
+      ),
+      prompt: alone(
+        'Draft a business email.',
+        'If <input> is given, it is the purpose (for example, asking to extend a deadline);',
+        'otherwise give sample emails for 3 common purposes.',
+        'Show the subject line and the body apart, each in its own code block, with placeholders such as [name] for the details to fill in.',
+        'Never send anything.',
+        WANT_CODE,
+        PANE_ONLY,
+      ),
+    },
+
+    // Conventions and checklists.
+    {
+      id: 'commit-convention',
+      icon: '📜',
+      label: { ja: 'コミット規約', en: 'Commit conventions' },
+      model: 'haiku',
+      prompt: alone(
+        'Summarize the Conventional Commits format: the list of types with what each is for, the scope,',
+        'the body and the footer, and how to mark a breaking change, each with an example message.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'naming-conventions',
+      icon: '🔤',
+      label: { ja: '命名規則', en: 'Naming conventions' },
+      model: 'haiku',
+      arg: textArg('言語（例: typescript、python。省くと typescript）', 'a language, e.g. typescript, python; typescript when left out', 'typescript'),
+      prompt: alone(
+        'Summarize the common naming conventions of a programming language.',
+        'The text in <input> names the language (for example, typescript, or python); if there is none, use typescript.',
+        'Cover variables, functions, types or classes, constants and files, in a table with the convention and an example for each.',
+        WANT_TABLE,
+      ),
+    },
+    {
+      id: 'code-review-checklist',
+      icon: '✅',
+      label: { ja: 'レビュー観点の一覧', en: 'Code review checklist' },
+      model: 'haiku',
+      arg: textArg('言語・領域（任意。例: フロントエンド。省くと汎用）', 'a language or area, e.g. frontend; general when left out'),
+      prompt: alone(
+        'Give a code review checklist covering correctness, readability, tests, performance and security.',
+        'If <input> is given, it names a language or an area (for example, frontend): fit the items to it;',
+        'otherwise keep them general.',
+        'Write each item as a question to check, grouped by those headings.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'security-checklist',
+      icon: '🔒',
+      label: { ja: 'セキュリティの点検項目', en: 'Web security checklist' },
+      model: 'sonnet',
+      maxTokens: 3000,
+      arg: textArg('対象（任意。例: GraphQL API。省くと Web アプリ・API 全般）', 'the target, e.g. a GraphQL API; web apps and APIs in general when left out'),
+      prompt: alone(
+        'Give a security checklist for web apps and APIs covering the common weaknesses:',
+        'injection, authentication, authorization, secrets, dependencies and the like.',
+        'If <input> is given, it names the target (for example, a GraphQL API): fit the items to it; otherwise keep them general.',
+        'For each item, say how to check it.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'debug-checklist',
+      icon: '🔦',
+      label: { ja: 'デバッグの手順', en: 'Debugging checklist' },
+      model: 'sonnet',
+      arg: textArg('症状（任意。例: 本番だけで遅い。省くと汎用の手順）', 'the symptom, e.g. slow only in production; general steps when left out'),
+      prompt: alone(
+        'Give a checklist for isolating a bug: reproduce it, make the case minimal, form hypotheses, bisect, and read the logs.',
+        'If <input> is given, it describes the symptom (for example, slow only in production): give the order of checks that fits it;',
+        'otherwise keep the steps general.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'release-checklist',
+      icon: '🚢',
+      label: { ja: 'リリース前の確認項目', en: 'Release checklist' },
+      model: 'haiku',
+      arg: textArg('対象（任意。例: npm パッケージ。省くと汎用）', 'what is released, e.g. an npm package; general when left out'),
+      prompt: alone(
+        'Give a checklist of what to confirm before a release: tests, the version, the changelog, migrations,',
+        'the rollback steps and the announcement.',
+        'If <input> is given, it names what is released (for example, an npm package): fit the items to it;',
+        'otherwise keep them general.',
+        WANT_LIST,
+      ),
+    },
+    {
+      id: 'cheatsheet',
+      icon: '📋',
+      label: { ja: 'チートシート', en: 'Cheat sheet' },
+      model: 'haiku',
+      maxTokens: 3000,
+      arg: textArg('ツール・言語（例: git、vim、docker、jq。省くと git）', 'a tool or language, e.g. git, vim, docker, jq; git when left out', 'git'),
+      prompt: alone(
+        'Make a cheat sheet of the most used commands or syntax of a tool or language.',
+        'The text in <input> names it (for example, git, vim, docker, or jq); if there is none, use git.',
+        'Group them by purpose, in a table with the command and what it does.',
+        'Keep it to about 40 rows.',
+        WANT_TABLE,
+      ),
+    },
+  ].map(standaloneModel),
 ]
 
 /**

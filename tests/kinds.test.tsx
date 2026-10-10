@@ -175,7 +175,7 @@ for (const surface of SURFACES) {
 // keep the terminal's foreground. The dimmed texts are the theme's either way.
 for (const surface of SURFACES) {
   for (const placement of ['dock', 'inline'] as const) {
-    test(`[${surface}] ${placement}: heading and answer colours follow what paints the background`, async ($, on) => {
+    test(`[${surface}] ${placement}: heading and answer colours follow what paints the background`, { options: JA }, async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
       await start($)

@@ -1,7 +1,7 @@
 {
   "name": "selection-actions",
   "version": "0.1.0",
-  "description": "Icon actions on the text selected in the Claude Code transcript: explain, translate, summarize, find the code behind it, ask in context and more, chosen and ordered in settings, in English or Japanese",
+  "description": "Icon actions on the text selected in the Claude Code transcript: translate, explain (simply, in depth or in context), summarize, and find the evidence behind it, chosen and ordered in settings, in English or Japanese",
   "author": { "name": "Takashi Imahiro" },
   "license": "MIT",
   "types": "./types/index.d.ts",

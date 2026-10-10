@@ -88,14 +88,14 @@ const fillPane = async ($: Engine, s: Stage, clock: Clock, surface: (typeof SURF
   s.refuse = null
   s.spawnDeny = 'not allowed here'
   await reselect(s, clock)
-  await band.press({ key: 'usages' })
+  await band.press({ key: 'code' })
   await band.unmount()
 }
 
 for (const surface of SURFACES) {
   test(
     `[${surface}] en: the hint line, the pane, the command and the toast are in English`,
-    { options: { ...EN, actions: 'explain,translate,code,ask,usages' } },
+    { options: { ...EN, actions: 'explain,translate,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -120,7 +120,7 @@ for (const surface of SURFACES) {
 
       // The hover labels.
       const band = await $.ui.mount({ ...BAND, surface })
-      for (const label of ['Explain', 'To Japanese', 'Find the code', 'Ask Claude', 'Find usages']) {
+      for (const label of ['Explain', 'To Japanese', 'Find the code', 'Ask Claude', 'Why so']) {
         expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       }
       expect((await texts(band)).join('\n')).not.toMatch(JAPANESE)
@@ -144,14 +144,14 @@ for (const surface of SURFACES) {
       expect(s.toasts.join('\n')).not.toMatch(JAPANESE)
 
       // The subagent types say what they are for in English.
-      expect(s.registered.map(r => r.name)).toEqual(['code', 'usages'])
+      expect(s.registered.map(r => r.name)).toEqual(['code'])
       for (const r of s.registered) expect(r.description).not.toMatch(JAPANESE)
     },
   )
 
   test(
     `[${surface}] ja: the same places read in Japanese, as before the setting`,
-    { options: { ...JA, actions: 'explain,translate,code,ask,usages' } },
+    { options: { ...JA, actions: 'explain,translate,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -165,7 +165,7 @@ for (const surface of SURFACES) {
       s.selected = 'segfault at 0x0'
       await clock.advance(400)
       const band = await $.ui.mount({ ...BAND, surface })
-      for (const label of ['意味', '日本語訳', 'コードの根拠', 'Claudeに聞く', '使用箇所を探す']) {
+      for (const label of ['意味', '日本語訳', 'コードの根拠', 'Claudeに聞く', '根拠を説明']) {
         expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       }
       await band.unmount()
@@ -184,10 +184,10 @@ for (const surface of SURFACES) {
   )
 }
 
-test('the subagents\' running texts exist in both languages', () => {
+test('the subagent\'s running text exists in both languages', () => {
   const running = (lang: 'ja' | 'en') => actionsFor(lang).flatMap(a => (a.runningText === undefined ? [] : [a.runningText]))
-  expect(running('en')).toEqual(['Searching the repository…', 'Searching for usages…', 'Searching the docs…'])
-  expect(running('ja')).toEqual(['リポジトリを調査中…', '使用箇所を調査中…', 'ドキュメントを調査中…'])
+  expect(running('en')).toEqual(['Searching the repository…'])
+  expect(running('ja')).toEqual(['リポジトリを調査中…'])
 })
 
 for (const [options, thinking] of [
@@ -250,12 +250,7 @@ for (const language of ['en', 'ja'] as const) {
         if (id === 'translate' || id === 'translate-en') continue
         expect(system).not.toContain(`Answer in ${other}`)
         expect(system).not.toContain(`in ${other}.`)
-        if (id === 'proofread') {
-          expect(system).toContain(`list the changes briefly in ${name}`)
-          expect(system).toContain(`say so in ${name}`)
-        } else {
-          expect(system).toContain(`Answer in ${name}`)
-        }
+        expect(system).toContain(`Answer in ${name}`)
       }
       for (const fork of s.forks) {
         expect(fork).toContain(`Answer in ${name}`)

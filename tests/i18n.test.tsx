@@ -186,8 +186,12 @@ for (const surface of SURFACES) {
 
 test('the subagents\' running texts exist in both languages', () => {
   const running = (lang: 'ja' | 'en') => actionsFor(lang).flatMap(a => (a.runningText === undefined ? [] : [a.runningText]))
-  expect(running('en')).toEqual(['Searching the repository…', 'Checking the web…'])
-  expect(running('ja')).toEqual(['リポジトリを調査中…', 'Webで調査中…'])
+  // code, web-check, then find-usages, find-tests (the repository) and official-docs, search-error, package-info (the web).
+  const repo = { en: 'Searching the repository…', ja: 'リポジトリを調査中…' }
+  const web = { en: 'Checking the web…', ja: 'Webで調査中…' }
+  for (const lang of ['en', 'ja'] as const) {
+    expect(running(lang)).toEqual([repo, web, repo, repo, web, web, web].map(t => t[lang]))
+  }
 })
 
 for (const [options, thinking] of [

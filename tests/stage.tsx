@@ -30,6 +30,8 @@ export const NO_STYLE: readonly string[] = [
   'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply',
   // The converted code, with a short note in the answer language.
   'pseudocode', 'port-code', 'docstring',
+  // The converted data (a table, YAML, JSON, types, a schema), with a short note in the answer language.
+  'to-table', 'json-to-yaml', 'yaml-to-json', 'json-to-types', 'infer-schema',
 ]
 
 // Those of NO_STYLE that name the answer language (ANSWER_LANGUAGE) for their short note.
@@ -37,6 +39,7 @@ export const ANSWER_LANGUAGE_ONLY: readonly string[] = [
   'furigana', 'to-diagram',
   'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply',
   'pseudocode', 'port-code', 'docstring',
+  'to-table', 'json-to-yaml', 'yaml-to-json', 'json-to-types', 'infer-schema',
 ]
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }

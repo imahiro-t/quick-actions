@@ -30,18 +30,20 @@ for (const surface of SURFACES) {
     await band.unmount()
   })
 
-  test(`[${surface}] unset: the default set, in the original order`, async ($, on) => {
+  // No pins and no usage yet: the default set leads, the rest follow in the
+  // order of definition, the first six shown, then ✕ and ⋯.
+  test(`[${surface}] unset: the default set first, then the rest, six in all, then ✕ and ⋯`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '✕'])
+    expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
   })
 
   test(
-    `[${surface}] the setting picks the actions and their order`,
+    `[${surface}] the setting pins actions first, in its order; the rest follow`,
     { options: { actions: 'summarize,explain,ask' } },
     async ($, on) => {
       const clock = mock.clock(on)
@@ -50,7 +52,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['📝', '💡', '💬', '✕'])
+      expect(await iconsFor($, surface)).toEqual(['📝', '💡', '💬', '🌐', '🔤', '🧸', '✕', '⋯'])
     },
   )
 
@@ -64,12 +66,12 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['🌐', '💡', '✕'])
+      expect(await iconsFor($, surface)).toEqual(['🌐', '💡', '🔤', '🧸', '🔬', '💬', '✕', '⋯'])
     },
   )
 
   test(
-    `[${surface}] a setting with no known ID falls back to the default set`,
+    `[${surface}] a setting with no known ID pins nothing: the default set leads, as unset`,
     { options: { actions: 'nope,zzz' } },
     async ($, on) => {
       const clock = mock.clock(on)
@@ -78,7 +80,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '✕'])
+      expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
     },
   )
 

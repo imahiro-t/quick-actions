@@ -8,7 +8,6 @@ import {
   READ_ONLY_TOOLS,
   findAction,
   messageOf,
-  resolveActions,
   resolveAll,
   subagentType,
   wrap,
@@ -17,6 +16,7 @@ import type { ActionDef, ActionSpec, ResolvedSubagentAction } from './actions'
 import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
+import { USAGE_KEY, orderActions, parseHintCount, parsePins, parseUsage, recordUse } from './order'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -31,7 +31,13 @@ const PANE_COLUMNS = 56
 const COMMAND = PLUGIN
 const POLL_MS = 300
 const KEEP = 20
-const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const
+// The ⋯ dialog: a pane of its own beside the results. Its button's key on the
+// hint line is never an action's ID (those are lowercase letters, digits and
+// hyphens), so no custom action can take it.
+const PICKER = `${PLUGIN}-picker`
+const MORE_KEY = '_more'
+const PICKER_SELECT_KEY = 'picker'
+const PICKER_CLOSE_KEY = 'picker-close'
 
 // The pane's text colours, by placement. Docked on the right,
 // the pane sits on a background core paints in the theme
@@ -58,6 +64,7 @@ const PANE_COLORS = {
 const selection = atom({ plugin: 'selection-actions', key: 'selection' } as const, null)
 const dismissed = atom({ plugin: 'selection-actions', key: 'dismissed' } as const, null)
 const results = atom({ plugin: 'selection-actions', key: 'results' } as const, [])
+const picking = atom({ plugin: 'selection-actions', key: 'picking' } as const, null)
 
 const quoteOf = (text: string) => {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -143,8 +150,30 @@ async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, la
   }
 }
 
+// The usage scores (./order) are read, added to and written back one use at a
+// time, so two runs close together never lose one. A failure (the store
+// refused, over its 4 MiB) loses that use alone: the action runs regardless.
+let usageWrite: Promise<void> = Promise.resolve()
+
+/** Adds one use of `id` to its score in `$.store`. Never rejects; the returned promise settles once it is written. */
+function recordUsage($: EngineInterface, id: string): Promise<void> {
+  usageWrite = usageWrite.then(async () => {
+    try {
+      const now = await $.clock.now()
+      const usage = parseUsage(await $.store.get(USAGE_KEY))
+      await $.store.set(USAGE_KEY, recordUse(usage, id, now))
+    } catch {
+      // This use goes unrecorded; see above.
+    }
+  })
+  return usageWrite
+}
+
+// Every way an action runs (an icon, the ⋯ dialog, the command) comes here.
 async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
   const t = MESSAGES[lang]
+  // Not awaited: the score must not hold up the answer.
+  void recordUsage($, def.id)
   const id = nextId++
   const result: Result = { id, action: def.id, quote: quoteOf(text), status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
@@ -177,16 +206,83 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
   }
 }
 
-async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
+/** The text selected now, trimmed; undefined (and a toast saying so) when there is none. */
+async function selectedText($: EngineInterface, lang: Lang): Promise<string | undefined> {
   const picked = (await $.ui.selection())?.text.trim()
   if (!picked) {
     $.ui.toast(MESSAGES[lang].noSelection)
-    return
+    return undefined
   }
+  return picked
+}
+
+async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
   // Done with this selection: its icons go until another one is made. The
   // engine keeps answering it after a click elsewhere, so this is what hides them.
-  await update($, dismissed, () => picked)
-  await run($, def, lang, picked)
+  await update($, dismissed, () => text)
+  await run($, def, lang, text)
+}
+
+async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang) {
+  const picked = await selectedText($, lang)
+  if (picked !== undefined) await runOnText($, def, lang, picked)
+}
+
+// The order of every action (./order), settled once per load from the usage
+// scores as they stand: at session start, or by whichever hook needs it
+// first. Uses during the session do not move it, so an icon stays where the
+// person reaches for it. register clears it, so a reload (a settings change)
+// settles it anew; hooks read it only through ensureOrder.
+let orderedIds: readonly string[] | undefined
+let pendingOrder: Promise<readonly string[]> | undefined
+
+/** The settled order of `specs` (every action of this load) by ID, `pins` first. */
+async function ensureOrder($: EngineInterface, specs: readonly ActionSpec[], pins: readonly ActionSpec[]): Promise<readonly string[]> {
+  if (orderedIds !== undefined) return orderedIds
+  pendingOrder ??= (async () => {
+    // An unreadable store counts as no usage: the actions still show.
+    const usage = parseUsage(await readQuietly($.store.get(USAGE_KEY)))
+    const now = (await readQuietly($.clock.now())) ?? 0
+    return (orderedIds = orderActions(specs, pins, usage, now).map(a => a.id))
+  })()
+  return pendingOrder
+}
+
+/**
+ * Opens the ⋯ dialog on `text`, or on the text selected now. The text is
+ * kept in `picking` as it opens, so a pick runs on it however the selection
+ * changes meanwhile. With none, a toast says so and nothing opens.
+ */
+async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string): Promise<boolean> {
+  const picked = text ?? (await selectedText($, lang))
+  if (picked === undefined) return false
+  await update($, picking, () => picked)
+  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows })
+  return true
+}
+
+/**
+ * Closes the ⋯ dialog from within (a pick, its close button) and lets go of
+ * the text it held. The plugin's own close does not pass through its own
+ * `ui.close` hook, which covers the person's (Escape, the close mark).
+ */
+async function closePicker($: EngineInterface) {
+  await update($, picking, () => null)
+  await readQuietly($.ui.close({ id: PICKER }))
+}
+
+/**
+ * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on, read
+ * before the dialog closes and lets go of it.
+ */
+async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) {
+  const text = await read($, picking)
+  await closePicker($)
+  if (text === null) {
+    $.ui.toast(MESSAGES[lang].noSelection)
+    return
+  }
+  if (def !== undefined) await runOnText($, def, lang, text)
 }
 
 export const register: Register = (on, options) => {
@@ -197,9 +293,13 @@ export const register: Register = (on, options) => {
   const problems = custom.problems
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
-  // The IDs alone are resolved here: they do not depend on the language.
-  const enabledIds = resolveActions(allSpecs, options.actions).map(a => a.id)
-  const firstId = enabledIds[0]!
+  // The pins and the count alone are read here: they do not depend on the language.
+  const pins = parsePins(allSpecs, options.actions)
+  const hintCount = parseHintCount(options.hintCount)
+  // Tall enough for every action in the ⋯ dialog, its notice and its button.
+  const pickerRows = allSpecs.length + 4
+  orderedIds = undefined
+  pendingOrder = undefined
 
   // Kept here, with this load's settings, rather than in a module-level cache
   // like actionsFor's: the custom definitions change with the setting, and
@@ -207,17 +307,20 @@ export const register: Register = (on, options) => {
   const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
   const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
 
+  /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first hintCount, the hint line's. */
+  const inOrder = (ids: readonly string[], l: Lang): ActionDef[] => {
+    const defs = defsFor(l)
+    return ids.flatMap(id => findAction(defs, id) ?? [])
+  }
+
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
 
-  const enabledFor = (l: Lang): ActionDef[] => {
-    const defs = defsFor(l)
-    return enabledIds.flatMap(id => findAction(defs, id) ?? [])
-  }
-
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
+    // The order for this session, from the usage so far.
+    await ensureOrder($, allSpecs, pins)
     await $.command.register({
       name: COMMAND,
       description: MESSAGES[l].commandDescription,
@@ -282,7 +385,12 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     const defs = defsFor(l)
     const wanted = e.args.trim().toLowerCase()
-    const def = findAction(defs, wanted === '' ? firstId : wanted)
+    // Without an ID: the ⋯ dialog, on the text selected now.
+    if (wanted === '') {
+      const opened = await openPicker($, l, pickerRows)
+      return { text: withProblems(opened ? t.pickerOpened : t.noSelection, problems, l) }
+    }
+    const def = findAction(defs, wanted)
     // Whatever the result, the custom definitions left out follow it, so this
     // command is where the person can always read why.
     if (def === undefined) {
@@ -307,17 +415,18 @@ export const register: Register = (on, options) => {
     }
 
     const l = await ensureLanguage($)
-    const enabled = enabledFor(l)
+    const t = MESSAGES[l]
+    // The first hintCount in the order; pins beyond it too wait under ⋯.
+    const enabled = inOrder(await ensureOrder($, allSpecs, pins), l).slice(0, hintCount)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     return (
       <Box flexDirection="row">
-        {enabled.map((a, i) => (
+        {enabled.map(a => (
           <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
             <Button
               key={a.id}
               label={a.icon}
-              hotkey={HOTKEYS[i]}
               onPress={() => runOnSelection($, a, l)}
             />
           </Box>
@@ -331,16 +440,74 @@ export const register: Register = (on, options) => {
             onPress={() => update($, dismissed, () => text)}
           />
         </Box>
+        <Box key="act-more" hover={{ scope: 'tip-more' }}>
+          <Button
+            key={MORE_KEY}
+            label="⋯"
+            onPress={() => openPicker($, l, pickerRows, text)}
+          />
+        </Box>
         {enabled.map(a => (
           <Box display="none" hover={{ scope: `tip-action-${a.id}`, display: 'flex' }}>
             <Text color="cyan"> {a.label}</Text>
           </Box>
         ))}
         <Box display="none" hover={{ scope: 'tip-close', display: 'flex' }}>
-          <Text color="cyan"> {MESSAGES[l].close}</Text>
+          <Text color="cyan"> {t.close}</Text>
+        </Box>
+        <Box display="none" hover={{ scope: 'tip-more', display: 'flex' }}>
+          <Text color="cyan"> {t.allActions}</Text>
         </Box>
       </Box>
     )
+  })
+
+  // The ⋯ dialog: every action, in the hint line's order, as "icon label".
+  // Opened with focus, a Select takes the keys (arrows move, Enter runs);
+  // Escape closes it through closeOnEscape. Focus is a request the engine
+  // refuses while the composer holds text: then a line says how to get the
+  // keys, and the list and the close button still answer a click.
+  on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
+    const l = await ensureLanguage($)
+    const t = MESSAGES[l]
+    const text = await read($, picking)
+    const ordered = inOrder(await ensureOrder($, allSpecs, pins), l)
+    const elements = $.ui.resolve(e)
+    const { Box, Button, Text } = elements
+    // Every surface but mobile has a Select; there the actions are buttons.
+    const Select = 'Select' in elements ? elements.Select : undefined
+
+    return (
+      <Box flexDirection="column">
+        {!e.props.isFocused && <Text dimColor>{t.pickerNoFocus}</Text>}
+        {text === null ? (
+          <Text dimColor>{t.noSelection}</Text>
+        ) : Select !== undefined ? (
+          <Select
+            key={PICKER_SELECT_KEY}
+            label={t.pickerLabel}
+            autoFocus
+            options={ordered.map(a => ({ value: a.id, label: `${a.icon} ${a.label}` }))}
+            onSelect={value => pick($, l, findAction(ordered, value))}
+          />
+        ) : (
+          <Box flexDirection="column">
+            {ordered.map(a => (
+              <Button key={a.id} label={`${a.icon} ${a.label}`} onPress={() => pick($, l, a)} />
+            ))}
+          </Box>
+        )}
+        <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} dimColor onPress={() => closePicker($)} />
+      </Box>
+    )
+  })
+
+  // The person's close (Escape through closeOnEscape, the close mark): the
+  // text it held goes with it and nothing runs. Closes from within go
+  // through closePicker, which does the same.
+  on('ui.close', { id: PICKER }, async ($, e, next) => {
+    await update($, picking, () => null)
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

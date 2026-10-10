@@ -1,28 +1,40 @@
 {
   "name": "selection-actions",
   "version": "0.1.0",
-  "description": "Icon actions on the text selected in the Claude Code transcript: translate, explain (simply, in depth or in context), summarize, and find the evidence behind it, chosen and ordered in settings, in English or Japanese",
-  "author": { "name": "Takashi Imahiro" },
+  "description": "Icon actions on the text selected in the Claude Code transcript: translate, explain (simply, in depth or in context), summarize, and find the evidence behind it. The ones you use most come first (pin your own in settings) and every action is under ⋯, in English or Japanese",
+  "author": {
+    "name": "Takashi Imahiro"
+  },
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
     "actions": {
       "type": "string",
       "title": "Actions",
-      "description": "Comma-separated action IDs to show on the hint line, in this order (e.g. explain,translate,summarize,ask). The IDs of your customActions can go here too. Leave empty for the default set; unknown IDs are ignored.",
+      "description": "Comma-separated action IDs to pin at the front of the hint line, in this order (e.g. explain,translate). The IDs of your customActions can go here too. The other actions follow in the order you use them, and every action is under ⋯. Leave empty for no pins (the first time: explain,translate,summarize,code first); unknown IDs are ignored.",
       "default": ""
+    },
+    "hintCount": {
+      "type": "string",
+      "title": "Hint count",
+      "description": "How many actions the hint line shows (a whole number of 1 or more; default 6). The rest are under ⋯. Anything else counts as the default.",
+      "default": "6"
     },
     "customActions": {
       "type": "string",
       "title": "Custom actions",
-      "description": "JSON array of your own action definitions (see README). Put their IDs in actions to show them. Invalid definitions are ignored with a warning; run /selection-actions to see why.",
+      "description": "JSON array of your own action definitions (see README). Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in actions to pin them at the front. Invalid definitions are ignored with a warning; run /selection-actions to see why.",
       "default": ""
     },
     "language": {
       "type": "string",
       "title": "Language",
       "description": "Display and answer language: auto (follow Claude Code's language setting, then the locale; English unless Japanese is detected), ja or en.",
-      "options": ["auto", "ja", "en"],
+      "options": [
+        "auto",
+        "ja",
+        "en"
+      ],
       "default": "auto"
     }
   }

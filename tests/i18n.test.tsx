@@ -113,7 +113,7 @@ for (const surface of SURFACES) {
       await pane.unmount()
       const none = await runCommand($, '')
       expect(s.toasts).toEqual(['No text is selected'])
-      expect(JSON.stringify(none)).toContain('Showing the Explain result in the Selection Actions pane.')
+      expect(JSON.stringify(none)).toContain(MESSAGES.en.noSelection)
 
       s.selected = 'segfault at 0x0'
       await clock.advance(400)
@@ -160,7 +160,7 @@ for (const surface of SURFACES) {
 
       const none = await runCommand($, '')
       expect(s.toasts).toEqual(['選択されたテキストがありません'])
-      expect(JSON.stringify(none)).toContain('Selection Actions ペインに 意味 の結果を表示します。')
+      expect(JSON.stringify(none)).toContain(MESSAGES.ja.noSelection)
 
       s.selected = 'segfault at 0x0'
       await clock.advance(400)
@@ -226,7 +226,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] every action asks for an answer in ${name}, translations aside`,
-    { options: { language, actions: everyId }, timeoutMs: 30_000 },
+    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

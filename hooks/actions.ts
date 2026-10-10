@@ -1,8 +1,9 @@
 // Action definitions: the only place a built-in action lives. The hint line,
 // the pane and the runner in register.tsx read nothing but these (and the
 // person's own, from the `customActions` setting, checked in ./custom), so
-// adding one entry to ACTIONS makes a new action available (its ID can then go
-// in the setting).
+// adding one entry to ACTIONS makes a new action available: it joins the hint
+// line's order (./order) and the ⋯ dialog, and its ID can be pinned in the
+// setting.
 //
 // Each definition carries what the person reads in both languages (`label`,
 // `runningText`, `description` as `{ ja, en }`); `actionsFor(lang)` hands out
@@ -108,8 +109,9 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   return { ...rest, ...texts, prompt }
 }
 
-// In the order of their purpose, so the hint line keeps them together when all
-// are shown: translation, meaning, summary, then evidence.
+// In the order of their purpose, the order of definition the hint line and the
+// ⋯ dialog fall back to for actions not pinned and not used: translation,
+// meaning, summary, then evidence.
 export const ACTIONS: readonly ActionSpec[] = [
   {
     id: 'translate',
@@ -265,35 +267,11 @@ export const ACTIONS: readonly ActionSpec[] = [
   },
 ]
 
-/** Shown when the setting is empty or names no known action: one per purpose, meaning first. */
-export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'summarize', 'code']
-
 /**
- * The actions the setting names, in its order: comma-separated IDs, trimmed and
- * lowercased, unknown ones and repeats skipped. Falls back to the defaults when
- * nothing usable is left. Never throws.
+ * What leads the hint line until the person has used any action and pins
+ * none (see ./order): one per purpose, meaning first.
  */
-export function resolveActions<D extends { id: string }>(defs: readonly D[], setting: unknown): D[] {
-  const byId = new Map(defs.map(d => [d.id, d] as const))
-  const pick = (ids: readonly string[]) => {
-    const seen = new Set<string>()
-    const out: D[] = []
-    for (const id of ids) {
-      const def = byId.get(id)
-      if (def === undefined || seen.has(id)) continue
-      seen.add(id)
-      out.push(def)
-    }
-    return out
-  }
-
-  const ids = (typeof setting === 'string' ? setting : '')
-    .split(',')
-    .map(s => s.trim().toLowerCase())
-    .filter(s => s !== '')
-  const chosen = pick(ids)
-  return chosen.length > 0 ? chosen : pick(DEFAULT_ACTION_IDS)
-}
+export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'summarize', 'code']
 
 /** The action a pane entry or a command names, if it is defined. */
 export const findAction = <D extends { id: string }>(defs: readonly D[], id: string): D | undefined =>

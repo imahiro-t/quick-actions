@@ -1,9 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { settleQuietly, toLatest } from '../hooks/scroll'
-import { BAND, EN, JA, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER_PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
-// Every way an action runs (an icon, its hotkey, the command) goes through
+// Every way an action runs (an icon, the ⋯ dialog, the command) goes through
 // run() in register.tsx, which opens the pane and then awaits
 // settleQuietly($.ui.scroll(toLatest(PANE))): the pane is brought back to its
 // top, where the newest result is drawn.
@@ -57,9 +57,9 @@ for (const [surface, options, thinking] of SURFACES.flatMap(
   })
 }
 
-// A hotkey presses the Button it is drawn on, so it reaches the same onPress
-// (runOnSelection, then run) as the icon: pressed here by the Button's key.
-test('the Button a hotkey presses runs the action', async ($, on) => {
+// The hint line's order moves with use, so its buttons carry no number keys:
+// a key that ran another action after a reorder would surprise the person.
+test('the hint line buttons carry no hotkey', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -67,12 +67,31 @@ test('the Button a hotkey presses runs the action', async ($, on) => {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const first = await band.find({ type: 'Button' })
-  expect(first?.props.hotkey).toBe('1')
-  await reselect(s, clock)
-  await band.press({ key: String(first?.key) })
-  expect(s.models.map(m => m.model)).toEqual(['sonnet'])
+  const buttons = await band.findAll({ type: 'Button' })
+  expect(buttons.length).toBeGreaterThan(0)
+  for (const b of buttons) expect(b.props.hotkey).toBeUndefined()
   await band.unmount()
+})
+
+test('a pick in the ⋯ dialog runs on and the newest result is drawn first', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.selected = 'exit 137'
+  await clock.advance(400)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: scrolledDown })
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'explain' })
+  await reselect(s, clock)
+  await band.press({ key: '_more' })
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await picker.select({ key: 'picker', value: 'translate' })
+  const texts = (await pane.findAll({ text: /answer from/ })).filter(f => f.type === 'Text')
+  expect(texts.map(t => t.text)).toEqual(['answer from haiku', 'answer from sonnet'])
+  await picker.unmount()
+  await band.unmount()
+  await pane.unmount()
 })
 
 test('the command runs on and the newest result is drawn first', async ($, on) => {

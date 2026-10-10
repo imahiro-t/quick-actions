@@ -18,6 +18,7 @@ import {
   resolveSpec,
   sys,
   timerCompute,
+  translateInto,
 } from '../hooks/actions'
 import { parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
@@ -129,6 +130,19 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
   // An icon may repeat, within a kind too (with a hundred or so of each, a
   // unique glyph each would mean less): the hover label and the ID tell them
   // apart. The IDs stay unique (checked above).
+})
+
+// translate-ja and translate-en stay written out, apart from translateInto (their
+// definitions are kept as they were): the whole definition, prompt included,
+// must still be what the helper makes, so a change to the wording on only one
+// side fails here.
+test('translateInto builds translate-ja and translate-en word for word, prompt included', () => {
+  expect(ACTIONS.find(a => a.id === 'translate-ja')).toStrictEqual(
+    translateInto('translate-ja', '🌐', { ja: '日本語訳', en: 'To Japanese' }, 'Japanese'),
+  )
+  expect(ACTIONS.find(a => a.id === 'translate-en')).toStrictEqual(
+    translateInto('translate-en', '🔤', { ja: '英訳', en: 'To English' }, 'English'),
+  )
 })
 
 // The thirty actions on the selection added from the catalog (SELM-00027): ID, icon, labels and model, as the catalog has them.

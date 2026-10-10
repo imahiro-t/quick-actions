@@ -311,7 +311,7 @@ export const timerCompute = ({ arg, now, lang }: LocalInput): LocalOutput => {
  * A translation on the selection into the language named, in the words of
  * translate-ja and translate-en: the translation alone, no answer style.
  */
-const translateInto = (id: string, icon: string, label: Localized, language: string): CompleteAction<Localized> => ({
+export const translateInto = (id: string, icon: string, label: Localized, language: string): CompleteAction<Localized> => ({
   id,
   icon,
   label,

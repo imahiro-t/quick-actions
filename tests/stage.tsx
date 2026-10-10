@@ -82,7 +82,7 @@ export type Stage = {
   // registration until it settles: the pane shows it running meanwhile.
   hold: Promise<void> | null
   // Every pane the plugin opened (as $.ui.open was asked) and closed (by id), in order.
-  opened: { id: string; title?: string; focus?: true; closeOnEscape?: true }[]
+  opened: { id: string; title?: string; focus?: true; closeOnEscape?: true; columns?: number }[]
   closed: string[]
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
@@ -118,7 +118,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   })
   on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
   on('ui.open', (_$, e) => {
-    s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape })
+    s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {

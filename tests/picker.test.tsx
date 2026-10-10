@@ -35,9 +35,27 @@ for (const surface of SURFACES) {
     const band = await openByMore($, s, clock, surface)
     await band.unmount()
 
-    expect(s.opened).toEqual([{ id: PICKER, title: MESSAGES.en.pickerTitle, focus: true, closeOnEscape: true }])
+    expect(s.opened).toEqual([{ id: PICKER, title: MESSAGES.en.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
     // Opening runs nothing.
     expect(s.models).toEqual([])
+  })
+
+  test(`[${surface}] the dialog opens at the result pane's width, so the dock keeps its width`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, surface)
+    await band.unmount()
+
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface })
+    await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+    await picker.unmount()
+
+    const dialog = s.opened.find(o => o.id === PICKER)
+    const results = s.opened.find(o => o.id === PANE.requestId)
+    expect(dialog?.columns).toBe(56)
+    expect(results?.columns).toBe(56)
+    expect(dialog?.columns).toBe(results?.columns)
   })
 
   test(`[${surface}] the dialog lists every action, custom ones too, in the hint line's order, as icon and label`, { options: { ...JA, ...CUSTOM } }, async ($, on) => {
@@ -222,7 +240,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
     const r = await runCommand($, '  ')
     expect(JSON.stringify(r)).toContain(t.pickerOpened)
-    expect(s.opened).toEqual([{ id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true }])
+    expect(s.opened).toEqual([{ id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
     expect(s.models).toEqual([])
     expect(s.toasts).toEqual([])
   })

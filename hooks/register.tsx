@@ -255,7 +255,9 @@ async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: s
   const picked = text ?? (await selectedText($, lang))
   if (picked === undefined) return false
   await update($, picking, () => picked)
-  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows })
+  // The same width as the results: an open without `columns` resets the dock to
+  // its default share, which widens it for as long as the dialog is open.
+  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
   return true
 }
 

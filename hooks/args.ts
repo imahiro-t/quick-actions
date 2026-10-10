@@ -92,23 +92,23 @@ function parseNumber(spec: ArgSpec<unknown>, raw: string): ParsedArg {
 }
 
 /** A calendar day: a year from 1 to 9999, a month from 1, a day from 1. */
-type Day = { y: number; m: number; d: number }
+export type Day = { y: number; m: number; d: number }
 
-const daysIn = (y: number, m: number) => {
+export const daysIn = (y: number, m: number) => {
   const t = new Date(0)
   t.setUTCFullYear(y, m, 0)
   return t.getUTCDate()
 }
 
 /** The UTC midnight of a day, in ms (years below 100 included, which Date.UTC would move). */
-const utcMidnight = ({ y, m, d }: Day) => {
+export const utcMidnight = ({ y, m, d }: Day) => {
   const t = new Date(0)
   t.setUTCFullYear(y, m - 1, d)
   t.setUTCHours(0, 0, 0, 0)
   return t.getTime()
 }
 
-const dayOf = (utcMs: number): Day => {
+export const dayOf = (utcMs: number): Day => {
   const t = new Date(utcMs)
   return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }
 }
@@ -136,7 +136,7 @@ const addMonths = ({ y, m, d }: Day, months: number): Day => {
   return { y: ny, m: nm, d: Math.min(d, daysIn(ny, nm)) }
 }
 
-const addDays = (day: Day, days: number): Day => dayOf(utcMidnight(day) + days * DAY)
+export const addDays = (day: Day, days: number): Day => dayOf(utcMidnight(day) + days * DAY)
 
 const isDay = ({ y, m, d }: Day) => y >= 1 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= daysIn(y, m)
 

@@ -31,6 +31,25 @@ import {
   urlDecode,
   urlEncode,
 } from './selection-local'
+import {
+  breathing,
+  businessDays,
+  calendar,
+  clock,
+  countdownTo,
+  dateInfo,
+  dateOffset,
+  durationConvert,
+  eyeRest,
+  moonPhase,
+  pomodoro,
+  sleepCalc,
+  stopwatch,
+  timeAfter,
+  wareki,
+  yearProgress,
+} from './time-local'
+import { asciiTable, httpStatus, mimeTypes, portNumbers } from './reference-local'
 
 type ActionBase<T> = {
   /** The ID written in the `actions` setting: lowercase letters, digits, hyphens. */
@@ -389,6 +408,12 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
 }
 
 const TIMER_LABEL: Localized = { ja: 'タイマー', en: 'Timer' }
+
+/** The hint of a date argument that is today when left out. */
+const DATE_HINT: Localized = {
+  ja: '日付（例: 2026-10-10, 2026/10/10, tomorrow, +7d, -1m。省くと今日）',
+  en: 'a date, e.g. 2026-10-10, 2026/10/10, tomorrow, +7d, -1m; today when left out',
+}
 
 /** The timer's default and fallback: 25 minutes. */
 export const TIMER_DEFAULT_MS = 25 * 60 * 1000
@@ -2656,6 +2681,164 @@ export const ACTIONS: readonly ActionSpec[] = [
     },
     compute: timerCompute,
   },
+
+  // Standalone actions run here, with no model (SELM-00035): runs over time,
+  // the clock and the calendar, and reference tables. The local time comes
+  // from utcOffsetMinutes; nothing reaches the network.
+  ...(
+    [
+      // Runs over time: once a second, the generic toast when done.
+      { id: 'stopwatch', icon: '🏃', label: { ja: 'ストップウォッチ', en: 'Stopwatch' }, compute: stopwatch },
+      {
+        id: 'pomodoro',
+        icon: '🍅',
+        label: { ja: 'ポモドーロ', en: 'Pomodoro' },
+        arg: {
+          type: 'int',
+          min: 1,
+          max: 8,
+          default: '4',
+          hint: { ja: '回数（1〜8。作業 25 分＋休憩 5 分を 1 回。省くと 4 回）', en: 'rounds of 25 minutes of work and 5 of break, from 1 to 8; 4 when left out' },
+        },
+        compute: pomodoro,
+      },
+      {
+        id: 'countdown-to',
+        icon: '🔜',
+        label: { ja: '指定時刻まで', en: 'Count down to a time' },
+        arg: {
+          type: 'time',
+          default: '18:00',
+          hint: { ja: '時刻 HH:MM（24 時間制。省くと 18:00。過ぎていれば明日）', en: 'a time as HH:MM on the 24-hour clock, tomorrow when it has passed; 18:00 when left out' },
+        },
+        compute: countdownTo,
+      },
+      {
+        id: 'breathing',
+        icon: '🫁',
+        label: { ja: '呼吸ガイド', en: 'Breathing guide' },
+        arg: {
+          type: 'choice',
+          choices: ['box', '478'],
+          default: 'box',
+          hint: { ja: 'box（4-4-4-4 秒）か 478（4-7-8 秒）。省くと box', en: 'box (4-4-4-4 seconds) or 478 (4-7-8 seconds); box when left out' },
+        },
+        compute: breathing,
+      },
+      { id: 'eye-rest', icon: '👀', label: { ja: '目の休憩（20秒）', en: 'Eye rest (20 s)' }, compute: eyeRest },
+      // The clock and the calendar.
+      { id: 'clock', icon: '🕙', label: { ja: '現在時刻', en: 'Current time' }, compute: clock },
+      {
+        id: 'calendar',
+        icon: '📆',
+        label: { ja: 'カレンダー', en: 'Calendar' },
+        arg: { type: 'date', default: 'today', hint: DATE_HINT },
+        compute: calendar,
+      },
+      {
+        id: 'date-info',
+        icon: '📅',
+        label: { ja: '日付の情報', en: 'Date info' },
+        arg: { type: 'date', default: 'today', hint: DATE_HINT },
+        compute: dateInfo,
+      },
+      {
+        id: 'date-offset',
+        icon: '🛫',
+        label: { ja: 'N日後の日付', en: 'Date after N days' },
+        arg: {
+          type: 'int',
+          min: -36500,
+          max: 36500,
+          default: '30',
+          hint: { ja: '日数（-36500〜36500。負なら前。省くと 30）', en: 'a number of days from -36500 to 36500, before today when negative; 30 when left out' },
+        },
+        compute: dateOffset,
+      },
+      {
+        id: 'business-days',
+        icon: '💼',
+        label: { ja: '営業日数', en: 'Business days' },
+        arg: {
+          type: 'date',
+          default: '+1m',
+          hint: {
+            ja: '日付（例: 2026-12-25, +2w, +3m。省くと 1 か月後）',
+            en: 'a date, e.g. 2026-12-25, +2w, +3m; a month from today when left out',
+          },
+        },
+        compute: businessDays,
+      },
+      {
+        id: 'wareki',
+        icon: '🎌',
+        label: { ja: '和暦・西暦', en: 'Japanese era' },
+        arg: textArg(
+          '西暦か和暦（例: 2026, 令和8, R8, H31。省くと今年と元号の一覧）',
+          'a year or a Japanese era year, e.g. 2026, 令和8, R8, H31; this year and the eras when left out',
+        ),
+        compute: wareki,
+      },
+      { id: 'year-progress', icon: '📶', label: { ja: '今年の経過', en: 'Year progress' }, compute: yearProgress },
+      {
+        id: 'time-after',
+        icon: '⏩',
+        label: { ja: 'N時間後の時刻', en: 'Time after' },
+        arg: {
+          type: 'duration',
+          default: '1h',
+          hint: { ja: '時間（1 秒〜24 時間。例: 90m, 2h, 1h30m。省くと 1 時間）', en: 'a duration from 1 second to 24 hours, e.g. 90m, 2h, 1h30m; an hour when left out' },
+        },
+        compute: timeAfter,
+      },
+      {
+        id: 'duration-convert',
+        icon: '⌚',
+        label: { ja: '時間の換算', en: 'Convert a duration' },
+        arg: {
+          type: 'duration',
+          default: '90m',
+          hint: { ja: '時間（1 秒〜24 時間。例: 90m, 1h30m, 5400s。省くと 90 分）', en: 'a duration from 1 second to 24 hours, e.g. 90m, 1h30m, 5400s; 90 minutes when left out' },
+        },
+        compute: durationConvert,
+      },
+      {
+        id: 'sleep-calc',
+        icon: '😴',
+        label: { ja: '就寝時刻の目安', en: 'Bedtime calculator' },
+        arg: {
+          type: 'time',
+          default: '07:00',
+          hint: { ja: '起床時刻 HH:MM（24 時間制。省くと 07:00）', en: 'the time to wake up, HH:MM on the 24-hour clock; 07:00 when left out' },
+        },
+        compute: sleepCalc,
+      },
+      { id: 'moon-phase', icon: '🌕', label: { ja: '月齢', en: 'Moon phase' }, compute: moonPhase },
+      // Reference tables.
+      { id: 'ascii-table', icon: '🔡', label: { ja: 'ASCII表', en: 'ASCII table' }, compute: asciiTable },
+      {
+        id: 'http-status',
+        icon: '🚦',
+        label: { ja: 'HTTPステータス', en: 'HTTP status codes' },
+        arg: textArg('ステータスコードか名前の一部（例: 404, teapot。省くとよく使うコードの一覧）', 'a status code or part of its name, e.g. 404, teapot; the common codes when left out'),
+        compute: httpStatus,
+      },
+      {
+        id: 'mime-types',
+        icon: '📂',
+        label: { ja: 'MIMEタイプ', en: 'MIME types' },
+        arg: textArg('拡張子か MIME タイプ（例: json, image/png。省くとよく使う拡張子の一覧）', 'an extension or a MIME type, e.g. json, image/png; the common extensions when left out'),
+        compute: mimeTypes,
+      },
+      {
+        id: 'port-numbers',
+        icon: '🚪',
+        label: { ja: 'ポート番号', en: 'Port numbers' },
+        arg: textArg('ポート番号かサービス名（例: 5432, ssh。省くと主なポートの一覧）', 'a port number or a service name, e.g. 5432, ssh; the main ports when left out'),
+        compute: portNumbers,
+      },
+    ] satisfies Omit<LocalAction<Localized>, 'kind' | 'target'>[]
+  ).map((a): LocalAction<Localized> => ({ ...a, kind: 'local', target: 'none' })),
 
   // Standalone actions run by a model: ideas, drafting help, templates and
   // conventions (SELM-00033). One call on the argument alone, in the pane only.

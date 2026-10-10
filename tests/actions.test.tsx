@@ -86,6 +86,10 @@ const ON_CONVERSATION = [
 // The standalone built-ins (on neither), last.
 const STANDALONE = [
   'timer',
+  'stopwatch', 'pomodoro', 'countdown-to', 'breathing', 'eye-rest',
+  'clock', 'calendar', 'date-info', 'date-offset', 'business-days', 'wareki', 'year-progress', 'time-after',
+  'duration-convert', 'sleep-calc', 'moon-phase',
+  'ascii-table', 'http-status', 'mime-types', 'port-numbers',
   'brainstorm', 'project-names', 'fermi', 'decision-matrix', 'color-palette', 'sample-data',
   'cron-build', 'regex-build', 'shell-oneliner', 'git-recipe', 'sql-build', 'api-design', 'schema-design',
   'gitignore-template', 'dockerfile-template', 'ci-template', 'makefile-template', 'readme-template', 'pr-template',
@@ -118,14 +122,14 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the two hundred and sixty-two built-ins (a hundred and four on the selection, a hundred and two on the conversation, fifty-six standalone), unique IDs, every field filled in', () => {
+test('the two hundred and eighty-two built-ins (a hundred and four on the selection, a hundred and two on the conversation, seventy-six standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(262)
+  expect(ids).toHaveLength(282)
   expect(ON_SELECTION).toHaveLength(104)
   expect(ON_CONVERSATION).toHaveLength(102)
-  expect(STANDALONE).toHaveLength(56)
+  expect(STANDALONE).toHaveLength(76)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -885,9 +889,9 @@ test('the thirty-one catalog standalone actions run by a model (ideas, drafting 
       expect(resolveSpec(spec, lang).prompt).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
     }
   }
-  // In the catalog's order, right after timer.
+  // In the catalog's order, right after the local ones (port-numbers last).
   const ids = ACTIONS.map(a => a.id)
-  const at = ids.indexOf('timer') + 1
+  const at = ids.indexOf('port-numbers') + 1
   expect(ids.slice(at, at + 31)).toEqual(CATALOG_ROWS_STANDALONE_MODEL.map(r => r[0]))
   // No two standalone actions share an icon.
   const icons = ACTIONS.filter(isStandalone).map(a => a.icon)
@@ -1175,6 +1179,110 @@ test('the marks: [icon] on the selection, <icon> on the conversation, {icon} sta
   expect(needsSelection({ target: 'selection' })).toBe(true)
   expect(needsSelection({ target: 'context' })).toBe(false)
   expect(needsSelection({ target: 'none' })).toBe(false)
+})
+
+// The catalog's standalone actions run here, with no model (SELM-00035), as the catalog has them:
+// [id, icon, ja, en, input]. `input` is the catalog's input column: `none`, `arg:<type>(<default>)`,
+// `arg:int[<min>..<max>](<default>)`, `arg:choice[a|b](<default>)` or `arg:text?`.
+const CATALOG_ROWS_STANDALONE_LOCAL: readonly (readonly [string, string, string, string, string])[] = [
+  // Runs over time
+  ['stopwatch', '🏃', 'ストップウォッチ', 'Stopwatch', 'none'],
+  ['pomodoro', '🍅', 'ポモドーロ', 'Pomodoro', 'arg:int[1..8](4)'],
+  ['countdown-to', '🔜', '指定時刻まで', 'Count down to a time', 'arg:time(18:00)'],
+  ['breathing', '🫁', '呼吸ガイド', 'Breathing guide', 'arg:choice[box|478](box)'],
+  ['eye-rest', '👀', '目の休憩（20秒）', 'Eye rest (20 s)', 'none'],
+  // The clock and the calendar
+  ['clock', '🕙', '現在時刻', 'Current time', 'none'],
+  ['calendar', '📆', 'カレンダー', 'Calendar', 'arg:date(today)'],
+  ['date-info', '📅', '日付の情報', 'Date info', 'arg:date(today)'],
+  ['date-offset', '🛫', 'N日後の日付', 'Date after N days', 'arg:int[-36500..36500](30)'],
+  ['business-days', '💼', '営業日数', 'Business days', 'arg:date(+1m)'],
+  ['wareki', '🎌', '和暦・西暦', 'Japanese era', 'arg:text?'],
+  ['year-progress', '📶', '今年の経過', 'Year progress', 'none'],
+  ['time-after', '⏩', 'N時間後の時刻', 'Time after', 'arg:duration(1h)'],
+  ['duration-convert', '⌚', '時間の換算', 'Convert a duration', 'arg:duration(90m)'],
+  ['sleep-calc', '😴', '就寝時刻の目安', 'Bedtime calculator', 'arg:time(07:00)'],
+  ['moon-phase', '🌕', '月齢', 'Moon phase', 'none'],
+  // Reference tables
+  ['ascii-table', '🔡', 'ASCII表', 'ASCII table', 'none'],
+  ['http-status', '🚦', 'HTTPステータス', 'HTTP status codes', 'arg:text?'],
+  ['mime-types', '📂', 'MIMEタイプ', 'MIME types', 'arg:text?'],
+  ['port-numbers', '🚪', 'ポート番号', 'Port numbers', 'arg:text?'],
+]
+
+// What each typed argument must refuse, by its type.
+const INVALID_ARGS: Record<string, (min?: number, max?: number) => string[]> = {
+  int: (min, max) => [String(min! - 1), String(max! + 1), 'abc', '1.5'],
+  time: () => ['25:00', '12:60', 'abc'],
+  choice: () => ['447', 'square'],
+  date: () => ['abc', '2026-13-01', '2026-02-30'],
+  duration: () => ['0s', '25h', 'abc'],
+}
+
+test('the twenty catalog standalone local actions (runs over time, the clock and the calendar, reference tables): as the catalog has them', () => {
+  expect(CATALOG_ROWS_STANDALONE_LOCAL).toHaveLength(5 + 11 + 4)
+  const inputs = CATALOG_ROWS_STANDALONE_LOCAL.map(r => r[4])
+  expect(inputs.filter(i => i === 'none')).toHaveLength(6)
+  expect(inputs.filter(i => i === 'arg:text?')).toHaveLength(4)
+  const env = { now: FIXED_INPUT.now, utcOffsetMinutes: FIXED_INPUT.utcOffsetMinutes }
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en, input] of CATALOG_ROWS_STANDALONE_LOCAL) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ id, icon, label: { ja, en }, kind: 'local', target: 'none' })
+    if (spec?.kind !== 'local') throw new Error(`${id} is not local`)
+    expect(isStandalone(spec)).toBe(true)
+    expect(needsSelection(spec)).toBe(false)
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+    // Local: no model, no prompt, no tools.
+    expect('model' in spec).toBe(false)
+    expect('prompt' in spec).toBe(false)
+    expect('tools' in spec).toBe(false)
+
+    // The argument, as the input column says.
+    const typed = /^arg:(int|time|date|duration|choice)(?:\[([^\]]+)\])?\((.+)\)$/.exec(input)
+    if (input === 'none') {
+      expect(spec.arg).toBeUndefined()
+      continue
+    }
+    if (input === 'arg:text?') {
+      expect(spec.arg).toMatchObject({ type: 'text' })
+      expect(spec.arg?.default).toBeUndefined()
+    } else {
+      if (typed === null) throw new Error(`${id}: unknown input column ${input}`)
+      const [, type, range, fallback] = typed
+      expect(spec.arg).toMatchObject({ type, default: fallback })
+      let min: number | undefined
+      let max: number | undefined
+      if (type === 'int') {
+        const [a, b] = range!.split('..').map(Number)
+        min = a
+        max = b
+        expect(spec.arg).toMatchObject({ min, max })
+      } else if (type === 'choice') {
+        expect(spec.arg?.choices).toEqual(range!.split('|'))
+      } else {
+        expect(range).toBeUndefined()
+      }
+      // Each refuses what is not of its type or out of its range.
+      for (const bad of INVALID_ARGS[type!]!(min, max)) expect(parseArg(spec.arg!, bad, env)).toEqual({ ok: false })
+      if (type === 'int') {
+        expect(parseArg(spec.arg!, String(min), env)).toEqual({ ok: true, value: min })
+        expect(parseArg(spec.arg!, String(max), env)).toEqual({ ok: true, value: max })
+      }
+    }
+    // Its default (or none) parses, and its hint says how to write it in both languages.
+    expect(parseArg(spec.arg!, undefined, env).ok).toBe(true)
+    expect(spec.arg?.hint.ja).toBeTruthy()
+    expect(spec.arg?.hint.en).toBeTruthy()
+  }
+  // In the catalog's order, right after timer.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('timer') + 1
+  expect(ids.slice(at, at + 20)).toEqual(CATALOG_ROWS_STANDALONE_LOCAL.map(r => r[0]))
+  // No two standalone actions share an icon.
+  const icons = ACTIONS.filter(isStandalone).map(a => a.icon)
+  expect(new Set(icons).size).toBe(icons.length)
 })
 
 test('timer: ⏳ タイマー / Timer, local, standalone, a duration of 25 minutes by default', () => {

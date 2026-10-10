@@ -101,6 +101,39 @@ for (const theme of THEMES) {
   })
 }
 
+// A 256-colour terminal (Terminal.app among them) draws a hex colour as the
+// nearest of its palette, picked as chalk (ansi-styles' rgbToAnsi256) picks
+// it: a grey to the 24-step grey ramp (or black / white at its ends), any
+// other colour to the 6x6x6 cube. This gives that colour back as #rrggbb.
+const CUBE = [0, 95, 135, 175, 215, 255] as const
+function to256(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+  const rgb = (v: readonly number[]) => `#${v.map(c => c.toString(16).padStart(2, '0')).join('')}`
+  if (r === g && g === b) {
+    if (r < 8) return '#000000'
+    if (r > 248) return '#ffffff'
+    const grey = 8 + 10 * Math.round(((r - 8) / 247) * 24)
+    return rgb([grey, grey, grey])
+  }
+  return rgb([r, g, b].map(c => CUBE[Math.round((c / 255) * 5)]!))
+}
+
+test('to256 rounds as a 256-colour terminal does', () => {
+  expect(to256('#fafafa')).toBe('#ffffff')
+  expect(to256('#1e1e1e')).toBe('#1c1c1c')
+  expect(to256('#c62828')).toBe('#d75f5f')
+  expect(to256('#af0000')).toBe('#af0000')
+})
+
+for (const theme of THEMES) {
+  test(`[${theme}] every text colour still reaches 4.5:1 rounded to 256 colours`, () => {
+    const p = PALETTES[theme]
+    for (const role of ['heading', 'body', 'failed', 'muted'] as const) {
+      expect(contrastRatio(to256(p[role]), to256(p.background))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+}
+
 test('the palettes are hex #rrggbb, as the contrast check needs', () => {
   for (const theme of THEMES) {
     for (const v of Object.values(PALETTES[theme])) expect(/^#[0-9a-f]{6}$/i.test(v)).toBe(true)

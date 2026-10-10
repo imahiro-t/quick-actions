@@ -54,10 +54,10 @@ const PICKER_CLOSE_KEY = '_picker-close'
 // those draw exactly as they always have.
 
 /** The Box props that paint the style's background: none when it has none. */
-const painted = (s: PaneStyle) => (s.background === undefined ? {} : { backgroundColor: s.background })
+const painted = (style: PaneStyle) => (style.background === undefined ? {} : { backgroundColor: style.background })
 
 /** The Text props of a secondary text: the palette's muted colour, or dimColor as before. */
-const muted = (s: PaneStyle) => (s.muted === undefined ? { dimColor: true } : { color: s.muted })
+const muted = (style: PaneStyle) => (style.muted === undefined ? { dimColor: true } : { color: style.muted })
 
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
@@ -564,16 +564,18 @@ export const register: Register = (on, options) => {
     // actions are buttons.
     // A palette draws buttons too: a Select takes no colour, and core's (the
     // theme's) need not read on the palette's background.
-    const s = paneStyle(paneTheme, e.props.placement)
-    const palette = s.background !== undefined
-    const Select = e.surface !== 'mobile' && !palette && 'Select' in elements ? elements.Select : undefined
+    const style = paneStyle(paneTheme, e.props.placement)
+    const fixed = style.background !== undefined
+    const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
+    // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
+    const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
 
     return (
-      <Box flexDirection="column" {...painted(s)}>
-        {keyboardNotice && <Text {...muted(s)}>{t.pickerNoFocus}</Text>}
+      <Box flexDirection="column" {...painted(style)}>
+        {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
         {state === null ? (
-          <Text {...muted(s)}>{t.noSelection}</Text>
+          <Text {...muted(style)}>{t.noSelection}</Text>
         ) : Select !== undefined ? (
           <Select
             key={PICKER_SELECT_KEY}
@@ -584,24 +586,28 @@ export const register: Register = (on, options) => {
           />
         ) : (
           <Box flexDirection="column">
-            {ordered.map((a, i) =>
-              palette ? (
-                // The first takes the focus ring as the dialog takes the keys, as the Select would.
-                <Button key={a.id} label={`${markedIcon(a)} ${a.label}`} {...(i === 0 && { autoFocus: true as const })} onPress={() => pick($, l, a)}>
-                  <Text color={s.body}>{`${markedIcon(a)} ${a.label}`}</Text>
+            {ordered.map((a, i) => {
+              const label = `${markedIcon(a)} ${a.label}`
+              const button = { label, onPress: () => pick($, l, a) }
+              // With a palette the label is a child Text in its colour, and the
+              // first takes the focus ring as the dialog takes the keys, as the
+              // Select would; otherwise the button stays as it always was.
+              return fixed ? (
+                <Button key={a.id} {...button} {...(i === 0 && { autoFocus: true as const })}>
+                  <Text color={style.body}>{label}</Text>
                 </Button>
               ) : (
-                <Button key={a.id} label={`${markedIcon(a)} ${a.label}`} onPress={() => pick($, l, a)} />
-              ),
-            )}
+                <Button key={a.id} {...button} />
+              )
+            })}
           </Box>
         )}
-        {palette ? (
-          <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} role="dismiss" onPress={() => closePicker($)}>
-            <Text color={s.muted}>{t.pickerClose}</Text>
+        {fixed ? (
+          <Button key={PICKER_CLOSE_KEY} {...close}>
+            <Text color={style.muted}>{t.pickerClose}</Text>
           </Button>
         ) : (
-          <Button key={PICKER_CLOSE_KEY} label={t.pickerClose} dimColor role="dismiss" onPress={() => closePicker($)} />
+          <Button key={PICKER_CLOSE_KEY} {...close} dimColor />
         )}
       </Box>
     )
@@ -621,15 +627,15 @@ export const register: Register = (on, options) => {
     const defs = defsFor(l)
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, results)
-    const colors = paneStyle(paneTheme, e.props.placement)
+    const style = paneStyle(paneTheme, e.props.placement)
 
     return (
-      <Box flexDirection="column" {...painted(colors)}>
+      <Box flexDirection="column" {...painted(style)}>
         {problems.length > 0 && (
           <Box flexDirection="column" marginBottom={1}>
-            <Text bold color={colors.failed}>{t.customProblemsHeading}</Text>
+            <Text bold color={style.failed}>{t.customProblemsHeading}</Text>
             {problems.map((p, i) => (
-              <Text key={String(i)} color={colors.failed}>- {problemLine(p, l)}</Text>
+              <Text key={String(i)} color={style.failed}>- {problemLine(p, l)}</Text>
             ))}
           </Box>
         )}
@@ -637,20 +643,20 @@ export const register: Register = (on, options) => {
           <Text dimColor>{t.inlineHint}</Text>
         )}
         {list.length === 0 && (
-          <Text {...muted(colors)}>{t.emptyPane}</Text>
+          <Text {...muted(style)}>{t.emptyPane}</Text>
         )}
         {list.map(r => {
           const def = findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
-              <Text bold color={colors.heading}>
+              <Text bold color={style.heading}>
                 {def?.icon ?? '•'} {def?.label ?? r.action}{' '}
-                <Text {...muted(colors)}>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
+                <Text {...muted(style)}>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
               </Text>
               {r.status === 'running' ? (
-                <Text {...muted(colors)}>{def?.runningText ?? t.thinking}</Text>
+                <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
               ) : (
-                <Text color={r.status === 'failed' ? colors.failed : colors.body}>{r.text}</Text>
+                <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
             </Box>
           )

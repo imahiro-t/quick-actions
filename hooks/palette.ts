@@ -24,10 +24,12 @@ export type Palette = {
 }
 
 // Every text colour reads at 4.5:1 or more on its background (WCAG AA), with
-// room to spare: tests/theme.test.tsx holds them to it.
+// room to spare, both as written and as a 256-colour terminal rounds them
+// (Terminal.app among them): tests/theme.test.tsx holds them to both. Hence
+// light's failure colour is #af0000, a colour of the 256-colour cube itself.
 export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
   dark: { background: '#1e1e1e', heading: '#f0f0f0', body: '#d4d4d4', failed: '#ff7b72', muted: '#9e9e9e' },
-  light: { background: '#fafafa', heading: '#1a1a1a', body: '#303030', failed: '#c62828', muted: '#5c5c5c' },
+  light: { background: '#fafafa', heading: '#1a1a1a', body: '#303030', failed: '#af0000', muted: '#5c5c5c' },
 }
 
 // The pane's text colours under `auto`, by placement. Docked on the right,

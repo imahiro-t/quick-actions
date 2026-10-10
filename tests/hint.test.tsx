@@ -30,9 +30,11 @@ for (const surface of SURFACES) {
     await band.unmount()
   })
 
-  // No pins and no usage yet: the default set leads (actions on the selection
-  // in [ ] and on the conversation in < >, mixed), the rest follow in the order
-  // of definition, the first six shown, then ✕ and ⋯.
+  // No pins and no usage yet: the default set leads, its actions on the
+  // selection ([ ]) before its others (< > on the conversation; the standalone
+  // timer { } after them), the rest following, the first six shown, then ✕ and ⋯.
+  // (Before SELM-00025 the default set's kinds were drawn mixed, [💡] <🧭> [🌐] …:
+  // with a selection, the actions on it now come first.)
   test(`[${surface}] unset: the default set first, then the rest, six in all, then ✕ and ⋯`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -40,7 +42,7 @@ for (const surface of SURFACES) {
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+    expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
   })
 
   test(
@@ -53,13 +55,13 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[📝]', '[💡]', '[💬]', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[📝]', '[💡]', '[💬]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
     },
   )
 
   test(
     `[${surface}] unknown IDs are ignored; case, spaces and repeats are tolerated`,
-    { options: { actions: 'nope,translate, EXPLAIN ,translate,,' } },
+    { options: { actions: 'nope,translate-ja, EXPLAIN ,translate-ja,,' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -67,7 +69,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[🌐]', '[💡]', '[🔤]', '[🧸]', '[🔬]', '[💬]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[🌐]', '[💡]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯'])
     },
   )
 
@@ -81,7 +83,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
     },
   )
 

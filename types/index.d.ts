@@ -4,8 +4,18 @@ export type ActionId = string
 export type Result = {
   id: number
   action: ActionId
-  /** The selected text it ran on, shortened; empty for a context action, which runs on the conversation. */
+  /**
+   * What it ran on: the selection, the conversation (context) or neither
+   * (none, a standalone action). Every entry written now has it; one kept from
+   * before it existed has none (an empty quote then means the conversation).
+   */
+  target?: 'selection' | 'context' | 'none'
+  /** The selected text it ran on, shortened; empty for a context or standalone action. */
   quote: string
+  /** A standalone action's argument as given, shortened; left out when it ran with none. */
+  arg?: string
+  /** Set on a run over time (a timer): its text is the frame now, and it stops when the pane closes. */
+  ticker?: true
   status: 'running' | 'done' | 'failed'
   text: string
 }
@@ -23,8 +33,12 @@ declare module 'claude-code' {
       selection: string | null
       dismissed: string | null
       results: Result[]
-      /** The ⋯ dialog: null while it is closed; open, the text it runs selection actions on (null: none, context actions only). */
-      picking: { text: string | null } | null
+      /**
+       * The ⋯ dialog: null while it is closed; open, the text it runs selection
+       * actions on (null: none, context and standalone actions only) and what
+       * its filter field holds (empty as it opens: every action listed).
+       */
+      picking: { text: string | null; filter: string } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
     }

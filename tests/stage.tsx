@@ -1,6 +1,8 @@
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import type { ActionDef, ActionSpec } from '../hooks/actions'
+
 // Stands for the engine beneath the plugin in every test: records what the
 // plugin asks of the models and the agents and answers it.
 //
@@ -13,6 +15,32 @@ import type { On } from 'claude-code'
 // text, as the engine keeps them.
 
 export const PLUGIN = 'quick-actions'
+
+// The complete actions on the selection whose prompt carries no answer style
+// (no STYLE): they return a translation or a converted text, not an
+// explanation. Shared by the tests of the definitions and of the languages.
+export const NO_STYLE: readonly string[] = [
+  'translate-ja', 'translate-en',
+  // The translation or the rewrite alone.
+  'translate-zh', 'translate-zh-tw', 'translate-ko', 'translate-es', 'translate-fr', 'translate-de',
+  'translate-pt', 'translate-vi', 'easy-japanese',
+  // The converted text, with a short note in the answer language.
+  'furigana', 'to-diagram',
+  // The rewrite or the draft, in the language of the selection, with a short note in the answer language.
+  'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply',
+  // The converted code, with a short note in the answer language.
+  'pseudocode', 'port-code', 'docstring',
+  // The converted data (a table, YAML, JSON, types, a schema), with a short note in the answer language.
+  'to-table', 'json-to-yaml', 'yaml-to-json', 'json-to-types', 'infer-schema',
+]
+
+// Those of NO_STYLE that name the answer language (ANSWER_LANGUAGE) for their short note.
+export const ANSWER_LANGUAGE_ONLY: readonly string[] = [
+  'furigana', 'to-diagram',
+  'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply',
+  'pseudocode', 'port-code', 'docstring',
+  'to-table', 'json-to-yaml', 'yaml-to-json', 'json-to-types', 'infer-schema',
+]
 
 const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
@@ -42,6 +70,9 @@ export const PICKER = `${PLUGIN}-picker`
 /** The keys of the dialog's list and its close button: never an action's ID. */
 export const PICKER_SELECT = '_picker'
 export const PICKER_CLOSE = '_picker-close'
+/** The dialog's filter field and the button that empties it. */
+export const PICKER_FILTER = '_filter'
+export const PICKER_FILTER_CLEAR = '_filter-clear'
 
 export const PICKER_PANE = {
   ...PANE,
@@ -84,6 +115,8 @@ export type Stage = {
   // Every pane the plugin opened (as $.ui.open was asked) and closed (by id), in order.
   opened: { id: string; title?: string; focus?: true; closeOnEscape?: true; columns?: number }[]
   closed: string[]
+  // The rows the last open of each pane asked for, by id (undefined: none asked).
+  rows: Record<string, number | undefined>
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
 }
@@ -98,7 +131,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], stored: { ...options.store } }
+  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -119,6 +152,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
   on('ui.open', (_$, e) => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
+    s.rows[e.id] = e.rows
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {
@@ -194,3 +228,7 @@ export async function reselect(s: Stage, clock: Clock) {
   s.selected = text
   await clock.advance(400)
 }
+
+/** A definition's prompt; undefined for a local action, which has none, or for no definition. */
+export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
+  def === undefined || def.kind === 'local' ? undefined : def.prompt

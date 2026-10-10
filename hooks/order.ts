@@ -2,17 +2,20 @@
 // score it follows: pure functions over plain data, nothing here reaches `$`
 // or throws. register.tsx reads and writes the score through `$.store`.
 //
-// One order for both kinds of action, those on the selection and those on the
-// conversation, mixed: the actions the `actions` setting names (pinned, of
-// either kind), in its order; then the rest by their usage score, highest
-// first, a tie or an unused one keeping the order of definition (built-ins on
-// the selection, built-ins on the conversation, then custom ones). Where only
-// the context actions apply (no selection), register.tsx filters this order. With no pin
-// and no usage of any action that exists, the default set leads instead.
+// One order for every kind of action, those on the selection, on the
+// conversation and standalone, mixed: the actions the `actions` setting names
+// (pinned, of any kind), in its order; then the rest by their usage score,
+// highest first, a tie or an unused one keeping the order of definition
+// (built-ins on the selection, built-ins on the conversation, built-in
+// standalone ones, then custom ones). With no pin and no usage of any action
+// that exists, the default set leads instead. arrange then lays that order out
+// for the moment: with a selection, the actions on it come before the others
+// (the pins still first); with none, they are left out.
 // Each use adds 1 to the action's score, and a score halves every 30 days, so
 // the order follows what the person uses lately.
 
-import { DEFAULT_ACTION_IDS } from './actions'
+import { DEFAULT_ACTION_IDS, needsSelection } from './actions'
+import type { Target } from './actions'
 
 /** A score halves over this long (30 days). */
 export const HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000
@@ -104,8 +107,7 @@ export function orderActions<D extends { id: string }>(
   defaultIds: readonly string[] = DEFAULT_ACTION_IDS,
 ): D[] {
   const scores = new Map(defs.map(d => [d.id, decayed(usage[d.id], now)] as const))
-  const hasUsage = [...scores.values()].some(score => score > 0)
-  const lead = pins.length === 0 && !hasUsage ? pickActions(defs, defaultIds) : pickActions(defs, pins.map(p => p.id))
+  const lead = defaultsLead(defs, pins, usage, now) ? pickActions(defs, defaultIds) : pickActions(defs, pins.map(p => p.id))
   const leading = new Set(lead.map(d => d.id))
   const rest = defs
     .map((d, index) => ({ d, index, score: scores.get(d.id) ?? 0 }))
@@ -113,6 +115,47 @@ export function orderActions<D extends { id: string }>(
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map(({ d }) => d)
   return [...lead, ...rest]
+}
+
+/**
+ * Whether the default set leads the order (see orderActions): no pins, and no
+ * score above 0 among `defs`.
+ */
+export function defaultsLead(defs: readonly { id: string }[], pins: readonly unknown[], usage: Usage, now: number): boolean {
+  return pins.length === 0 && !defs.some(d => decayed(usage[d.id], now) > 0)
+}
+
+/**
+ * The settled order laid out for the hint line (its first N) and the ⋯ dialog
+ * (all of it), as the selection stands. With a selection (selected now, or
+ * held by `hint` or the dialog): the pins of any kind, in their order; then
+ * the rest of the actions on the selection; then the rest of the others (on
+ * the conversation and standalone, mixed), each in the order given. With
+ * none: the same less the actions on the selection.
+ *
+ * `defaults` is the default set when it leads the order (no pins and no usage
+ * yet; else none): with a selection it is laid out first, its actions on the
+ * selection before its others, and the rest after it as above. So a first
+ * selection shows the default set's actions on it and then its context
+ * actions ([💡] [🌐] [📝] [🔎] <🧭> <✅>), rather than every action on the
+ * selection before any other; with none, its context and standalone actions
+ * lead (<🧭> <✅> {⏳}).
+ */
+export function arrange<D extends { id: string; target?: Target }>(
+  ordered: readonly D[],
+  pins: readonly { id: string }[],
+  hasSelection: boolean,
+  defaults: readonly { id: string }[] = [],
+): D[] {
+  const free = (d: D) => !needsSelection(d)
+  const byKind = (list: readonly D[]) => [...list.filter(d => needsSelection(d)), ...list.filter(free)]
+  const pinned = pickActions(ordered, pins.map(p => p.id))
+  const lead = [...pinned, ...pickActions(ordered, defaults.map(p => p.id)).filter(d => !pinned.includes(d))]
+  const leading = new Set(lead.map(d => d.id))
+  const rest = ordered.filter(d => !leading.has(d.id))
+  const leadDefaults = lead.slice(pinned.length)
+  if (!hasSelection) return [...pinned.filter(free), ...leadDefaults.filter(free), ...rest.filter(free)]
+  return [...pinned, ...byKind(leadDefaults), ...byKind(rest)]
 }
 
 /** The `hintCount` setting: a whole number of 1 or more (a number or its digits), else the default. */

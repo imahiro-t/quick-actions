@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, isContext, markedIcon } from '../hooks/actions'
+import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon } from '../hooks/actions'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
 import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -32,6 +32,97 @@ const CONTEXT = [
   { id: 'changed-files', icon: '🗂', ja: '変更したファイルとその内容' },
   { id: 'next-questions', icon: '💭', ja: '次に聞くとよい質問' },
   { id: 'handoff', icon: '📝', ja: '引き継ぎメモ' },
+  { id: 'recap-oneline', icon: '🪶', ja: '会話を一行で' },
+  { id: 'recap-recent', icon: '🔁', ja: '直近のやりとりの要約' },
+  { id: 'session-timeline', icon: '🕒', ja: '会話の経緯（時系列）' },
+  { id: 'goal', icon: '🎯', ja: 'この会話の目的' },
+  { id: 'my-requests', icon: '🙋', ja: '依頼ごとの対応状況' },
+  { id: 'key-facts', icon: '📌', ja: '判明した事実' },
+  { id: 'commands-run', icon: '📟', ja: '実行したコマンド' },
+  { id: 'errors-seen', icon: '🧯', ja: '出たエラーと対処' },
+  { id: 'files-read', icon: '📖', ja: '読んだファイル' },
+  { id: 'failed-attempts', icon: '🔙', ja: 'うまくいかなかった試み' },
+  { id: 'alternatives-considered', icon: '🔀', ja: '検討した代替案' },
+  { id: 'constraints', icon: '📏', ja: '制約・要件の一覧' },
+  { id: 'translate-last-en', icon: '🔤', ja: '直前の回答を英訳' },
+  { id: 'translate-last-ja', icon: '🗾', ja: '直前の回答を日本語訳' },
+  { id: 'summarize-last', icon: '📄', ja: '直前の回答を要約' },
+  { id: 'tldr-last', icon: '⚡', ja: '直前の回答を一行で' },
+  { id: 'explain-last', icon: '🔬', ja: '直前の回答を詳しく' },
+  { id: 'example-last', icon: '📎', ja: '直前の回答の具体例' },
+  { id: 'steps-last', icon: '🪜', ja: '直前の回答を手順に' },
+  { id: 'table-last', icon: '📊', ja: '直前の回答を表に' },
+  { id: 'diagram-last', icon: '🌳', ja: '直前の回答を図に' },
+  { id: 'terms-last', icon: '🔠', ja: '直前の回答の用語解説' },
+  { id: 'counter-last', icon: '🥊', ja: '直前の回答への反論' },
+  { id: 'verify-last', icon: '🔍', ja: '直前の回答の確からしさ' },
+  { id: 'caveats-last', icon: '🚸', ja: '直前の回答の注意点' },
+  { id: 'alternatives-last', icon: '🚏', ja: '直前の回答の別解' },
+  { id: 'questions-last', icon: '❔', ja: '直前の回答への確認質問' },
+  { id: 'code-explain-last', icon: '💻', ja: '直前のコードを解説' },
+  { id: 'command-explain-last', icon: '🐚', ja: '直前のコマンドを解説' },
+  { id: 'error-explain-last', icon: '🚨', ja: '直前のエラーを解説' },
+  { id: 'change-explain-last', icon: '🧾', ja: '直前の変更を解説' },
+  { id: 'review-last', icon: '🧐', ja: '直前の変更のレビュー' },
+  { id: 'next-move', icon: '👣', ja: '次の一手' },
+  { id: 'blind-spots', icon: '🔦', ja: '見落としチェック' },
+  { id: 'unstuck', icon: '🆘', ja: '行き詰まりの打開策' },
+  { id: 'root-cause', icon: '🌱', ja: '原因の仮説' },
+  { id: 'debug-plan', icon: '🐞', ja: 'デバッグの進め方' },
+  { id: 'simpler-approach', icon: '🪄', ja: 'もっと簡単な方法' },
+  { id: 'devil-advocate', icon: '😈', ja: 'あえて反対意見' },
+  { id: 'premortem', icon: '🪦', ja: '失敗の事前検討' },
+  { id: 'tradeoffs', icon: '🤝', ja: 'トレードオフ' },
+  { id: 'scope-check', icon: '🧩', ja: 'スコープの確認' },
+  { id: 'done-check', icon: '🏁', ja: '完了条件の確認' },
+  { id: 'verify-plan', icon: '🩺', ja: '確認手順' },
+  { id: 'rollback-plan', icon: '⏪', ja: '戻し方' },
+  { id: 'impact', icon: '💥', ja: '影響範囲' },
+  { id: 'effort-estimate', icon: '⏳', ja: '残作業の見積もり' },
+  { id: 'task-dependencies', icon: '🧶', ja: '作業の依存関係' },
+  { id: 'session-tests', icon: '🧪', ja: '会話のテスト観点' },
+  { id: 'session-edge-cases', icon: '🧷', ja: '会話のエッジケース' },
+  { id: 'session-security', icon: '🔐', ja: '会話のセキュリティ点検' },
+  { id: 'session-perf', icon: '🚄', ja: '会話の性能点検' },
+  { id: 'session-error-handling', icon: '🦺', ja: '会話のエラー処理点検' },
+  { id: 'session-compat', icon: '🧬', ja: '会話の互換性点検' },
+  { id: 'session-a11y', icon: '♿', ja: '会話のアクセシビリティ点検' },
+  { id: 'session-i18n', icon: '🌏', ja: '会話の国際化点検' },
+  { id: 'session-observability', icon: '🪵', ja: '会話のログ・監視点検' },
+  { id: 'session-refactor', icon: '🔨', ja: '会話のリファクタリング案' },
+  { id: 'session-tech-debt', icon: '🧹', ja: '会話で生じた技術的負債' },
+  { id: 'session-docs', icon: '📚', ja: '会話の変更で要るドキュメント更新' },
+  { id: 'session-naming', icon: '🪧', ja: '会話の新規要素の命名案' },
+  { id: 'session-release-check', icon: '🚀', ja: '会話の変更のリリース前チェック' },
+  { id: 'draft-commit', icon: '💾', ja: 'コミットメッセージ案' },
+  { id: 'draft-pr', icon: '📬', ja: 'PR 説明文の下書き' },
+  { id: 'draft-changelog', icon: '📰', ja: '変更履歴の下書き' },
+  { id: 'draft-status', icon: '📣', ja: '進捗報告の下書き' },
+  { id: 'draft-issue', icon: '🐛', ja: 'Issue の下書き' },
+  { id: 'draft-review-request', icon: '🙏', ja: 'レビュー依頼文' },
+  { id: 'draft-question', icon: '📨', ja: '質問文の下書き' },
+  { id: 'draft-adr', icon: '📜', ja: '設計判断の記録（ADR）' },
+  { id: 'draft-resume-prompt', icon: '🎬', ja: '再開用プロンプト' },
+  { id: 'draft-stakeholder-update', icon: '👔', ja: '非エンジニア向け説明' },
+  { id: 'draft-retro', icon: '🔄', ja: '振り返り（KPT）' },
+  { id: 'learnings', icon: '🎓', ja: '今回の学び' },
+  { id: 'session-glossary', icon: '📒', ja: '会話の用語集' },
+  { id: 'concepts', icon: '🧠', ja: '押さえるべき概念' },
+  { id: 'session-cheatsheet', icon: '📇', ja: '会話のチートシート' },
+  { id: 'session-quiz', icon: '🎲', ja: '会話の理解度クイズ' },
+  { id: 'session-faq', icon: '💁', ja: '会話の FAQ' },
+  { id: 'study-next', icon: '🔖', ja: '会話から次に学ぶテーマ' },
+  { id: 'session-keywords', icon: '🔑', ja: '会話のテーマの検索キーワード' },
+  { id: 'tips', icon: '💡', ja: '会話で知った小技' },
+  { id: 'mistakes', icon: '🙈', ja: 'Claude の誤り' },
+  { id: 'prompt-tips', icon: '💬', ja: '指示の出し方の改善' },
+  { id: 'claude-md-ideas', icon: '📐', ja: 'CLAUDE.md に書くとよいこと' },
+  { id: 'contradictions', icon: '🔃', ja: '矛盾の検出' },
+  { id: 'code-map', icon: '🏠', ja: '登場したコードの地図' },
+  { id: 'workflow-diagram', icon: '🧵', ja: '作業の流れ図' },
+  { id: 'environment', icon: '💽', ja: '環境情報の整理' },
+  { id: 'packages', icon: '📦', ja: '追加・変更したパッケージ' },
+  { id: 'links', icon: '🔗', ja: '登場した URL・資料' },
 ]
 
 const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
@@ -52,8 +143,8 @@ async function openHint($: Engine, s: Stage, clock: Clock) {
 // ---------------------------------------------------------------------------
 // The definitions
 
-test('eleven built-in context actions, as the ticket names them, in both languages', () => {
-  const context = ACTIONS.filter(isContext)
+test('a hundred and two built-in context actions, as the tickets name them, in both languages', () => {
+  const context = ACTIONS.filter(isContext).flatMap(a => (a.kind === 'fork' ? [a] : []))
   expect(context.map(a => a.id)).toEqual(CONTEXT.map(c => c.id))
   for (const [i, a] of context.entries()) {
     expect(a.icon).toBe(CONTEXT[i]!.icon)
@@ -97,8 +188,8 @@ for (const surface of SURFACES) {
     const r = await openHint($, s, clock)
     expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
     const labels = await labelsOf($, surface)
-    // The default set's context actions first, then the rest in the order of definition; six in all.
-    expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+    // The default set's context and standalone actions first, then the rest in the order of definition; six in all.
+    expect(labels).toEqual(['<🧭>', '<✅>', '{⏳}', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
 
     const band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'close' })
@@ -118,7 +209,7 @@ test('with text selected, /quick-actions hint keeps both kinds though the comman
 
   await openHint($, s, clock)
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 
   // An action on the selection runs on the text held as the command ran, and the line closes.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -139,7 +230,7 @@ test('a selection made after /quick-actions hint arms it: that selection going c
 
   s.selected = 'exit 137'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)
@@ -161,7 +252,7 @@ test('the selection held as the command ran, seen late by the poll, does not arm
   s.selected = null
   await clock.advance(400)
   // Its going closes nothing: the line stays, on the text it held.
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'summarize' })
   await band.unmount()
@@ -184,6 +275,7 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     await clock.settle()
 
     const recap = actionsFor(lang).find(a => a.id === 'recap')!
+    if (recap.kind !== 'fork') throw new Error('recap is not a fork')
     expect(s.forks).toEqual([`${recap.prompt} ${answerStyle(lang)}`])
     expect(s.forks[0]).not.toContain('<selected>')
     expect(s.models).toEqual([])
@@ -245,13 +337,18 @@ test('/quick-actions recap runs with nothing selected', async ($, on) => {
 // ---------------------------------------------------------------------------
 // One order for both kinds
 
-test('the usage scores order both kinds as one', async ($, on) => {
+// One order by score; laid out for the moment (arrange): with a selection the
+// actions on it first, so a context action used more than they are still
+// waits behind them (changed with the standalone actions, SELM-00025: with a
+// few hundred actions, scores alone would push the actions on the selection
+// off the line while the person is selecting).
+test('the usage scores order the kinds as one; with a selection, the actions on it come first', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
-  const s = stage(on, { store: { usage: { recap: at(5), translate: at(3), decisions: at(1) } } })
+  const s = stage(on, { store: { usage: { recap: at(5), 'translate-ja': at(3), decisions: at(1) } } })
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['<🧭>', '[🌐]', '<✅>', '[🔤]', '[💡]', '[🧸]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '[💃]', '✕', '⋯'])
 
   // With nothing selected, the same order with the context actions alone.
   s.selected = null
@@ -266,7 +363,7 @@ test('`actions` pins either kind', { options: { actions: 'recap,explain,handoff'
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['<🧭>', '[💡]', '<📝>', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['<🧭>', '[💡]', '<📝>', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)
@@ -289,9 +386,14 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
 
   let picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   let listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  expect(listed).toHaveLength(ACTIONS.length)
+  // A Select takes 64 options at most; the filter reaches the rest.
+  expect(listed).toHaveLength(Math.min(ACTIONS.length, 64))
   expect(listed.find(o => o.value === 'explain')?.label).toBe('[💡] 意味')
-  expect(listed.find(o => o.value === 'handoff')?.label).toBe('<📝> 引き継ぎメモ')
+  for (const [id, label] of [['timer', '{⏳} タイマー'], ['handoff', '<📝> 引き継ぎメモ']] as const) {
+    await picker.input({ key: '_filter', text: id, kind: 'change' })
+    const found = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+    expect(found.find(o => o.value === id)?.label).toBe(label)
+  }
   await picker.press({ key: '_picker-close' })
   await picker.unmount()
 
@@ -304,7 +406,15 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.unmount()
   picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  expect(listed.map(o => o.value).sort()).toEqual(CONTEXT.map(c => c.id).sort())
+  // The context actions and the standalone ones: nothing that needs a selection. A Select takes 64 options
+  // at most (more than that many need no selection now); the filter reaches the rest.
+  const free = [...CONTEXT.map(c => c.id), ...ACTIONS.filter(isStandalone).map(a => a.id)]
+  expect(listed).toHaveLength(Math.min(free.length, 64))
+  for (const o of listed) expect(free).toContain(o.value)
+  await picker.input({ key: '_filter', text: 'session-release-check', kind: 'change' })
+  const reached = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+  expect(reached.map(o => o.value)).toContain('session-release-check')
+  await picker.input({ key: '_filter', text: '', kind: 'change' })
   await picker.select({ key: PICKER_SELECT, value: 'todo' })
   await picker.unmount()
   expect(s.forks).toHaveLength(1)

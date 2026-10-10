@@ -4,7 +4,7 @@ import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, TARGETS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, promptOf, reselect, runCommand, stage, start } from './stage'
 
 // The person's own actions, from the `customActions` setting: read, checked,
 // shown on the hint line and run like the built-ins.
@@ -98,15 +98,15 @@ test('parse: valid definitions of each kind, with labels as one string or { ja, 
   const [mine, relate, review, look] = specs
   expect(mine).toMatchObject({ kind: 'complete', model: 'haiku', maxTokens: 300, label: MINE.label, runningText: MINE.runningText })
   // Nothing about the language in it: STYLE is added, as sys() does for the built-ins.
-  expect(mine?.prompt).toBe(`${MINE.prompt} ${STYLE}`)
+  expect(promptOf(mine)).toBe(`${MINE.prompt} ${STYLE}`)
 
   // One string serves both languages; the fork's STYLE is gone.
   expect(relate).toMatchObject({ kind: 'fork', label: { ja: 'Relate', en: 'Relate' }, runningText: { ja: 'Relating…', en: 'Relating…' } })
-  expect(relate?.prompt).toBe('Relate the selected text to what we are working on.')
+  expect(promptOf(relate)).toBe('Relate the selected text to what we are working on.')
 
   // ANSWER_LANGUAGE says how already: nothing is added. Tools are kept once each.
   expect(review).toMatchObject({ kind: 'subagent', model: 'opus', task: REVIEW.task, description: REVIEW.description, tools: ['Read', 'Grep', 'WebFetch'] })
-  expect(review?.prompt).toBe(REVIEW.prompt)
+  expect(promptOf(review)).toBe(REVIEW.prompt)
 
   // No tools given: none are set, so the read-only default applies.
   expect(look).toMatchObject({ kind: 'subagent' })
@@ -199,8 +199,102 @@ test('parse: target is selection (the default when left out, null or blank) or c
   expect(standup).toMatchObject({ kind: 'fork', target: 'context', prompt: 'Relate the selected text to what we are working on.' })
   // An action on the selection carries no target, as the built-ins on it do.
   for (const spec of rest) expect(spec).not.toHaveProperty('target')
-  expect([...TARGETS]).toEqual(['selection', 'context'])
+  expect([...TARGETS]).toEqual(['selection', 'context', 'none'])
 })
+
+// A standalone custom action: on neither the selection nor the conversation,
+// a complete or a subagent taking an optional free text as its argument.
+const IDEAS = {
+  id: 'ideas',
+  icon: '💭',
+  label: { ja: 'アイデア出し', en: 'Ideas' },
+  kind: 'complete',
+  model: 'haiku',
+  target: 'none',
+  prompt: 'Suggest five ideas on the topic in <input>, or on a topic of your choosing when there is none.',
+}
+const SCOUT = {
+  id: 'scout',
+  icon: '🛰',
+  label: 'Scout',
+  kind: 'subagent',
+  model: 'sonnet',
+  target: 'none',
+  task: 'Look around this repository.',
+  prompt: 'You describe a repository. Change nothing.',
+}
+
+test('parse: target none takes complete and subagent, with an optional free-text argument; fork is noneKind, local a kind error', () => {
+  const { specs, problems } = parseCustomActions(
+    json([IDEAS, SCOUT, { ...IDEAS, id: 'forked', kind: 'fork' }, { ...IDEAS, id: 'local', kind: 'local' }]),
+    RESERVED,
+  )
+  expect(specs.map(sp => sp.id)).toEqual(['ideas', 'scout'])
+  for (const spec of specs) {
+    expect(spec).toMatchObject({ target: 'none', arg: { type: 'text' } })
+    if (spec.kind === 'local' || spec.kind === 'fork') throw new Error(`unexpected kind ${spec.kind}`)
+    // No default: optional, none given is none sent.
+    expect(spec.arg?.default).toBeUndefined()
+    expect(spec.arg?.hint).toEqual({ ja: MESSAGES.ja.customArgHint, en: MESSAGES.en.customArgHint })
+  }
+  expect(specs[0]).toMatchObject({ kind: 'complete', model: 'haiku' })
+  expect(specs[1]).toMatchObject({ kind: 'subagent', model: 'sonnet', task: SCOUT.task })
+  expect(problems.map(p => [p.id, p.reason.code])).toEqual([
+    ['forked', 'noneKind'],
+    ['local', 'kind'],
+  ])
+  expect(problemLine(problems[0]!, 'ja')).toBe('#3 (forked): target が none のアクションは complete か subagent で書いてください（指定: fork）')
+  expect(problemLine(problems[0]!, 'en')).toBe('#3 (forked): an action with target none must be complete or subagent (given: fork)')
+  // local is the built-ins' own: not one of the kinds a custom action may name.
+  expect(problemLine(problems[1]!, 'en')).toBe('#4 (local): kind must be one of complete, fork, subagent (given: local)')
+})
+
+for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
+  test(
+    `[${options.language}] a custom standalone action: marked { }, run with no selection sent, its argument in <input> or NO_INPUT`,
+    { options: { ...options, customActions: JSON.stringify([IDEAS, SCOUT]), actions: 'ideas,scout' } },
+    async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'SECRET selection'
+      await clock.advance(400)
+
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      expect((await band.findAll({ type: 'Button' })).map(b => b.props.label).slice(0, 2)).toEqual(['{💭}', '{🛰}'])
+      await band.press({ key: 'ideas' })
+      await band.unmount()
+      // Pressed: no argument, the selection not sent.
+      expect(s.models.at(-1)).toMatchObject({ model: 'haiku', prompt: 'There is no input; follow the instructions alone.' })
+      expect(s.models.at(-1)?.system).toContain('Suggest five ideas')
+
+      // By the command, with an argument: in <input>, as written.
+      await runCommand($, 'ideas  Tea Ceremony ')
+      expect(s.models.at(-1)?.prompt).toBe('<input>\nTea Ceremony\n</input>')
+      await runCommand($, 'scout')
+      expect(s.spawned.at(-1)).toMatchObject({ subagentType: `${PLUGIN}:scout`, prompt: SCOUT.task })
+      await runCommand($, 'scout src/hooks')
+      expect(s.spawned.at(-1)?.prompt).toBe(`${SCOUT.task}\n\n<input>\nsrc/hooks\n</input>`)
+      for (const m of s.models) expect(`${m.system}${m.prompt}`).not.toContain('SECRET')
+      for (const sp of s.spawned) {
+        expect(sp.prompt).not.toContain('SECRET')
+        expect(sp.prompt).not.toContain('<selected>')
+      }
+
+      // Over 500 characters: not valid, nothing runs.
+      const before = s.models.length
+      const long = await runCommand($, `ideas ${'x'.repeat(501)}`)
+      expect(JSON.stringify(long)).toContain(t.invalidArg('ideas', 'x'.repeat(501), t.customArgHint))
+      expect(s.models).toHaveLength(before)
+
+      // The pane: headed by the argument, or by "standalone" with none.
+      const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+      expect(await pane.find({ text: t.quote('Tea Ceremony') })).toBeDefined()
+      expect(await pane.find({ text: t.standalone })).toBeDefined()
+      await pane.unmount()
+    },
+  )
+}
 
 test('parse: only a valid definition takes its ID; a later one with it is then valid', () => {
   const { specs, problems } = parseCustomActions(json([{ ...MINE, model: 'gpt-4' }, MINE]), RESERVED)
@@ -240,7 +334,7 @@ test("the README's examples are valid definitions", () => {
   // The fixed-language example: the answer language is left to its author.
   const french = 'Translate the selected text into French. Write any note on it in {ANSWER_LANGUAGE}.'
   const [fr] = parseCustomActions(json([{ ...README_EXAMPLES[0], id: 'french', prompt: french }]), RESERVED).specs
-  expect(fr?.prompt).toBe(french)
+  expect(promptOf(fr)).toBe(french)
 })
 
 test('the allowed tools and models are exactly the ones the ticket names', () => {
@@ -282,15 +376,15 @@ test('the answer language: STYLE and ANSWER_LANGUAGE are filled in for each lang
   )
   for (const [lang, name] of [['ja', 'Japanese'], ['en', 'English']] as const) {
     const [mine, review, styled, relate] = specs.map(s => resolveSpec(s, lang))
-    expect(mine?.prompt).toBe(`${MINE.prompt} ${answerStyle(lang)}`)
-    expect(review?.prompt).toBe(`You review code and answer in ${name}.`)
-    expect(styled?.prompt).toBe(`Be brief. ${answerStyle(lang)}`)
+    expect(promptOf(mine)).toBe(`${MINE.prompt} ${answerStyle(lang)}`)
+    expect(promptOf(review)).toBe(`You review code and answer in ${name}.`)
+    expect(promptOf(styled)).toBe(`Be brief. ${answerStyle(lang)}`)
     // A fork's answer style comes at run time; only the language's name is put in here.
-    expect(relate?.prompt).toBe(`In ${name}, relate it.`)
+    expect(promptOf(relate)).toBe(`In ${name}, relate it.`)
     for (const d of [mine, review, styled, relate]) {
-      expect(d?.prompt).not.toContain(STYLE)
-      expect(d?.prompt).not.toContain(ANSWER_LANGUAGE)
-      expect(d?.prompt.split('Answer in').length ?? 0).toBeLessThanOrEqual(2)
+      expect(promptOf(d)).not.toContain(STYLE)
+      expect(promptOf(d)).not.toContain(ANSWER_LANGUAGE)
+      expect(promptOf(d)?.split('Answer in').length ?? 0).toBeLessThanOrEqual(2)
     }
   }
 })
@@ -319,8 +413,8 @@ test('the reasons about target read in each language, English with no Japanese i
     RESERVED,
   )
   expect(problems.map(p => p.reason.code)).toEqual(['target', 'contextKind', 'idReserved'])
-  expect(problemLine(problems[0]!, 'ja')).toBe('#1 (relate): target は selection / context のいずれかにしてください（指定: foo）')
-  expect(problemLine(problems[0]!, 'en')).toBe('#1 (relate): target must be one of selection, context (given: foo)')
+  expect(problemLine(problems[0]!, 'ja')).toBe('#1 (relate): target は selection / context / none のいずれかにしてください（指定: foo）')
+  expect(problemLine(problems[0]!, 'en')).toBe('#1 (relate): target must be one of selection, context, none (given: foo)')
   expect(problemLine(problems[1]!, 'ja')).toBe('#2 (mine): target が context の定義は kind を fork にしてください（指定: complete）')
   expect(problemLine(problems[1]!, 'en')).toBe('#2 (mine): a definition with target context must have kind fork (given: complete)')
   expect(problemLine(problems[2]!, 'ja')).toContain('hint')
@@ -347,7 +441,7 @@ for (const surface of SURFACES) {
 
       const band = await $.ui.mount({ ...BAND, surface })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      // Five pinned, then the first of the rest (translate), six in all.
+      // Five pinned, then the first of the rest (translate-ja), six in all.
       expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       // Nothing was wrong: no toast.
@@ -489,7 +583,7 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     // The valid custom one and explain pinned; the invalid ones nowhere.
-    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🧸]', '[🔬]', '✕', '⋯'])
+    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])
@@ -525,10 +619,10 @@ test('invalid definitions: every result of /quick-actions lists them all', { opt
   expect(JSON.stringify(ignored)).not.toContain('不明なアクション ID')
   listed(ignored)
 
-  // An unknown ID: the IDs that exist, custom ones included, then the list.
-  const unknown = await runCommand($, 'nope')
-  expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: nope')
-  expect(JSON.stringify(unknown)).toContain('mine')
+  // An unknown ID: the actions it matches, custom ones included (by their
+  // label in either language), then the list.
+  const unknown = await runCommand($, 'pirate')
+  expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: pirate（候補: mine）')
   listed(unknown)
 
   expect(s.models).toHaveLength(1)
@@ -569,7 +663,7 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
   await band.unmount()
 
   const r = await runCommand($, '')

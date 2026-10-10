@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ const fillPane = async ($: Engine, s: Stage, clock: Clock, surface: (typeof SURF
 for (const surface of SURFACES) {
   test(
     `[${surface}] en: the hint line, the pane, the command and the toast are in English`,
-    { options: { ...EN, actions: 'explain,translate,code,ask,why' } },
+    { options: { ...EN, actions: 'explain,translate-ja,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -136,10 +136,10 @@ for (const surface of SURFACES) {
       expect(shown).not.toMatch(JAPANESE)
 
       // The command's answers.
-      const ran = await runCommand($, 'translate')
+      const ran = await runCommand($, 'translate-ja')
       expect(JSON.stringify(ran)).toContain('Showing the To Japanese result in the Quick Actions pane.')
       const unknown = await runCommand($, 'nope')
-      expect(JSON.stringify(unknown)).toContain('Unknown action ID: nope (available IDs: ')
+      expect(JSON.stringify(unknown)).toContain('Unknown action ID: nope. Run /quick-actions (no ID) to search the list')
       for (const r of [none, ran, unknown]) expect(JSON.stringify(r)).not.toMatch(JAPANESE)
       expect(s.toasts.join('\n')).not.toMatch(JAPANESE)
 
@@ -151,7 +151,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] ja: the same places read in Japanese, as before the setting`,
-    { options: { ...JA, actions: 'explain,translate,code,ask,why' } },
+    { options: { ...JA, actions: 'explain,translate-ja,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -179,15 +179,20 @@ for (const surface of SURFACES) {
       expect(shown).toContain('起動できませんでした: not allowed here')
 
       const unknown = await runCommand($, 'nope')
-      expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: nope（使える ID: ')
+      expect(JSON.stringify(unknown)).toContain('不明なアクション ID です: nope。/quick-actions（ID なし）で一覧から検索できます')
     },
   )
 }
 
 test('the subagents\' running texts exist in both languages', () => {
   const running = (lang: 'ja' | 'en') => actionsFor(lang).flatMap(a => (a.runningText === undefined ? [] : [a.runningText]))
-  expect(running('en')).toEqual(['Searching the repository…', 'Checking the web…'])
-  expect(running('ja')).toEqual(['リポジトリを調査中…', 'Webで調査中…'])
+  // code, web-check, then find-usages, find-tests (the repository) and official-docs, search-error, package-info (the web),
+  // then the seven standalone repository surveys (repo-overview to repo-onboarding).
+  const repo = { en: 'Searching the repository…', ja: 'リポジトリを調査中…' }
+  const web = { en: 'Checking the web…', ja: 'Webで調査中…' }
+  for (const lang of ['en', 'ja'] as const) {
+    expect(running(lang)).toEqual([repo, web, repo, repo, web, web, web, ...Array(7).fill(repo)].map(t => t[lang]))
+  }
 })
 
 for (const [options, thinking] of [
@@ -247,7 +252,16 @@ for (const language of ['en', 'ja'] as const) {
           .map((a, i) => [a.id, s.models[i]?.system ?? ''] as const),
       )
       for (const [id, system] of systems) {
-        if (id === 'translate' || id === 'translate-en') continue
+        // A translation or a converted text asks for no answer style; never for the other language either.
+        if (NO_STYLE.includes(id)) {
+          expect(system).not.toContain(`Answer in ${other}`)
+          // Those with a short note name its language: this one, never the other.
+          if (ANSWER_LANGUAGE_ONLY.includes(id)) {
+            expect(system).toContain(`in ${name}`)
+            expect(system).not.toContain(`in ${other}`)
+          }
+          continue
+        }
         expect(system).not.toContain(`Answer in ${other}`)
         expect(system).not.toContain(`in ${other}.`)
         expect(system).toContain(`Answer in ${name}`)
@@ -271,7 +285,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] the translations keep their target language; only the labels follow the setting`,
-    { options: { language, actions: 'translate,translate-en' } },
+    { options: { language, actions: 'translate-ja,translate-en' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -283,7 +297,7 @@ for (const language of ['en', 'ja'] as const) {
       const labels = language === 'en' ? ['To Japanese', 'To English'] : ['日本語訳', '英訳']
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       await reselect(s, clock)
-      await band.press({ key: 'translate' })
+      await band.press({ key: 'translate-ja' })
       await reselect(s, clock)
       await band.press({ key: 'translate-en' })
       await band.unmount()

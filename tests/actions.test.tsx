@@ -31,7 +31,7 @@ import {
   translateInto,
   wrapInput,
 } from '../hooks/actions'
-import { parseArg } from '../hooks/args'
+import { TEXT_ARG_LIMIT, parseArg } from '../hooks/args'
 import { parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
@@ -89,6 +89,10 @@ const STANDALONE = [
   'stopwatch', 'pomodoro', 'countdown-to', 'breathing', 'eye-rest',
   'clock', 'calendar', 'date-info', 'date-offset', 'business-days', 'wareki', 'year-progress', 'time-after',
   'duration-convert', 'sleep-calc', 'moon-phase',
+  'uuid', 'ulid', 'nanoid', 'password', 'passphrase', 'random-token', 'dice', 'coin-flip', 'random-number',
+  'pick-one', 'shuffle', 'random-color', 'lorem', 'dummy-ja', 'break-idea',
+  'calc', 'unit-convert', 'base-convert', 'byte-size', 'tax-calc', 'split-bill', 'factorize', 'roman-numeral',
+  'number-reading', 'semver-bump', 'ip-calc', 'aspect-ratio', 'px-rem', 'chmod-calc',
   'ascii-table', 'http-status', 'mime-types', 'port-numbers',
   'brainstorm', 'project-names', 'fermi', 'decision-matrix', 'color-palette', 'sample-data',
   'cron-build', 'regex-build', 'shell-oneliner', 'git-recipe', 'sql-build', 'api-design', 'schema-design',
@@ -122,14 +126,14 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the two hundred and eighty-two built-ins (a hundred and four on the selection, a hundred and two on the conversation, seventy-six standalone), unique IDs, every field filled in', () => {
+test('the three hundred and eleven built-ins (a hundred and four on the selection, a hundred and two on the conversation, a hundred and five standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(282)
+  expect(ids).toHaveLength(311)
   expect(ON_SELECTION).toHaveLength(104)
   expect(ON_CONVERSATION).toHaveLength(102)
-  expect(STANDALONE).toHaveLength(76)
+  expect(STANDALONE).toHaveLength(105)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -1213,10 +1217,80 @@ const CATALOG_ROWS_STANDALONE_LOCAL: readonly (readonly [string, string, string,
 // What each typed argument must refuse, by its type.
 const INVALID_ARGS: Record<string, (min?: number, max?: number) => string[]> = {
   int: (min, max) => [String(min! - 1), String(max! + 1), 'abc', '1.5'],
+  number: (min, max) => [String(min! - 1), String(max! + 1), 'abc', '1e3', '1.2.3'],
   time: () => ['25:00', '12:60', 'abc'],
   choice: () => ['447', 'square'],
   date: () => ['abc', '2026-13-01', '2026-02-30'],
   duration: () => ['0s', '25h', 'abc'],
+  text: () => ['x'.repeat(TEXT_ARG_LIMIT + 1)],
+}
+
+/**
+ * One catalog row of a standalone local action, checked against its
+ * definition: the ID, icon and labels, local and standalone with no model,
+ * prompt or tools, and the argument as the input column says (its type,
+ * range, choices or default; what it refuses; its bounds; its hint).
+ */
+function expectStandaloneLocalRow(
+  [id, icon, ja, en, input]: readonly [string, string, string, string, string],
+  env: { now: number; utcOffsetMinutes: (ms: number) => number },
+  byId: Map<string, (typeof ACTIONS)[number]>,
+) {
+  const spec = byId.get(id)
+  expect(spec).toMatchObject({ id, icon, label: { ja, en }, kind: 'local', target: 'none' })
+  if (spec?.kind !== 'local') throw new Error(`${id} is not local`)
+  expect(isStandalone(spec)).toBe(true)
+  expect(needsSelection(spec)).toBe(false)
+  // One code point, no variation selector.
+  expect([...icon]).toHaveLength(1)
+  // Local: no model, no prompt, no tools.
+  expect('model' in spec).toBe(false)
+  expect('prompt' in spec).toBe(false)
+  expect('tools' in spec).toBe(false)
+
+  // The argument, as the input column says.
+  const typed = /^arg:(int|number|time|date|duration|choice|text)(?:\[([^\]]+)\])?\((.+)\)$/.exec(input)
+  if (input === 'none') {
+    expect(spec.arg).toBeUndefined()
+    return
+  }
+  if (input === 'arg:text?') {
+    expect(spec.arg).toMatchObject({ type: 'text' })
+    expect(spec.arg?.default).toBeUndefined()
+  } else {
+    if (typed === null) throw new Error(`${id}: unknown input column ${input}`)
+    const [, type, range, fallback] = typed
+    expect(spec.arg).toMatchObject({ type, default: fallback })
+    let min: number | undefined
+    let max: number | undefined
+    if (type === 'int' || type === 'number') {
+      const [a, b] = range!.split('..').map(Number)
+      min = a
+      max = b
+      expect(spec.arg).toMatchObject({ min, max })
+    } else if (type === 'choice') {
+      expect(spec.arg?.choices).toEqual(range!.split('|'))
+    } else {
+      expect(range).toBeUndefined()
+    }
+    // Each refuses what is not of its type or out of its range.
+    for (const bad of INVALID_ARGS[type!]!(min, max)) expect(parseArg(spec.arg!, bad, env)).toEqual({ ok: false })
+    if (type === 'int' || type === 'number') {
+      expect(parseArg(spec.arg!, String(min), env)).toEqual({ ok: true, value: min })
+      expect(parseArg(spec.arg!, String(max), env)).toEqual({ ok: true, value: max })
+    }
+    if (type === 'text') {
+      // No range; up to TEXT_ARG_LIMIT characters; none gives the default as it is written.
+      expect(spec.arg?.min).toBeUndefined()
+      expect(spec.arg?.max).toBeUndefined()
+      expect(parseArg(spec.arg!, 'x'.repeat(TEXT_ARG_LIMIT), env)).toEqual({ ok: true, value: 'x'.repeat(TEXT_ARG_LIMIT) })
+      expect(parseArg(spec.arg!, undefined, env)).toEqual({ ok: true, value: fallback })
+    }
+  }
+  // Its default (or none) parses, and its hint says how to write it in both languages.
+  expect(parseArg(spec.arg!, undefined, env).ok).toBe(true)
+  expect(spec.arg?.hint.ja).toBeTruthy()
+  expect(spec.arg?.hint.en).toBeTruthy()
 }
 
 test('the twenty catalog standalone local actions (runs over time, the clock and the calendar, reference tables): as the catalog has them', () => {
@@ -1226,63 +1300,81 @@ test('the twenty catalog standalone local actions (runs over time, the clock and
   expect(inputs.filter(i => i === 'arg:text?')).toHaveLength(4)
   const env = { now: FIXED_INPUT.now, utcOffsetMinutes: FIXED_INPUT.utcOffsetMinutes }
   const byId = new Map(ACTIONS.map(a => [a.id, a]))
-  for (const [id, icon, ja, en, input] of CATALOG_ROWS_STANDALONE_LOCAL) {
-    const spec = byId.get(id)
-    expect(spec).toMatchObject({ id, icon, label: { ja, en }, kind: 'local', target: 'none' })
-    if (spec?.kind !== 'local') throw new Error(`${id} is not local`)
-    expect(isStandalone(spec)).toBe(true)
-    expect(needsSelection(spec)).toBe(false)
-    // One code point, no variation selector.
-    expect([...icon]).toHaveLength(1)
-    // Local: no model, no prompt, no tools.
-    expect('model' in spec).toBe(false)
-    expect('prompt' in spec).toBe(false)
-    expect('tools' in spec).toBe(false)
-
-    // The argument, as the input column says.
-    const typed = /^arg:(int|time|date|duration|choice)(?:\[([^\]]+)\])?\((.+)\)$/.exec(input)
-    if (input === 'none') {
-      expect(spec.arg).toBeUndefined()
-      continue
-    }
-    if (input === 'arg:text?') {
-      expect(spec.arg).toMatchObject({ type: 'text' })
-      expect(spec.arg?.default).toBeUndefined()
-    } else {
-      if (typed === null) throw new Error(`${id}: unknown input column ${input}`)
-      const [, type, range, fallback] = typed
-      expect(spec.arg).toMatchObject({ type, default: fallback })
-      let min: number | undefined
-      let max: number | undefined
-      if (type === 'int') {
-        const [a, b] = range!.split('..').map(Number)
-        min = a
-        max = b
-        expect(spec.arg).toMatchObject({ min, max })
-      } else if (type === 'choice') {
-        expect(spec.arg?.choices).toEqual(range!.split('|'))
-      } else {
-        expect(range).toBeUndefined()
-      }
-      // Each refuses what is not of its type or out of its range.
-      for (const bad of INVALID_ARGS[type!]!(min, max)) expect(parseArg(spec.arg!, bad, env)).toEqual({ ok: false })
-      if (type === 'int') {
-        expect(parseArg(spec.arg!, String(min), env)).toEqual({ ok: true, value: min })
-        expect(parseArg(spec.arg!, String(max), env)).toEqual({ ok: true, value: max })
-      }
-    }
-    // Its default (or none) parses, and its hint says how to write it in both languages.
-    expect(parseArg(spec.arg!, undefined, env).ok).toBe(true)
-    expect(spec.arg?.hint.ja).toBeTruthy()
-    expect(spec.arg?.hint.en).toBeTruthy()
-  }
-  // In the catalog's order, right after timer.
+  for (const row of CATALOG_ROWS_STANDALONE_LOCAL) expectStandaloneLocalRow(row, env, byId)
+  // In the catalog's order: the runs over time and the clock and calendar right after timer, the
+  // reference tables right after chmod-calc (the random and calculation rows, SELM-00036, between).
   const ids = ACTIONS.map(a => a.id)
   const at = ids.indexOf('timer') + 1
-  expect(ids.slice(at, at + 20)).toEqual(CATALOG_ROWS_STANDALONE_LOCAL.map(r => r[0]))
+  expect(ids.slice(at, at + 16)).toEqual(CATALOG_ROWS_STANDALONE_LOCAL.slice(0, 16).map(r => r[0]))
+  const tables = ids.indexOf('chmod-calc') + 1
+  expect(ids.slice(tables, tables + 4)).toEqual(CATALOG_ROWS_STANDALONE_LOCAL.slice(16).map(r => r[0]))
   // No two standalone actions share an icon.
   const icons = ACTIONS.filter(isStandalone).map(a => a.icon)
   expect(new Set(icons).size).toBe(icons.length)
+})
+
+// The catalog's standalone actions that make something at random or calculate (SELM-00036), run
+// here with no model, as the catalog has them: [id, icon, ja, en, input]. `input` adds
+// `arg:number[<min>..<max>](<default>)` and `arg:text(<default>)` to the forms above.
+const CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC: readonly (readonly [string, string, string, string, string])[] = [
+  // L3 Random and generated
+  ['uuid', '🆕', 'UUID生成', 'UUID', 'arg:choice[v4|v7](v4)'],
+  ['ulid', '🧿', 'ULID生成', 'ULID', 'none'],
+  ['nanoid', '🔟', '短いID生成', 'Short ID (Nano ID)', 'arg:int[4..64](21)'],
+  ['password', '🔑', 'パスワード生成', 'Password', 'arg:int[8..128](20)'],
+  ['passphrase', '🔏', 'パスフレーズ生成', 'Passphrase', 'arg:int[3..10](5)'],
+  ['random-token', '🎫', 'ランダムトークン', 'Random token', 'arg:int[8..256](32)'],
+  ['dice', '🎲', 'サイコロ', 'Roll dice', 'arg:text(1d6)'],
+  ['coin-flip', '🪙', 'コイントス', 'Flip a coin', 'none'],
+  ['random-number', '🔢', '乱数（1〜N）', 'Random number', 'arg:int[2..1000000000](100)'],
+  ['pick-one', '👉', 'ひとつ選ぶ', 'Pick one', 'arg:text?'],
+  ['shuffle', '🔀', '順番を決める', 'Shuffle', 'arg:text?'],
+  ['random-color', '🌈', 'ランダムな色', 'Random colors', 'none'],
+  ['lorem', '📃', 'ダミー文（英語）', 'Lorem ipsum', 'arg:int[1..20](3)'],
+  ['dummy-ja', '🎎', 'ダミー文（日本語）', 'Japanese dummy text', 'arg:int[1..20](3)'],
+  ['break-idea', '🧘', '休憩のヒント', 'Break idea', 'none'],
+  // L4 Calculations and conversions
+  ['calc', '🧮', '電卓', 'Calculator', 'arg:text?'],
+  ['unit-convert', '📏', '単位換算', 'Convert units', 'arg:text?'],
+  ['base-convert', '🔃', '進数変換', 'Number bases', 'arg:text(255)'],
+  ['byte-size', '💽', 'データ量の換算', 'Data size', 'arg:text(1GiB)'],
+  ['tax-calc', '💴', '消費税の計算', 'Consumption tax', 'arg:number[0..1000000000000](1000)'],
+  ['split-bill', '🧾', '割り勘', 'Split the bill', 'arg:text(10000/3)'],
+  ['factorize', '🧩', '素因数分解', 'Factorize', 'arg:int[2..1000000000000](360)'],
+  ['roman-numeral', '🏺', 'ローマ数字', 'Roman numerals', 'arg:text(2024)'],
+  ['number-reading', '🔣', '数の読み方', 'Read a number', 'arg:text(1234567)'],
+  ['semver-bump', '🔼', '次のバージョン', 'Next versions', 'arg:text(1.4.2)'],
+  ['ip-calc', '🌐', 'サブネット計算', 'Subnet calculator', 'arg:text(192.168.0.0/24)'],
+  ['aspect-ratio', '📐', '縦横比', 'Aspect ratio', 'arg:text(1920x1080)'],
+  ['px-rem', '🔍', 'px・rem換算', 'px and rem', 'arg:text(16px)'],
+  ['chmod-calc', '🔐', 'パーミッション計算', 'File permissions', 'arg:text(755)'],
+]
+
+test('the twenty-nine catalog standalone local actions (random and generated, calculations and conversions): as the catalog has them', () => {
+  expect(CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC).toHaveLength(15 + 14)
+  const inputs = CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC.map(r => r[4])
+  expect(inputs.filter(i => i === 'none')).toHaveLength(4)
+  expect(inputs.filter(i => i === 'arg:text?')).toHaveLength(4)
+  expect(inputs.filter(i => i.startsWith('arg:text('))).toHaveLength(11)
+  expect(inputs.filter(i => i.startsWith('arg:number['))).toHaveLength(1)
+  const env = { now: FIXED_INPUT.now, utcOffsetMinutes: FIXED_INPUT.utcOffsetMinutes }
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const row of CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC) expectStandaloneLocalRow(row, env, byId)
+  // In the catalog's order, right after moon-phase.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('moon-phase') + 1
+  expect(ids.slice(at, at + 29)).toEqual(CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC.map(r => r[0]))
+  // Each answers its default in both languages with a text, never an error.
+  for (const [id] of CATALOG_ROWS_STANDALONE_LOCAL_GENERATE_CALC) {
+    const spec = byId.get(id)
+    if (spec?.kind !== 'local') throw new Error(`${id} is not local`)
+    const parsed = spec.arg === undefined ? { ok: true as const, value: undefined } : parseArg(spec.arg, undefined, env)
+    if (!parsed.ok) throw new Error(`${id}: its default does not parse`)
+    for (const lang of ['ja', 'en'] as const) {
+      const out = spec.compute({ ...FIXED_INPUT, lang, arg: parsed.value })
+      expect('text' in out).toBe(true)
+    }
+  }
 })
 
 test('timer: ⏳ タイマー / Timer, local, standalone, a duration of 25 minutes by default', () => {

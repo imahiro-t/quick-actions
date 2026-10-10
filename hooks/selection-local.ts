@@ -826,7 +826,7 @@ function hslToRgb(h: number, s: number, l: number): Rgb {
   return [Math.round(channel(hue + 1 / 3) * 255), Math.round(channel(hue) * 255), Math.round(channel(hue - 1 / 3) * 255)]
 }
 
-function rgbToHsl([r0, g0, b0]: Rgb): [number, number, number] {
+export function rgbToHsl([r0, g0, b0]: Rgb): [number, number, number] {
   const r = r0 / 255
   const g = g0 / 255
   const b = b0 / 255

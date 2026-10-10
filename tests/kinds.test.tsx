@@ -329,7 +329,7 @@ test('candidates are matched by label in either language and by kind name', { op
   // The old ID of the Japanese translation: told, with the new one among its candidates.
   expect(candidatesIn(await runCommand($, 'translate'))).toEqual(ON_SELECTION_TRANSLATIONS)
   // By the English label too: Plain Japanese.
-  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja', 'wareki', 'keigo-phrases'])
+  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja', 'wareki', 'dummy-ja', 'keigo-phrases'])
   // The standalone actions, in the order of definition (timer, of the default set, first), ten at most.
   expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(ACTIONS.filter(isStandalone).map(a => a.id).slice(0, 10))
 })

@@ -50,6 +50,39 @@ import {
   yearProgress,
 } from './time-local'
 import { asciiTable, httpStatus, mimeTypes, portNumbers } from './reference-local'
+import {
+  breakIdea,
+  coinFlip,
+  dice,
+  dummyJa,
+  lorem,
+  nanoid,
+  passphrase,
+  password,
+  pickOneAction,
+  randomColor,
+  randomNumber,
+  randomToken,
+  shuffle,
+  ulid,
+  uuid,
+} from './random-local'
+import {
+  aspectRatio,
+  baseConvert,
+  byteSize,
+  calc,
+  chmodCalc,
+  factorize,
+  ipCalc,
+  numberReading,
+  pxRem,
+  romanNumeral,
+  semverBump,
+  splitBill,
+  taxCalc,
+  unitConvert,
+} from './calc-local'
 
 type ActionBase<T> = {
   /** The ID written in the `actions` setting: lowercase letters, digits, hyphens. */
@@ -2689,8 +2722,9 @@ export const ACTIONS: readonly ActionSpec[] = [
     compute: timerCompute,
   },
 
-  // Standalone actions run here, with no model (SELM-00035): runs over time,
-  // the clock and the calendar, and reference tables. The local time comes
+  // Standalone actions run here, with no model (SELM-00035, SELM-00036): runs
+  // over time, the clock and the calendar, random and generated things,
+  // calculations and conversions, and reference tables. The local time comes
   // from utcOffsetMinutes; nothing reaches the network. `satisfies` keeps the
   // inline argument literals (type: 'int', ...) from widening to string.
   ...(
@@ -2822,6 +2856,230 @@ export const ACTIONS: readonly ActionSpec[] = [
         compute: sleepCalc,
       },
       { id: 'moon-phase', icon: '🌕', label: { ja: '月齢', en: 'Moon phase' }, compute: moonPhase },
+      // Random and generated (SELM-00036): from LocalInput.randomBytes (and now), nothing else.
+      {
+        id: 'uuid',
+        icon: '🆕',
+        label: { ja: 'UUID生成', en: 'UUID' },
+        arg: {
+          type: 'choice',
+          choices: ['v4', 'v7'],
+          default: 'v4',
+          hint: { ja: 'v4（乱数）か v7（現在時刻＋乱数）。省くと v4', en: 'v4 (random) or v7 (the time and random); v4 when left out' },
+        },
+        compute: uuid,
+      },
+      { id: 'ulid', icon: '🧿', label: { ja: 'ULID生成', en: 'ULID' }, compute: ulid },
+      {
+        id: 'nanoid',
+        icon: '🔟',
+        label: { ja: '短いID生成', en: 'Short ID (Nano ID)' },
+        arg: { type: 'int', min: 4, max: 64, default: '21', hint: { ja: '長さ（4〜64。省くと 21）', en: 'a length from 4 to 64; 21 when left out' } },
+        compute: nanoid,
+      },
+      {
+        id: 'password',
+        icon: '🔑',
+        label: { ja: 'パスワード生成', en: 'Password' },
+        arg: { type: 'int', min: 8, max: 128, default: '20', hint: { ja: '長さ（8〜128。省くと 20）', en: 'a length from 8 to 128; 20 when left out' } },
+        compute: password,
+      },
+      {
+        id: 'passphrase',
+        icon: '🔏',
+        label: { ja: 'パスフレーズ生成', en: 'Passphrase' },
+        arg: { type: 'int', min: 3, max: 10, default: '5', hint: { ja: '語数（3〜10。省くと 5）', en: 'a number of words from 3 to 10; 5 when left out' } },
+        compute: passphrase,
+      },
+      {
+        id: 'random-token',
+        icon: '🎫',
+        label: { ja: 'ランダムトークン', en: 'Random token' },
+        arg: { type: 'int', min: 8, max: 256, default: '32', hint: { ja: 'バイト数（8〜256。省くと 32）', en: 'a number of bytes from 8 to 256; 32 when left out' } },
+        compute: randomToken,
+      },
+      {
+        id: 'dice',
+        icon: '🎲',
+        label: { ja: 'サイコロ', en: 'Roll dice' },
+        arg: textArg(
+          'NdM か NdM+K（例: 2d6+1。N は 1〜100、M は 2〜1000、K は 0〜10000。省くと 1d6）',
+          'NdM or NdM+K, e.g. 2d6+1 (N from 1 to 100, M from 2 to 1000, K from 0 to 10000); 1d6 when left out',
+          '1d6',
+        ),
+        compute: dice,
+      },
+      { id: 'coin-flip', icon: '🪙', label: { ja: 'コイントス', en: 'Flip a coin' }, compute: coinFlip },
+      {
+        id: 'random-number',
+        icon: '🔢',
+        label: { ja: '乱数（1〜N）', en: 'Random number' },
+        arg: {
+          type: 'int',
+          min: 2,
+          max: 1_000_000_000,
+          default: '100',
+          hint: { ja: '上限 N（2〜1000000000。省くと 100）', en: 'the largest number N, from 2 to 1000000000; 100 when left out' },
+        },
+        compute: randomNumber,
+      },
+      {
+        id: 'pick-one',
+        icon: '👉',
+        label: { ja: 'ひとつ選ぶ', en: 'Pick one' },
+        arg: textArg(
+          '候補（カンマ・読点・空白で区切って 2〜100 個。例: 寿司, ラーメン, カレー。省くと「はい／いいえ」）',
+          '2 to 100 candidates separated by commas or spaces, e.g. sushi, ramen, curry; yes or no when left out',
+        ),
+        compute: pickOneAction,
+      },
+      {
+        id: 'shuffle',
+        icon: '🔀',
+        label: { ja: '順番を決める', en: 'Shuffle' },
+        arg: textArg(
+          '候補（カンマ・読点・空白で区切って 2〜100 個。例: 佐藤 鈴木 高橋。省くと 1〜10）',
+          '2 to 100 candidates separated by commas or spaces, e.g. Alice Bob Carol; 1 to 10 when left out',
+        ),
+        compute: shuffle,
+      },
+      { id: 'random-color', icon: '🌈', label: { ja: 'ランダムな色', en: 'Random colors' }, compute: randomColor },
+      {
+        id: 'lorem',
+        icon: '📃',
+        label: { ja: 'ダミー文（英語）', en: 'Lorem ipsum' },
+        arg: { type: 'int', min: 1, max: 20, default: '3', hint: { ja: '段落数（1〜20。省くと 3）', en: 'a number of paragraphs from 1 to 20; 3 when left out' } },
+        compute: lorem,
+      },
+      {
+        id: 'dummy-ja',
+        icon: '🎎',
+        label: { ja: 'ダミー文（日本語）', en: 'Japanese dummy text' },
+        arg: { type: 'int', min: 1, max: 20, default: '3', hint: { ja: '段落数（1〜20。省くと 3）', en: 'a number of paragraphs from 1 to 20; 3 when left out' } },
+        compute: dummyJa,
+      },
+      { id: 'break-idea', icon: '🧘', label: { ja: '休憩のヒント', en: 'Break idea' }, compute: breakIdea },
+      // Calculations and conversions (SELM-00036): calc reads its expression with its own parser.
+      {
+        id: 'calc',
+        icon: '🧮',
+        label: { ja: '電卓', en: 'Calculator' },
+        arg: textArg(
+          '数式（例: (1+2)*3, 2^10, sqrt(2)。省くと書ける式の一覧と例）',
+          'an expression, e.g. (1+2)*3, 2^10, sqrt(2); what can be written, with examples, when left out',
+        ),
+        compute: calc,
+      },
+      {
+        id: 'unit-convert',
+        icon: '📏',
+        label: { ja: '単位換算', en: 'Convert units' },
+        arg: textArg(
+          '<値> <単位> <単位>（例: 10 km mi, 100 F C, 5 kg lb。省くとよく使う換算の早見表）',
+          '<value> <unit> <unit>, e.g. 10 km mi, 100 F C, 5 kg lb; a table of common conversions when left out',
+        ),
+        compute: unitConvert,
+      },
+      {
+        id: 'base-convert',
+        icon: '🔃',
+        label: { ja: '進数変換', en: 'Number bases' },
+        arg: textArg('整数（例: 255, 0xff, 0b1010, 0o17。省くと 255）', 'a whole number, e.g. 255, 0xff, 0b1010, 0o17; 255 when left out', '255'),
+        compute: baseConvert,
+      },
+      {
+        id: 'byte-size',
+        icon: '💽',
+        label: { ja: 'データ量の換算', en: 'Data size' },
+        arg: textArg('データ量（例: 1GiB, 500MB, 123456789。省くと 1GiB）', 'a data size, e.g. 1GiB, 500MB, 123456789; 1GiB when left out', '1GiB'),
+        compute: byteSize,
+      },
+      {
+        id: 'tax-calc',
+        icon: '💴',
+        label: { ja: '消費税の計算', en: 'Consumption tax' },
+        arg: {
+          type: 'number',
+          min: 0,
+          max: 1_000_000_000_000,
+          default: '1000',
+          hint: { ja: '金額（円。0〜1000000000000。省くと 1000）', en: 'an amount in yen from 0 to 1000000000000; 1000 when left out' },
+        },
+        compute: taxCalc,
+      },
+      {
+        id: 'split-bill',
+        icon: '🧾',
+        label: { ja: '割り勘', en: 'Split the bill' },
+        arg: textArg(
+          '<金額>/<人数>（例: 10000/3。人数は 2〜1000。省くと 10000/3）',
+          '<amount>/<people>, e.g. 10000/3 (2 to 1000 people); 10000/3 when left out',
+          '10000/3',
+        ),
+        compute: splitBill,
+      },
+      {
+        id: 'factorize',
+        icon: '🧩',
+        label: { ja: '素因数分解', en: 'Factorize' },
+        arg: {
+          type: 'int',
+          min: 2,
+          max: 1_000_000_000_000,
+          default: '360',
+          hint: { ja: '整数（2〜1000000000000。省くと 360）', en: 'a whole number from 2 to 1000000000000; 360 when left out' },
+        },
+        compute: factorize,
+      },
+      {
+        id: 'roman-numeral',
+        icon: '🏺',
+        label: { ja: 'ローマ数字', en: 'Roman numerals' },
+        arg: textArg('1〜3999 の整数かローマ数字（例: 2024, MMXXIV。省くと 2024）', 'a whole number from 1 to 3999 or a Roman numeral, e.g. 2024, MMXXIV; 2024 when left out', '2024'),
+        compute: romanNumeral,
+      },
+      {
+        id: 'number-reading',
+        icon: '🔣',
+        label: { ja: '数の読み方', en: 'Read a number' },
+        arg: textArg('整数（例: 1234567, 1,234,567。絶対値は 10^24 未満。省くと 1234567）', 'a whole number, e.g. 1234567, 1,234,567, below 10^24; 1234567 when left out', '1234567'),
+        compute: numberReading,
+      },
+      {
+        id: 'semver-bump',
+        icon: '🔼',
+        label: { ja: '次のバージョン', en: 'Next versions' },
+        arg: textArg('セマンティックバージョン（例: 1.4.2, 2.0.0-rc.1。省くと 1.4.2）', 'a semantic version, e.g. 1.4.2, 2.0.0-rc.1; 1.4.2 when left out', '1.4.2'),
+        compute: semverBump,
+      },
+      {
+        id: 'ip-calc',
+        icon: '🌐',
+        label: { ja: 'サブネット計算', en: 'Subnet calculator' },
+        arg: textArg('IPv4 の CIDR（例: 10.0.0.0/8。省くと 192.168.0.0/24）', 'an IPv4 CIDR block, e.g. 10.0.0.0/8; 192.168.0.0/24 when left out', '192.168.0.0/24'),
+        compute: ipCalc,
+      },
+      {
+        id: 'aspect-ratio',
+        icon: '📐',
+        label: { ja: '縦横比', en: 'Aspect ratio' },
+        arg: textArg('<幅>x<高さ>（例: 1280x720。各 1〜100000。省くと 1920x1080）', '<width>x<height>, e.g. 1280x720 (each from 1 to 100000); 1920x1080 when left out', '1920x1080'),
+        compute: aspectRatio,
+      },
+      {
+        id: 'px-rem',
+        icon: '🔍',
+        label: { ja: 'px・rem換算', en: 'px and rem' },
+        arg: textArg('値と単位（例: 16px, 1.5rem, 12pt, 2em。基準 16px。省くと 16px）', 'a value and unit, e.g. 16px, 1.5rem, 12pt, 2em, on a 16px root; 16px when left out', '16px'),
+        compute: pxRem,
+      },
+      {
+        id: 'chmod-calc',
+        icon: '🔐',
+        label: { ja: 'パーミッション計算', en: 'File permissions' },
+        arg: textArg('8 進か記号のパーミッション（例: 644, 4755, rwxr-xr-x。省くと 755）', 'permissions in octal or symbols, e.g. 644, 4755, rwxr-xr-x; 755 when left out', '755'),
+        compute: chmodCalc,
+      },
       // Reference tables.
       { id: 'ascii-table', icon: '🔡', label: { ja: 'ASCII表', en: 'ASCII table' }, compute: asciiTable },
       {

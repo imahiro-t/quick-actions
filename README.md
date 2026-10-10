@@ -1,62 +1,65 @@
 # Selection Actions
 
-Icon actions on the text you select in the Claude Code transcript — explain, translate, summarize, find the code behind it, ask in context and more — chosen and ordered in settings.
+English | [日本語](README.ja.md)
 
-Claude Code の会話（トランスクリプト）でテキストを選択すると、プロンプト下のヒント行にアイコンが並び、押すとその選択テキストに対するアクション（意味の説明・翻訳・要約・コードの根拠探しなど）を実行して、結果をペインに表示する Claude Code プラグインです。どのアクションをどの順で並べるかは設定で選べます。
+A Claude Code plugin for the text you select in the conversation (the transcript). Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (explain it, translate it, summarize it, find the code behind it and more) and read the result in a pane. You choose which actions are shown, and in what order, in settings. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
 
-## 動き
+## How it works
 
-1. トランスクリプトのテキストをマウスで選択する
-2. プロンプト下のヒント行にアイコン（既定は 💡 🌐 🔎 💬 ✕）が出る。アイコンにマウスを重ねるとラベルが出る
-3. アイコンを押すと「Selection Actions」ペインに結果が積まれる
-   - フルスクリーン表示でターミナル幅が 110 桁以上ならペインは右側にドックし、それ未満ならプロンプトの上に表示される
-   - ✕ を押すと、その選択についてはアイコンを隠す（別のテキストを選べばまた出る）
-   - ヒント行にフォーカスがあるときは、並び順の 1〜9, 0 キーでも押せる（先頭 10 個まで）
+1. Select text in the transcript with the mouse
+2. Icons appear on the hint line under the prompt (by default 💡 🌐 🔎 💬). Hover over an icon to see its label
+   - Once Claude Code reports no selection, the icons go within about 0.3 seconds. Claude Code keeps the last selection after its highlight goes, though, so that a press can still read it (until you select something else, clear the selection, or your next prompt or command has run), so the icons can stay a while after the highlight is gone
+3. Press an icon and the result is added at the top of the "Selection Actions" pane. If you had scrolled the pane down, running an action brings it back to the top (the newest result)
+   - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
+   - While the hint line has focus, the keys 1 to 9 and 0 press the icons in order (the first ten)
 
-選択テキストそのものはヒント行に出しません（複数行の選択でヒント行が 2 行にならないように）。
+The selected text itself is not shown on the hint line (so a multi-line selection does not make the line two rows tall).
 
-### 選択テキストの送信について
+### What is sent, and when
 
-- アイコンを押すか `/selection-actions` を実行したときだけ、選択テキストを Claude Code 経由でモデル（Anthropic API など、そのセッションが使っているモデル）に送ります。選択しただけでは送りません
-- `fork` 方式のアクション（💬 Claude に聞く など）は、選択テキストに加えて現在の会話の内容もモデルに渡します
-- 選択テキストは指示ではなく対象のテキストとして渡しますが、Web ページやツールの出力など信頼できないテキストを選ぶと、回答がその中の指示に引きずられることがあります（特に 📨 send は選択テキストをそのまま質問として扱います）。なお、標準のアクションはどれもファイルの書き込みやコマンドの実行はできません（サブエージェントは読み取り専用のツールだけを使います）
+- The selected text is sent through Claude Code to the model (the one the session uses, such as the Anthropic API) only when you press an icon or run `/selection-actions`. Selecting alone sends nothing
+- `fork` actions (such as 💬 Ask Claude) pass the current conversation to the model along with the selection
+- Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
+- The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it (📨 Send to Claude in particular treats the selection as your question). None of the standard actions can write files or run commands (the subagents have read-only tools)
 
-## インストール
+## Install
 
-Claude Code のターミナルセッションのプロンプトで次を実行します（`<owner>/<repo>` はこのリポジトリを公開した GitHub の `オーナー/リポジトリ名` に置き換えてください）。
+At the prompt of a Claude Code terminal session, run the following (replace `<owner>/<repo>` with the GitHub `owner/repository` that publishes this repository).
 
 ```
 /plugin install selection-actions --marketplace <owner>/<repo>
 ```
 
-1. `Add marketplace?` と聞かれたら `y`
-2. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
-3. 設定画面で `actions` を入力する（空のままなら既定のセット）
-4. `Installed selection-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
+1. Answer `y` to `Add marketplace?`
+2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
+3. On the settings screen, set `actions` (leave it empty for the default set) and `language` (default `auto`)
+4. Once `Installed selection-actions. Plugin is now active.` shows, it works in that session right away
 
-### 開発中のフォルダから試す
+### Try it from a working folder
 
 ```sh
 claude --plugin-dir /path/to/selection-actions
 ```
 
-## 設定（userConfig: `actions`）
+## Settings (userConfig)
 
-ヒント行に並べるアクションの ID を、並べたい順にカンマ区切りで書きます。
+### `actions`
 
-`/config` の `selection-actions` の `actions` に、例えば次のように入力します。
+The IDs of the actions to show on the hint line, comma-separated, in the order you want them.
+
+In `/config`, under `selection-actions`, enter for example the following in `actions`.
 
 ```
 explain,translate,summarize,ask
 ```
 
-コマンドラインから設定する場合:
+From the command line:
 
 ```sh
 echo '{"actions":"explain,translate,summarize,ask"}' | claude plugin configure selection-actions@selection-actions --values-stdin
 ```
 
-`settings.json` に直接書く場合（キーは `<プラグイン名>@<マーケットプレイス名>`、`--plugin-dir` で読み込んだときは `selection-actions`）:
+Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`, or `selection-actions` when loaded with `--plugin-dir`):
 
 ```json
 {
@@ -68,100 +71,132 @@ echo '{"actions":"explain,translate,summarize,ask"}' | claude plugin configure s
 }
 ```
 
-- **未設定・空のとき**: 既定のセット `explain,translate,code,ask`（💡 🌐 🔎 💬）を表示します
-- **存在しない ID**: 無視します（エラーにはなりません）。有効な ID が 1 つも残らなければ既定のセットを表示します
-- 前後の空白・大文字小文字の違いは無視し、同じ ID を重ねて書いたときは最初の 1 つだけを使います
-- 1 行に収まるよう、並べるのは多くても 8〜10 個程度がおすすめです
+- **Unset or empty**: the default set `explain,translate,code,ask` (💡 🌐 🔎 💬) is shown
+- **Unknown IDs**: ignored (no error). If no valid ID is left, the default set is shown
+- Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
+- To keep the line on one row, eight to ten actions at most is a good limit
 
-`/config` から変えると、プラグインが再読み込みされてすぐ反映されます（`claude plugin configure` や settings.json で変えた場合は Claude Code を再起動してください）。
+### `language`
 
-## コマンド
+The language of the hint line's labels, the pane, the command's messages and the toasts, and the language each action answers in.
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` (default) | Looks at Claude Code's `language` setting, then `LC_ALL`, `LC_MESSAGES`, `LANG`: Japanese if Japanese is detected, English otherwise or when nothing is found |
+| `ja` | Japanese |
+| `en` | English |
+
+- When Claude Code's `language` setting is set (e.g. `"japanese"`, `"日本語"`, `"ja"`), it decides on its own (the locale is not consulted). Any language other than Japanese gives English
+- From the locale, the first variable with a value is used; one starting with `ja` (`ja`, `ja_JP.UTF-8`) gives Japanese (`C`, `POSIX`, `en_US.UTF-8` and the like give English)
+- Unknown or empty values count as `auto`
+- The translation actions keep their target language: `translate` always translates into Japanese, `translate-en` always into English. Only their labels follow the display language ("To Japanese" and "To English" in English)
+- The pane's title, "Selection Actions", is the product name and stays the same in both languages
+
+From the command line or in settings.json:
+
+```sh
+echo '{"language":"en"}' | claude plugin configure selection-actions@selection-actions --values-stdin
+```
+
+```json
+{
+  "pluginConfigs": {
+    "selection-actions@selection-actions": {
+      "options": { "actions": "explain,translate,summarize,ask", "language": "en" }
+    }
+  }
+}
+```
+
+A change made in `/config` reloads the plugin and takes effect at once (after `claude plugin configure` or an edit to settings.json, restart Claude Code). `auto` detects once per load of the plugin, so a change to Claude Code's language setting or to the locale while it runs takes effect on the next reload or restart.
+
+## Command
 
 ```
 /selection-actions [action-id]
 ```
 
-選択中のテキストにアクションを実行して、結果をペインに表示します。ID を省くと、ヒント行の先頭のアクション（既定では 💡 意味）を実行します。ヒント行に並べていないアクションも ID を指定すれば実行できます。存在しない ID を指定したときは何も実行せず、使える ID の一覧を表示します。
+Runs an action on the selected text and shows the result in the pane. Without an ID it runs the first action on the hint line (💡 Explain by default). An action that is not on the hint line can still be run by its ID. An unknown ID runs nothing and lists the IDs that exist.
 
-## アクション一覧
+## Actions
 
-実行方式:
+Kinds:
 
-- **complete**: 選択テキストを 1 回のモデル呼び出しで処理します（会話の文脈は使いません）
-- **fork**: 今の会話を引き継いだ分岐で答えるので、作業中の文脈を踏まえた回答になります
-- **subagent**: 読み取り専用（Read / Grep / Glob）のサブエージェントがリポジトリを調べて答えます。メインの Claude からは呼ばれません
+- **complete**: one model call on the selection (the conversation is not used)
+- **fork**: answered in a branch of the current conversation, so the answer knows what you are working on
+- **subagent**: a read-only (Read / Grep / Glob) subagent searches the repository and answers. The main Claude is not offered it
 
-| # | ID | アイコン | ラベル | 実行方式 | モデル |
+| # | ID | Icon | Label | Kind | Model |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `explain` | 💡 | 意味 | complete | sonnet |
-| 2 | `translate` | 🌐 | 日本語訳 | complete | haiku |
-| 3 | `code` | 🔎 | コードの根拠 | subagent | sonnet |
-| 4 | `ask` | 💬 | Claudeに聞く | fork | 会話のモデル |
-| 5 | `summarize` | 📝 | 要約 | complete | haiku |
-| 6 | `translate-en` | 🔤 | 英訳 | complete | haiku |
-| 7 | `command` | 💻 | コマンドの説明 | complete | sonnet |
-| 8 | `error` | 🩹 | エラーの対処 | complete | sonnet |
-| 9 | `regex` | 🧩 | 正規表現の説明 | complete | sonnet |
-| 10 | `code-explain` | 📖 | コードの説明 | complete | sonnet |
-| 11 | `review` | 🧐 | コードレビュー | complete | sonnet |
-| 12 | `stacktrace` | 🧵 | スタックトレース解析 | complete | sonnet |
-| 13 | `log` | 📜 | ログの読み解き | complete | sonnet |
-| 14 | `security` | 🔒 | セキュリティ観点 | complete | sonnet |
-| 15 | `test-ideas` | 🧪 | テスト観点 | complete | sonnet |
-| 16 | `glossary` | 📚 | 用語の解説 | complete | haiku |
-| 17 | `simplify` | 🌱 | やさしく言い換え | complete | haiku |
-| 18 | `proofread` | ✅ | 校正 | complete | haiku |
-| 19 | `structure` | 🧱 | JSON/YAMLの構造 | complete | haiku |
-| 20 | `naming` | 🔖 | 命名案 | complete | haiku |
-| 21 | `usages` | 🧭 | 使用箇所を探す | subagent | sonnet |
-| 22 | `docs` | 📄 | 関連ドキュメントを探す | subagent | haiku |
-| 23 | `next-step` | 👉 | 次の一手 | fork | 会話のモデル |
-| 24 | `send` | 📨 | Claudeへの質問として送る | fork | 会話のモデル |
+| 1 | `explain` | 💡 | Explain | complete | sonnet |
+| 2 | `translate` | 🌐 | To Japanese | complete | haiku |
+| 3 | `code` | 🔎 | Find the code | subagent | sonnet |
+| 4 | `ask` | 💬 | Ask Claude | fork | the conversation's |
+| 5 | `summarize` | 📝 | Summarize | complete | haiku |
+| 6 | `translate-en` | 🔤 | To English | complete | haiku |
+| 7 | `command` | 💻 | Explain command | complete | sonnet |
+| 8 | `error` | 🩹 | Fix the error | complete | sonnet |
+| 9 | `regex` | 🧩 | Explain regex | complete | sonnet |
+| 10 | `code-explain` | 📖 | Explain code | complete | sonnet |
+| 11 | `review` | 🧐 | Code review | complete | sonnet |
+| 12 | `stacktrace` | 🧵 | Stack trace | complete | sonnet |
+| 13 | `log` | 📜 | Read logs | complete | sonnet |
+| 14 | `security` | 🔒 | Security check | complete | sonnet |
+| 15 | `test-ideas` | 🧪 | Test ideas | complete | sonnet |
+| 16 | `glossary` | 📚 | Glossary | complete | haiku |
+| 17 | `simplify` | 🌱 | Simplify | complete | haiku |
+| 18 | `proofread` | ✅ | Proofread | complete | haiku |
+| 19 | `structure` | 🧱 | Data structure | complete | haiku |
+| 20 | `naming` | 🔖 | Name ideas | complete | haiku |
+| 21 | `usages` | 🧭 | Find usages | subagent | sonnet |
+| 22 | `docs` | 📄 | Find docs | subagent | haiku |
+| 23 | `next-step` | 👉 | Next step | fork | the conversation's |
+| 24 | `send` | 📨 | Send to Claude | fork | the conversation's |
 
-回答は日本語です（`translate-en` と `proofread` の本文を除く）。
+The labels above are the English ones (see [README.ja.md](README.ja.md) for the Japanese). Answers come in the language chosen with `language`, except the translations of `translate` / `translate-en` and the corrected text of `proofread`.
 
-## アクションの追加方法
+## Adding an action
 
-アクションは `hooks/actions.ts` の `ACTIONS` 配列に定義を 1 件足すだけで増やせます。ヒント行・ペイン・実行部分（`hooks/register.tsx`）を変更する必要はありません。足したアクションは、その ID を設定の `actions` に書くと並びます。
+An action is one more definition in the `ACTIONS` array of `hooks/actions.ts`. The hint line, the pane and the runner (`hooks/register.tsx`) need no change. Put its ID in the `actions` setting to show it.
 
-共通の項目:
+Common fields:
 
-| 項目 | 内容 |
+| Field | Meaning |
 | --- | --- |
-| `id` | 設定に書く ID（小文字英数字とハイフン、一意。`close` は ✕ ボタンが使うので使えない） |
-| `icon` | ヒント行に出すアイコン（絵文字 1 文字） |
-| `label` | ホバー時とペインの見出しに出す名前 |
-| `kind` | 実行方式: `complete` / `fork` / `subagent` |
-| `prompt` | プロンプト（方式ごとの意味は下記） |
-| `runningText` | 実行中にペインに出す文言（省略時「考え中…」） |
+| `id` | The ID written in the setting (lowercase letters, digits and hyphens; unique) |
+| `icon` | The icon on the hint line (one emoji) |
+| `label` | The name shown on hover and as the pane heading, in both languages: `{ ja: '…', en: '…' }` |
+| `kind` | How it runs: `complete` / `fork` / `subagent` |
+| `prompt` | The prompt (its role depends on the kind, below) |
+| `runningText` | What the pane shows while it runs, as `{ ja, en }` (default "考え中…" / "Thinking…") |
 
 ### complete
 
-`prompt` はシステムプロンプトとして使われ、選択テキストはユーザーの入力として渡されます。
+`prompt` is the system prompt; the selection is the user's input.
 
 ```ts
 {
   id: 'haiku-poem',
   icon: '🎋',
-  label: '俳句にする',
+  label: { ja: '俳句にする', en: 'Haiku' },
   kind: 'complete',
-  model: 'haiku',          // 必須
-  maxTokens: 500,          // 省略時 1500
+  model: 'haiku',          // required
+  maxTokens: 500,          // default 1500
   prompt: sys('Turn the selected text into a Japanese haiku.'),
 },
 ```
 
-`sys(...)` は文をつなげて、日本語・ペイン向けの文体指定（`STYLE`）を最後に足すヘルパーです。
+`sys(...)` joins the sentences and ends them with the answer language and the pane's style (`STYLE`). At run time `STYLE` becomes `Answer in English, …` or `Answer in Japanese, …` to match the display language. Where a prompt needs the answer language's name mid-sentence, use `ANSWER_LANGUAGE` (it becomes `English` or `Japanese`), e.g. `` `Explain the changes in ${ANSWER_LANGUAGE}.` ``.
 
 ### fork
 
-`prompt` は選択テキストの後ろに続ける指示文です。モデルは会話のものを使います。
+`prompt` is the instruction that follows the selection. The conversation's model answers. The answer language is added at run time.
 
 ```ts
 {
   id: 'why',
   icon: '❓',
-  label: 'なぜこうなった？',
+  label: { ja: 'なぜこうなった？', en: 'Why?' },
   kind: 'fork',
   prompt: 'Explain why this happened, given what we did earlier in this session.',
 },
@@ -169,39 +204,41 @@ echo '{"actions":"explain,translate,summarize,ask"}' | claude plugin configure s
 
 ### subagent
 
-`prompt` はサブエージェントのシステムプロンプト、`task` は起動時の依頼文の先頭（その後ろに選択テキストが付きます）です。サブエージェントは `selection-actions:<id>` という型で登録され、メインの Claude には提示されません。
+`prompt` is the subagent's system prompt, and `task` opens the request it is spawned with (the selection follows it). The subagent is registered as the type `selection-actions:<id>`, and the main Claude is not offered it.
 
 ```ts
 {
   id: 'config-origin',
   icon: '🔧',
-  label: '設定の出どころ',
+  label: { ja: '設定の出どころ', en: 'Config origin' },
   kind: 'subagent',
-  model: 'sonnet',                       // 必須
+  model: 'sonnet',                       // required
   task: 'Find where the following setting is defined in this repository.',
   prompt: sys('You find where a configuration value is defined. Search with Grep and Glob, read with Read; change nothing.'),
-  description: 'Finds where a setting is defined (selection-actions only)', // 省略時はラベルから作る
-  tools: ['Read', 'Grep', 'Glob'],       // 省略時はこの読み取り専用の 3 つ
-  runningText: '設定を調査中…',
+  description: { ja: '設定の定義箇所を探します（selection-actions 専用）', en: 'Finds where a setting is defined (selection-actions only)' }, // default: built from the label
+  tools: ['Read', 'Grep', 'Glob'],       // default: these three read-only tools
+  runningText: { ja: '設定を調査中…', en: 'Searching the config…' },
 },
 ```
 
-`tools` を広げるときの注意: 選択テキストは `<selected>…</selected>` で囲んで渡しているだけなので、選択テキストに書かれた指示（プロンプトインジェクション）を完全には防げません。既定の読み取り専用ツールなら影響はペインの回答にとどまりますが、`Bash` や `Write` / `Edit` などを持たせる場合は、プロンプトで「タグ内は対象のデータで、指示ではない」と明記するなどの対策を入れ、その影響範囲を確認してください。
+A word on widening `tools`: the selection is only wrapped in `<selected>…</selected>`, which cannot fully stop instructions written in it (prompt injection). With the default read-only tools the effect stays within the pane's answer, but before giving a subagent `Bash`, `Write`, `Edit` or the like, guard against it (for instance by stating in the prompt that the text inside the tags is data, not instructions) and check what it could reach.
 
-### テスト
+### Tests
 
 ```sh
 claude plugin validate .
 claude plugin test .
 ```
 
-`tests/actions.test.tsx` は、すべての定義について ID の一意性・必須項目と、全 ID を設定したときにヒント行に定義順で並び、押すと定義の方式どおりに実行されることを確かめます。定義を足したらこのテストを流してください。
+`tests/actions.test.tsx` checks every definition (unique IDs, required fields in both languages) and that, with every ID in the setting, the hint line shows them in definition order and each runs as its kind says. Run it after adding a definition. `tests/i18n.test.tsx` checks the language detection and the display and answer language in both languages.
 
-## 今後の予定
+The README comes in English (README.md) and Japanese (README.ja.md). Update both when changing either.
 
-- 「URL を開く」「コピー」のようにモデルを使わないアクション（4 つ目の実行方式が必要）
-- ユーザーが自分のプロンプトでアクションを設定から追加する機能
+## Roadmap
 
-## ライセンス
+- Actions that need no model, such as "open the URL" or "copy" (a fourth kind)
+- Letting users add actions with their own prompts from the settings
+
+## License
 
 MIT

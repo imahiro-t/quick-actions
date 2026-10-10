@@ -1,9 +1,12 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { BAND, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, JA, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+
+// These check the Japanese texts as they were before the language setting,
+// so each pins `language: 'ja'` (left to `auto`, a test would see English).
 
 for (const surface of SURFACES) {
-  test(`[${surface}] complete: each action on its model and system prompt, answer in the pane`, async ($, on) => {
+  test(`[${surface}] complete: each action on its model and system prompt, answer in the pane`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -24,7 +27,7 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: 'answer from haiku' })).toBeDefined()
   })
 
-  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, async ($, on) => {
+  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -44,7 +47,7 @@ for (const surface of SURFACES) {
 
   // The subagent's id is set by core alone, so a test cannot run one: this
   // checks the request; its answer arrives through turn.complete in a session.
-  test(`[${surface}] subagent: registers its read-only type once and spawns it on the selection`, async ($, on) => {
+  test(`[${surface}] subagent: registers its read-only type once and spawns it on the selection`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -67,14 +70,14 @@ for (const surface of SURFACES) {
   })
 }
 
-test('the empty pane points at the hint line under the prompt', async ($, on) => {
+test('the empty pane points at the hint line under the prompt', { options: JA }, async ($, on) => {
   stage(on)
   await start($)
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await pane.find({ text: /プロンプト下のヒント行/ })).toBeDefined()
 })
 
-test('/selection-actions runs the first enabled action', { options: { actions: 'translate,explain' } }, async ($, on) => {
+test('/selection-actions runs the first enabled action', { options: { ...JA, actions: 'translate,explain' } }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'Bonjour'
@@ -84,7 +87,7 @@ test('/selection-actions runs the first enabled action', { options: { actions: '
   expect(JSON.stringify(r)).toContain('日本語訳')
 })
 
-test('/selection-actions <id> runs that action; an unknown ID is told, not run', async ($, on) => {
+test('/selection-actions <id> runs that action; an unknown ID is told, not run', { options: JA }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'ls -la | grep foo'
@@ -101,7 +104,7 @@ test('/selection-actions <id> runs that action; an unknown ID is told, not run',
   expect(JSON.stringify(r)).toContain('translate-en')
 })
 
-test('/selection-actions with nothing selected says so', async ($, on) => {
+test('/selection-actions with nothing selected says so', { options: JA }, async ($, on) => {
   const s = stage(on)
   await start($)
 
@@ -111,7 +114,7 @@ test('/selection-actions with nothing selected says so', async ($, on) => {
 })
 
 for (const surface of SURFACES) {
-  test(`[${surface}] a failed call shows in red in the pane, never stuck at running`, async ($, on) => {
+  test(`[${surface}] a failed call shows in red in the pane, never stuck at running`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -134,7 +137,7 @@ for (const surface of SURFACES) {
 }
 
 for (const surface of SURFACES) {
-  test(`[${surface}] a call that rejects shows its message alone, without a repeated "Error: "`, async ($, on) => {
+  test(`[${surface}] a call that rejects shows its message alone, without a repeated "Error: "`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)

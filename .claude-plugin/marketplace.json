@@ -6,7 +6,7 @@
     {
       "name": "selection-actions",
       "source": "./",
-      "description": "Icon actions on the text selected in the Claude Code transcript, chosen and ordered in settings"
+      "description": "Icon actions on the text selected in the Claude Code transcript, chosen and ordered in settings, in English or Japanese"
     }
   ]
 }

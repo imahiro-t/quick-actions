@@ -1,20 +1,27 @@
 // Action definitions: the only place an action lives. The hint line, the pane
 // and the runner in register.tsx read nothing but these, so adding one entry to
 // ACTIONS makes a new action available (its ID can then go in the setting).
+//
+// Each definition carries what the person reads in both languages (`label`,
+// `runningText`, `description` as `{ ja, en }`); `actionsFor(lang)` hands out
+// the definitions with those resolved, which is all the rest of the module sees.
 
-type ActionBase = {
+import { MESSAGES, answerStyle } from './i18n'
+import type { Lang, Localized } from './i18n'
+
+type ActionBase<T> = {
   /** The ID written in the `actions` setting: lowercase letters, digits, hyphens. */
   id: string
   /** The glyph on the hint line. */
   icon: string
   /** Shown on hover on the hint line and as the pane heading. */
-  label: string
-  /** Shown in the pane while the action runs (default: 考え中…). */
-  runningText?: string
+  label: T
+  /** Shown in the pane while the action runs (default: Thinking… / 考え中…). */
+  runningText?: T
 }
 
 /** One model call on its own: `prompt` is the system prompt, the selection the user turn. */
-export type CompleteAction = ActionBase & {
+export type CompleteAction<T = string> = ActionBase<T> & {
   kind: 'complete'
   model: string
   prompt: string
@@ -22,28 +29,41 @@ export type CompleteAction = ActionBase & {
 }
 
 /** A fork of the session, so the answer knows the conversation: `prompt` follows the selection. */
-export type ForkAction = ActionBase & {
+export type ForkAction<T = string> = ActionBase<T> & {
   kind: 'fork'
   prompt: string
 }
 
 /** A subagent of its own: `prompt` is its system prompt, `task` opens the request it is spawned with. */
-export type SubagentAction = ActionBase & {
+export type SubagentAction<T = string> = ActionBase<T> & {
   kind: 'subagent'
   model: string
   prompt: string
   task: string
   /** What the subagent type says it is for (default: built from the label). */
-  description?: string
+  description?: T
   /** Its tools (default: read-only Read, Grep, Glob). */
   tools?: readonly string[]
 }
 
-export type ActionDef = CompleteAction | ForkAction | SubagentAction
+/** A subagent definition resolved for one language: its description is always filled in (see resolveSpec). */
+export type ResolvedSubagentAction = SubagentAction & { description: string }
+
+/** A definition with its texts resolved for one language: what the hint line, the pane and the runner use. */
+export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction
+
+/** A definition as written in ACTIONS, its texts in both languages. */
+export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized>
 
 export const PLUGIN = 'selection-actions'
 
-export const STYLE = 'Answer in Japanese, in plain prose suited to a terminal pane (no headings, no tables).'
+/** Stands in a prompt for the answer language and style (answerStyle(lang)). */
+export const STYLE = '{STYLE}'
+/**
+ * Stands in a prompt for the answer language's name (MESSAGES[lang].languageName).
+ * Not called LANG, so it is not read as the locale variable of that name.
+ */
+export const ANSWER_LANGUAGE = '{ANSWER_LANGUAGE}'
 
 export const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob']
 
@@ -53,13 +73,41 @@ export const wrap = (text: string) => `<selected>\n${text}\n</selected>`
 // "Error: " there, so an Error gives its message; anything else, String().
 export const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
+/** Joins the lines and ends them with the answer language and style, filled in by language. */
+export const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
 
-export const ACTIONS: readonly ActionDef[] = [
+/** A prompt with its STYLE and ANSWER_LANGUAGE filled in for the language. */
+export const localizePrompt = (prompt: string, lang: Lang) =>
+  prompt.split(STYLE).join(answerStyle(lang)).split(ANSWER_LANGUAGE).join(MESSAGES[lang].languageName)
+
+/**
+ * One definition with its texts and prompts resolved for the language. This is
+ * the only place a subagent's default description is built.
+ */
+export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
+  const label = spec.label[lang]
+  const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
+  const prompt = localizePrompt(spec.prompt, lang)
+  if (spec.kind === 'subagent') {
+    const { label: _l, runningText: _r, description, ...rest } = spec
+    return {
+      ...rest,
+      ...texts,
+      prompt,
+      task: localizePrompt(spec.task, lang),
+      description: description?.[lang] ?? MESSAGES[lang].agentDescription(label),
+    }
+  }
+  // complete and fork carry no other text to resolve.
+  const { label: _l, runningText: _r, ...rest } = spec
+  return { ...rest, ...texts, prompt }
+}
+
+export const ACTIONS: readonly ActionSpec[] = [
   {
     id: 'explain',
     icon: '💡',
-    label: '意味',
+    label: { ja: '意味', en: 'Explain' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -72,7 +120,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'translate',
     icon: '🌐',
-    label: '日本語訳',
+    label: { ja: '日本語訳', en: 'To Japanese' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -84,11 +132,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'code',
     icon: '🔎',
-    label: 'コードの根拠',
+    label: { ja: 'コードの根拠', en: 'Find the code' },
     kind: 'subagent',
     model: 'sonnet',
-    runningText: 'リポジトリを調査中…',
-    description: 'Locates the repository code a piece of selected text comes from (selection-actions only)',
+    runningText: { ja: 'リポジトリを調査中…', en: 'Searching the repository…' },
+    description: {
+      ja: '選択テキストの出どころとなるリポジトリのコードを探します（selection-actions 専用）',
+      en: 'Locates the repository code a piece of selected text comes from (selection-actions only)',
+    },
     task: 'Find where in this repository the following text comes from.',
     prompt: sys(
       'You locate the code in the current repository that the given text comes from or depends on:',
@@ -101,14 +152,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'ask',
     icon: '💬',
-    label: 'Claudeに聞く',
+    label: { ja: 'Claudeに聞く', en: 'Ask Claude' },
     kind: 'fork',
     prompt: 'Explain the selected text in the context of what we are working on in this session.',
   },
   {
     id: 'summarize',
     icon: '📝',
-    label: '要約',
+    label: { ja: '要約', en: 'Summarize' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -119,7 +170,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'translate-en',
     icon: '🔤',
-    label: '英訳',
+    label: { ja: '英訳', en: 'To English' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -131,7 +182,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'command',
     icon: '💻',
-    label: 'コマンドの説明',
+    label: { ja: 'コマンドの説明', en: 'Explain command' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -143,7 +194,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'error',
     icon: '🩹',
-    label: 'エラーの対処',
+    label: { ja: 'エラーの対処', en: 'Fix the error' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -154,7 +205,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'regex',
     icon: '🧩',
-    label: '正規表現の説明',
+    label: { ja: '正規表現の説明', en: 'Explain regex' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -166,7 +217,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'code-explain',
     icon: '📖',
-    label: 'コードの説明',
+    label: { ja: 'コードの説明', en: 'Explain code' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -177,7 +228,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'review',
     icon: '🧐',
-    label: 'コードレビュー',
+    label: { ja: 'コードレビュー', en: 'Code review' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -189,7 +240,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'stacktrace',
     icon: '🧵',
-    label: 'スタックトレース解析',
+    label: { ja: 'スタックトレース解析', en: 'Stack trace' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -201,7 +252,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'log',
     icon: '📜',
-    label: 'ログの読み解き',
+    label: { ja: 'ログの読み解き', en: 'Read logs' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -212,7 +263,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'security',
     icon: '🔒',
-    label: 'セキュリティ観点',
+    label: { ja: 'セキュリティ観点', en: 'Security check' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -224,7 +275,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'test-ideas',
     icon: '🧪',
-    label: 'テスト観点',
+    label: { ja: 'テスト観点', en: 'Test ideas' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -235,7 +286,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'glossary',
     icon: '📚',
-    label: '用語の解説',
+    label: { ja: '用語の解説', en: 'Glossary' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -246,7 +297,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'simplify',
     icon: '🌱',
-    label: 'やさしく言い換え',
+    label: { ja: 'やさしく言い換え', en: 'Simplify' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -257,19 +308,19 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'proofread',
     icon: '✅',
-    label: '校正',
+    label: { ja: '校正', en: 'Proofread' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
       'Proofread the selected text in its own language.',
-      'Give the corrected text first, then list the changes briefly in Japanese.',
-      'If nothing needs fixing, say so in Japanese.',
+      `Give the corrected text first, then list the changes briefly in ${ANSWER_LANGUAGE}.`,
+      `If nothing needs fixing, say so in ${ANSWER_LANGUAGE}.`,
     ].join(' '),
   },
   {
     id: 'structure',
     icon: '🧱',
-    label: 'JSON/YAMLの構造',
+    label: { ja: 'JSON/YAMLの構造', en: 'Data structure' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -281,7 +332,7 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'naming',
     icon: '🔖',
-    label: '命名案',
+    label: { ja: '命名案', en: 'Name ideas' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -292,11 +343,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'usages',
     icon: '🧭',
-    label: '使用箇所を探す',
+    label: { ja: '使用箇所を探す', en: 'Find usages' },
     kind: 'subagent',
     model: 'sonnet',
-    runningText: '使用箇所を調査中…',
-    description: 'Finds where an identifier or snippet is used in the repository (selection-actions only)',
+    runningText: { ja: '使用箇所を調査中…', en: 'Searching for usages…' },
+    description: {
+      ja: '識別子やコード片がリポジトリのどこで使われているかを探します（selection-actions 専用）',
+      en: 'Finds where an identifier or snippet is used in the repository (selection-actions only)',
+    },
     task: 'Find where the following identifier or snippet is defined and used in this repository.',
     prompt: sys(
       'You find where an identifier, function, type, config key or snippet is defined and used in the current repository.',
@@ -308,11 +362,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'docs',
     icon: '📄',
-    label: '関連ドキュメントを探す',
+    label: { ja: '関連ドキュメントを探す', en: 'Find docs' },
     kind: 'subagent',
     model: 'haiku',
-    runningText: 'ドキュメントを調査中…',
-    description: 'Finds the repository documentation related to selected text (selection-actions only)',
+    runningText: { ja: 'ドキュメントを調査中…', en: 'Searching the docs…' },
+    description: {
+      ja: '選択テキストに関連するリポジトリのドキュメントを探します（selection-actions 専用）',
+      en: 'Finds the repository documentation related to selected text (selection-actions only)',
+    },
     task: 'Find the documentation in this repository related to the following text.',
     prompt: sys(
       'You find documentation in the current repository (README, docs folders, comments, changelogs) related to the given text.',
@@ -323,14 +380,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: 'next-step',
     icon: '👉',
-    label: '次の一手',
+    label: { ja: '次の一手', en: 'Next step' },
     kind: 'fork',
     prompt: 'Given what we are working on in this session, suggest the next concrete step to take about the selected text, and why.',
   },
   {
     id: 'send',
     icon: '📨',
-    label: 'Claudeへの質問として送る',
+    label: { ja: 'Claudeへの質問として送る', en: 'Send to Claude' },
     kind: 'fork',
     prompt: 'Treat the selected text as my question and answer it in the context of this session.',
   },
@@ -344,11 +401,11 @@ export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'c
  * lowercased, unknown ones and repeats skipped. Falls back to the defaults when
  * nothing usable is left. Never throws.
  */
-export function resolveActions(defs: readonly ActionDef[], setting: unknown): ActionDef[] {
+export function resolveActions<D extends { id: string }>(defs: readonly D[], setting: unknown): D[] {
   const byId = new Map(defs.map(d => [d.id, d] as const))
   const pick = (ids: readonly string[]) => {
     const seen = new Set<string>()
-    const out: ActionDef[] = []
+    const out: D[] = []
     for (const id of ids) {
       const def = byId.get(id)
       if (def === undefined || seen.has(id)) continue
@@ -367,8 +424,13 @@ export function resolveActions(defs: readonly ActionDef[], setting: unknown): Ac
 }
 
 /** The action a pane entry or a command names, if it is defined. */
-export const findAction = (defs: readonly ActionDef[], id: string): ActionDef | undefined =>
+export const findAction = <D extends { id: string }>(defs: readonly D[], id: string): D | undefined =>
   defs.find(d => d.id === id)
 
-/** The `<plugin>:<name>` a subagent action's type is registered and spawned under. */
-export const subagentType = (def: SubagentAction) => `${PLUGIN}:${def.id}`
+/** The `<plugin>:<name>` a subagent action's type is registered and spawned under: by ID alone, in any language. */
+export const subagentType = (def: { id: string }) => `${PLUGIN}:${def.id}`
+
+const resolved: Partial<Record<Lang, readonly ActionDef[]>> = {}
+
+/** Every definition in ACTIONS, in its order, resolved for the language (once per language). */
+export const actionsFor = (lang: Lang): readonly ActionDef[] => (resolved[lang] ??= ACTIONS.map(spec => resolveSpec(spec, lang)))

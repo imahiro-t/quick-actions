@@ -262,6 +262,21 @@ const conversation = (...lines: string[]) =>
     'Base everything on what the conversation shows: where it does not tell, say you do not know instead of guessing.',
   ].join(' ')
 
+/**
+ * What a look-back context action says on top of `conversation()`: a fork may
+ * hold the session's tools, so it is told to change nothing, run nothing and
+ * answer from the conversation alone.
+ */
+export const LOOK_ONLY =
+  'Do not change any file, do not run any command and do not use any tool: answer only from what the conversation already shows.'
+
+/**
+ * A context action's prompt that also says LOOK_ONLY. Every context action
+ * added from SELM-00030 (#6) on uses this; the first eleven keep
+ * `conversation()` as they were, so their prompts do not change.
+ */
+const lookBack = (...lines: string[]) => conversation(...lines, LOOK_ONLY)
+
 /** A context action from what tells it apart: a fork on the conversation. */
 const contextAction = (a: Omit<ContextAction<Localized>, 'kind' | 'target'>): ContextAction<Localized> => ({
   ...a,
@@ -1564,6 +1579,341 @@ export const ACTIONS: readonly ActionSpec[] = [
         'Write a handoff note for another person or a new session to pick up this work:',
         'the goal, where things stand, the decisions made, the work left, and anything to watch out for.',
         'Keep it to about 15 lines.',
+      ),
+    },
+
+    // Looking back over the conversation.
+    {
+      id: 'recap-oneline',
+      icon: '🪶',
+      label: { ja: '会話を一行で', en: 'One-line recap' },
+      prompt: lookBack(
+        'Say in one sentence on one line what this conversation is for and where it stands now.',
+        'Reply with that sentence alone, with no preamble.',
+      ),
+    },
+    {
+      id: 'recap-recent',
+      icon: '🔁',
+      label: { ja: '直近のやりとりの要約', en: 'Recent recap' },
+      prompt: lookBack(
+        'Recap only the last few exchanges of this conversation (about three to five back-and-forths), not the whole of it:',
+        'what was talked about and what happened.',
+        'Keep it to about 5 lines.',
+      ),
+    },
+    {
+      id: 'session-timeline',
+      icon: '🕒',
+      label: { ja: '会話の経緯（時系列）', en: 'Session timeline' },
+      prompt: lookBack(
+        'List what happened in this conversation in the order it happened, one bullet each:',
+        'the requests, the investigations, the changes made, the facts found and the changes of direction.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'goal',
+      icon: '🎯',
+      label: { ja: 'この会話の目的', en: 'Session goal' },
+      prompt: lookBack(
+        'State the final goal of this conversation as it reads from what was said, and what would count as done.',
+        'If either is unclear, say so and say what is unclear.',
+        'Keep it to 3 to 5 lines.',
+      ),
+    },
+    {
+      id: 'my-requests',
+      icon: '🙋',
+      label: { ja: '依頼ごとの対応状況', en: 'Status by request' },
+      prompt: lookBack(
+        'Go through the user\'s messages in this conversation and list each thing the user asked for, in the order asked, one request per line.',
+        'Mark each as done, partly done or not done, and for partly done or not done, say what is still left.',
+        'Work per request only: do not judge whether the whole task meets its completion criteria, give no overall progress figure, and do not plan the order of the work left.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'key-facts',
+      icon: '📌',
+      label: { ja: '判明した事実', en: 'Key facts' },
+      prompt: lookBack(
+        'List the facts established in this conversation by investigation or by command results, one bullet each,',
+        'each with what backs it (the file read or the result seen).',
+        'Leave out guesses and anything not confirmed. If nothing has been established, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'commands-run',
+      icon: '📟',
+      label: { ja: '実行したコマンド', en: 'Commands run' },
+      prompt: lookBack(
+        'List the shell commands run in this session, in the order they were run,',
+        'each with one line on what it was for and whether it succeeded or failed.',
+        'This is a record of what was run, not a cheat sheet grouped by use. If no command was run, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'errors-seen',
+      icon: '🧯',
+      label: { ja: '出たエラーと対処', en: 'Errors and fixes' },
+      prompt: lookBack(
+        'For each error that came up in this conversation, give one bullet with what the error was,',
+        'its cause as far as it is known, what was done about it, and whether it is solved.',
+        'If no error came up, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'files-read',
+      icon: '📖',
+      label: { ja: '読んだファイル', en: 'Files read' },
+      prompt: lookBack(
+        'List the files read but not changed in this session, each with one line on what it was read to check.',
+        'If no file was read, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'failed-attempts',
+      icon: '🔙',
+      label: { ja: 'うまくいかなかった試み', en: 'Failed attempts' },
+      prompt: lookBack(
+        'List the approaches tried in this conversation that failed or were dropped,',
+        'each with one or two lines on why it did not work.',
+        'If there were none, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'alternatives-considered',
+      icon: '🔀',
+      label: { ja: '検討した代替案', en: 'Alternatives considered' },
+      prompt: lookBack(
+        'List the options weighed in this conversation, each with whether it was taken or turned down and why.',
+        'If no alternatives were weighed, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'constraints',
+      icon: '📏',
+      label: { ja: '制約・要件の一覧', en: 'Constraints' },
+      prompt: lookBack(
+        'List the constraints and requirements set out in this conversation (technical ones, the spec and the user\'s instructions), one bullet each,',
+        'and mark the ones not met yet.',
+        'If there are none, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+
+    // Working on your (Claude's) last answer.
+    {
+      id: 'translate-last-en',
+      icon: '🔤',
+      label: { ja: '直前の回答を英訳', en: 'Last answer to English' },
+      prompt: lookBack(
+        'Translate your (Claude\'s) last answer in this conversation into natural English, whatever language it is in.',
+        'This choice of target language takes precedence over any instruction below about the answer language.',
+        'Keep code, identifiers, paths and commands as they are, and reply with the translation alone.',
+      ),
+    },
+    {
+      id: 'translate-last-ja',
+      icon: '🗾',
+      label: { ja: '直前の回答を日本語訳', en: 'Last answer to Japanese' },
+      prompt: lookBack(
+        'Translate your (Claude\'s) last answer in this conversation into natural Japanese, whatever language it is in.',
+        'This choice of target language takes precedence over any instruction below about the answer language.',
+        'Keep code, identifiers, paths and commands as they are, and reply with the translation alone.',
+      ),
+    },
+    {
+      id: 'summarize-last',
+      icon: '📄',
+      label: { ja: '直前の回答を要約', en: 'Summarize last answer' },
+      prompt: lookBack(
+        'Summarize your (Claude\'s) last answer in this conversation in a few sentences or at most five bullets,',
+        'keeping the key facts, figures and names.',
+      ),
+    },
+    {
+      id: 'tldr-last',
+      icon: '⚡',
+      label: { ja: '直前の回答を一行で', en: 'Last answer TL;DR' },
+      prompt: lookBack(
+        'Sum up your (Claude\'s) last answer in this conversation in one sentence on one line,',
+        'and reply with that sentence alone.',
+      ),
+    },
+    {
+      id: 'explain-last',
+      icon: '🔬',
+      label: { ja: '直前の回答を詳しく', en: 'Last answer in depth' },
+      prompt: lookBack(
+        'Explain your (Claude\'s) last answer in this conversation in more depth,',
+        'filling in the background, how it works, why it is so, and what to watch out for.',
+        'Organize it in short paragraphs and bullets.',
+        'Keep it to about 15 to 20 lines.',
+      ),
+    },
+    {
+      id: 'example-last',
+      icon: '📎',
+      label: { ja: '直前の回答の具体例', en: 'Examples for last answer' },
+      prompt: lookBack(
+        'Show what your (Claude\'s) last answer in this conversation says through two or three concrete examples:',
+        'code samples, input and output samples, or situations where it applies, whichever fit.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'steps-last',
+      icon: '🪜',
+      label: { ja: '直前の回答を手順に', en: 'Last answer as steps' },
+      prompt: lookBack(
+        'Rework your (Claude\'s) last answer in this conversation into numbered steps that can be followed in order as they stand,',
+        'adding to each step how to check it worked where there is a way.',
+        'The numbered list is wanted here, whatever the style below says.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'table-last',
+      icon: '📊',
+      label: { ja: '直前の回答を表に', en: 'Last answer as table' },
+      prompt: lookBack(
+        'Organize what your (Claude\'s) last answer in this conversation says into a Markdown table.',
+        'A table is wanted here, whatever the style below says.',
+        'If the content does not suit a comparison or a list, say so and use bullets instead.',
+      ),
+    },
+    {
+      id: 'diagram-last',
+      icon: '🌳',
+      label: { ja: '直前の回答を図に', en: 'Last answer as diagram' },
+      prompt: lookBack(
+        'Show the structure or flow of your (Claude\'s) last answer in this conversation as a text diagram,',
+        'either an ASCII diagram or Mermaid code in a code block, and add one or two lines on how to read it.',
+        'The diagram is wanted here, whatever the style below says.',
+      ),
+    },
+    {
+      id: 'terms-last',
+      icon: '🔠',
+      label: { ja: '直前の回答の用語解説', en: 'Terms in last answer' },
+      prompt: lookBack(
+        'List the technical terms and abbreviations in your (Claude\'s) last answer in this conversation,',
+        'each with one or two lines on what it means.',
+        'If there are none, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'counter-last',
+      icon: '🥊',
+      label: { ja: '直前の回答への反論', en: 'Counterpoints to last answer' },
+      prompt: lookBack(
+        'Give three to five counterarguments or different views that could be raised against your (Claude\'s) last answer in this conversation,',
+        'most important first, each with a short reason.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'verify-last',
+      icon: '🔍',
+      label: { ja: '直前の回答の確からしさ', en: 'Check last answer' },
+      prompt: lookBack(
+        'Go through the claims in your (Claude\'s) last answer in this conversation and sort each into',
+        'backed by something in the conversation, general knowledge, or a guess.',
+        'Point out clearly the parts whose backing is weak.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'caveats-last',
+      icon: '🚸',
+      label: { ja: '直前の回答の注意点', en: 'Caveats of last answer' },
+      prompt: lookBack(
+        'List what to watch out for when using your (Claude\'s) last answer in this conversation as it stands:',
+        'the caveats, the preconditions, and the cases it does not fit, one bullet each.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'alternatives-last',
+      icon: '🚏',
+      label: { ja: '直前の回答の別解', en: 'Alternatives to last answer' },
+      prompt: lookBack(
+        'Give two or three other ways or solutions than the one in your (Claude\'s) last answer in this conversation,',
+        'and compare each in one line on its strengths and weaknesses.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'questions-last',
+      icon: '❔',
+      label: { ja: '直前の回答への確認質問', en: 'Questions on last answer' },
+      prompt: lookBack(
+        'Suggest three to five questions worth asking you (Claude) back in order to understand or judge your last answer in this conversation,',
+        'each with a short reason.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'code-explain-last',
+      icon: '💻',
+      label: { ja: '直前のコードを解説', en: 'Explain last code' },
+      prompt: lookBack(
+        'Take the code last shown or written in this conversation and explain, block by block, what it does.',
+        'If the conversation has no code, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'command-explain-last',
+      icon: '🐚',
+      label: { ja: '直前のコマンドを解説', en: 'Explain last command' },
+      prompt: lookBack(
+        'Take the shell command last run or suggested in this conversation and explain what each of its options means',
+        'and what running it does.',
+        'If the conversation has no command, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'error-explain-last',
+      icon: '🚨',
+      label: { ja: '直前のエラーを解説', en: 'Explain last error' },
+      prompt: lookBack(
+        'Take the error that came up last in this conversation and explain what it means,',
+        'what may have caused it, and what to check next.',
+        'If no error came up, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'change-explain-last',
+      icon: '🧾',
+      label: { ja: '直前の変更を解説', en: 'Explain last change' },
+      prompt: lookBack(
+        'Take the file change made last in this conversation and explain what was changed and why,',
+        'and how the behaviour differs as a result.',
+        'If no file was changed, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'review-last',
+      icon: '🧐',
+      label: { ja: '直前の変更のレビュー', en: 'Review last change' },
+      prompt: lookBack(
+        'Review, as a code reviewer, the file change made last in this conversation:',
+        'point out possible bugs, readability problems and missing tests, most important first.',
+        'Only point them out: do not fix anything. If no file was changed, say so.',
+        'Keep it to about 10 to 15 lines.',
       ),
     },
   ].map(contextAction),

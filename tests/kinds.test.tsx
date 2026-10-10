@@ -295,7 +295,7 @@ for (const [lang, t] of [['ja', MESSAGES.ja], ['en', MESSAGES.en]] as const) {
     expect(candidatesIn(await runCommand($, 'やさし'))).toEqual(['easy-japanese', 'eli5', 'simplify-last'])
     // With the default set leading (no pins, no usage yet): its actions on the selection, then its
     // context ones, then the rest, as the dialog lays them out.
-    expect(candidatesIn(await runCommand($, '要約'))).toEqual(['summarize', 'recap', 'tldr'])
+    expect(candidatesIn(await runCommand($, '要約'))).toEqual(['summarize', 'recap', 'tldr', 'recap-recent', 'summarize-last'])
     expect(s.models).toEqual([])
     expect(s.opened).toEqual([])
     expect(s.toasts).toEqual([])
@@ -328,7 +328,7 @@ test('candidates are matched by label in either language and by kind name', { op
   // The old ID of the Japanese translation: told, with the new one among its candidates.
   expect(candidatesIn(await runCommand($, 'translate'))).toEqual(ON_SELECTION_TRANSLATIONS)
   // By the English label too: Plain Japanese.
-  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese'])
+  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja'])
   expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(['timer'])
 })
 

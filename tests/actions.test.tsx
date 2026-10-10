@@ -4,6 +4,7 @@ import {
   ACTIONS,
   ANSWER_LANGUAGE,
   DEFAULT_ACTION_IDS,
+  LOOK_ONLY,
   READ_ONLY_TOOLS,
   STYLE,
   TIMER_DEFAULT_MS,
@@ -55,6 +56,12 @@ const ON_SELECTION = [
 const ON_CONVERSATION = [
   'recap', 'decisions', 'todo', 'open-questions', 'simplify-last', 'translate-last',
   'assumptions', 'risks', 'changed-files', 'next-questions', 'handoff',
+  'recap-oneline', 'recap-recent', 'session-timeline', 'goal', 'my-requests', 'key-facts', 'commands-run',
+  'errors-seen', 'files-read', 'failed-attempts', 'alternatives-considered', 'constraints',
+  'translate-last-en', 'translate-last-ja', 'summarize-last', 'tldr-last', 'explain-last', 'example-last',
+  'steps-last', 'table-last', 'diagram-last', 'terms-last', 'counter-last', 'verify-last', 'caveats-last',
+  'alternatives-last', 'questions-last', 'code-explain-last', 'command-explain-last', 'error-explain-last',
+  'change-explain-last', 'review-last',
 ]
 // The standalone built-ins (on neither), last.
 const STANDALONE = ['timer']
@@ -78,12 +85,13 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the hundred and sixteen built-ins (a hundred and four on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the hundred and forty-eight built-ins (a hundred and four on the selection, forty-three on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(116)
+  expect(ids).toHaveLength(148)
   expect(ON_SELECTION).toHaveLength(104)
+  expect(ON_CONVERSATION).toHaveLength(43)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -391,6 +399,109 @@ test('the thirty-one catalog actions on the selection (research, data, learning,
   const ids = ACTIONS.map(a => a.id)
   const at = ids.indexOf('web-check') + 1
   expect(ids.slice(at, at + 31)).toEqual(CATALOG_ROWS_RESEARCH_DATA.map(r => r[0]))
+})
+
+// The thirty-two context actions added from the catalog (SELM-00030): looking back over the conversation and
+// working on the last answer. ID, icon and labels, as the catalog has them; each a fork on the conversation
+// with the session's model.
+const CATALOG_ROWS_CONTEXT: readonly (readonly [string, string, string, string])[] = [
+  ['recap-oneline', '🪶', '会話を一行で', 'One-line recap'],
+  ['recap-recent', '🔁', '直近のやりとりの要約', 'Recent recap'],
+  ['session-timeline', '🕒', '会話の経緯（時系列）', 'Session timeline'],
+  ['goal', '🎯', 'この会話の目的', 'Session goal'],
+  ['my-requests', '🙋', '依頼ごとの対応状況', 'Status by request'],
+  ['key-facts', '📌', '判明した事実', 'Key facts'],
+  ['commands-run', '📟', '実行したコマンド', 'Commands run'],
+  ['errors-seen', '🧯', '出たエラーと対処', 'Errors and fixes'],
+  ['files-read', '📖', '読んだファイル', 'Files read'],
+  ['failed-attempts', '🔙', 'うまくいかなかった試み', 'Failed attempts'],
+  ['alternatives-considered', '🔀', '検討した代替案', 'Alternatives considered'],
+  ['constraints', '📏', '制約・要件の一覧', 'Constraints'],
+  ['translate-last-en', '🔤', '直前の回答を英訳', 'Last answer to English'],
+  ['translate-last-ja', '🗾', '直前の回答を日本語訳', 'Last answer to Japanese'],
+  ['summarize-last', '📄', '直前の回答を要約', 'Summarize last answer'],
+  ['tldr-last', '⚡', '直前の回答を一行で', 'Last answer TL;DR'],
+  ['explain-last', '🔬', '直前の回答を詳しく', 'Last answer in depth'],
+  ['example-last', '📎', '直前の回答の具体例', 'Examples for last answer'],
+  ['steps-last', '🪜', '直前の回答を手順に', 'Last answer as steps'],
+  ['table-last', '📊', '直前の回答を表に', 'Last answer as table'],
+  ['diagram-last', '🌳', '直前の回答を図に', 'Last answer as diagram'],
+  ['terms-last', '🔠', '直前の回答の用語解説', 'Terms in last answer'],
+  ['counter-last', '🥊', '直前の回答への反論', 'Counterpoints to last answer'],
+  ['verify-last', '🔍', '直前の回答の確からしさ', 'Check last answer'],
+  ['caveats-last', '🚸', '直前の回答の注意点', 'Caveats of last answer'],
+  ['alternatives-last', '🚏', '直前の回答の別解', 'Alternatives to last answer'],
+  ['questions-last', '❔', '直前の回答への確認質問', 'Questions on last answer'],
+  ['code-explain-last', '💻', '直前のコードを解説', 'Explain last code'],
+  ['command-explain-last', '🐚', '直前のコマンドを解説', 'Explain last command'],
+  ['error-explain-last', '🚨', '直前のエラーを解説', 'Explain last error'],
+  ['change-explain-last', '🧾', '直前の変更を解説', 'Explain last change'],
+  ['review-last', '🧐', '直前の変更のレビュー', 'Review last change'],
+]
+
+test('the thirty-two catalog context actions (looking back, the last answer): as the catalog has them', () => {
+  expect(CATALOG_ROWS_CONTEXT).toHaveLength(32)
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en] of CATALOG_ROWS_CONTEXT) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'fork', target: 'context' })
+    if (spec === undefined) continue
+    // The session's model, and no argument.
+    expect('model' in spec).toBe(false)
+    expect('arg' in spec && spec.arg !== undefined).toBe(false)
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+  }
+  // In the catalog's order, right after handoff.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('handoff') + 1
+  expect(ids.slice(at, at + 32)).toEqual(CATALOG_ROWS_CONTEXT.map(r => r[0]))
+})
+
+test('the catalog context actions look only: they say to change nothing and run nothing; the first eleven are as they were', () => {
+  expect(LOOK_ONLY).toContain('Do not change any file')
+  expect(LOOK_ONLY).toContain('do not run any command')
+  expect(LOOK_ONLY).toContain('only from what the conversation already shows')
+  const added = new Set(CATALOG_ROWS_CONTEXT.map(r => r[0]))
+  for (const a of ACTIONS.filter(isContext)) {
+    if (a.kind !== 'fork') throw new Error(`${a.id} is not a fork`)
+    expect(a.prompt.includes(LOOK_ONLY)).toBe(added.has(a.id))
+  }
+})
+
+test('the catalog context actions: what tells the close ones apart', () => {
+  const promptFor = (id: string) => {
+    const spec = ACTIONS.find(a => a.id === id)
+    if (spec?.kind !== 'fork') throw new Error(`${id} is not a fork`)
+    return spec.prompt
+  }
+  // The translations pick their own target language, over the answer language.
+  expect(promptFor('translate-last-en')).toContain('into natural English, whatever language it is in')
+  expect(promptFor('translate-last-ja')).toContain('into natural Japanese, whatever language it is in')
+  for (const id of ['translate-last-en', 'translate-last-ja']) {
+    expect(promptFor(id)).toContain('takes precedence')
+    expect(promptFor(id)).toContain('reply with the translation alone')
+  }
+  // The forms the plain style would otherwise rule out.
+  expect(promptFor('table-last')).toContain('A table is wanted here, whatever the style below says.')
+  expect(promptFor('diagram-last')).toContain('The diagram is wanted here, whatever the style below says.')
+  expect(promptFor('diagram-last')).toContain('Mermaid')
+  expect(promptFor('steps-last')).toContain('The numbered list is wanted here, whatever the style below says.')
+  // One line alone.
+  expect(promptFor('recap-oneline')).toContain('one sentence on one line')
+  expect(promptFor('tldr-last')).toContain('one sentence on one line')
+  // The review only points out.
+  expect(promptFor('review-last')).toContain('do not fix anything')
+  // Per request, without the completion check or the order of the work left.
+  expect(promptFor('my-requests')).toContain('one request per line')
+  expect(promptFor('my-requests')).toContain('give no overall progress figure')
+  expect(promptFor('my-requests')).toContain('completion criteria')
+  // A record of what was run, not a cheat sheet.
+  expect(promptFor('commands-run')).toContain('not a cheat sheet')
+  // The recent recap covers the last exchanges alone.
+  expect(promptFor('recap-recent')).toContain('only the last few exchanges')
+  // Facts without guesses.
+  expect(promptFor('key-facts')).toContain('Leave out guesses')
 })
 
 test('the five research subagents: read-only on the repository or the web alone, sources asked for, nothing changed', () => {

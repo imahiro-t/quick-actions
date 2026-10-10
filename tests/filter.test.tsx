@@ -66,8 +66,8 @@ test('a normalize that throws, or answers no string, falls back the same way', (
 
 test('the ID, the label in either language, whatever the display language', () => {
   expect(only('deep-dive')).toEqual(['deep-dive'])
-  expect(only('日本語訳')).toEqual(['translate-ja'])
-  expect(only('japanese')).toEqual(['translate-ja', 'easy-japanese'])
+  expect(only('日本語訳')).toEqual(['translate-ja', 'translate-last-ja'])
+  expect(only('japanese')).toEqual(['translate-ja', 'easy-japanese', 'translate-last-ja'])
   expect(only('handoff')).toEqual(['handoff'])
   expect(only('引き継ぎ')).toEqual(['handoff'])
 })
@@ -101,9 +101,9 @@ test('no word matches across two parts of the key', () => {
 // Words: every one must match
 
 test('words split at spaces, half- or full-width, all must match', () => {
-  expect(only('日本 訳')).toEqual(['translate-ja'])
-  expect(only('日本　訳')).toEqual(['translate-ja'])
-  expect(only('  要約   会話 ')).toEqual(['recap'])
+  expect(only('日本 訳')).toEqual(['translate-ja', 'translate-last-ja'])
+  expect(only('日本　訳')).toEqual(['translate-ja', 'translate-last-ja'])
+  expect(only('  要約   会話 ')).toEqual(['recap', 'recap-recent', 'summarize-last'])
   expect(only('日本 zzz')).toEqual([])
   expect(only('zzz')).toEqual([])
 })
@@ -131,10 +131,10 @@ test('a kind mark narrows to that kind, rather than matching text', () => {
 
 test('a mark with words: that kind and every word', () => {
   expect(only('[ 要約')).toEqual(['summarize', 'tldr'])
-  expect(only('< 要約')).toEqual(['recap'])
+  expect(only('< 要約')).toEqual(['recap', 'recap-recent', 'summarize-last'])
   expect(only('{ 要約')).toEqual([])
   // The same mark twice is that kind still.
-  expect(only('< <> 要約')).toEqual(['recap'])
+  expect(only('< <> 要約')).toEqual(['recap', 'recap-recent', 'summarize-last'])
 })
 
 test('marks of two kinds at once match nothing', () => {

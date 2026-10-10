@@ -32,6 +32,38 @@ const CONTEXT = [
   { id: 'changed-files', icon: '🗂', ja: '変更したファイルとその内容' },
   { id: 'next-questions', icon: '💭', ja: '次に聞くとよい質問' },
   { id: 'handoff', icon: '📝', ja: '引き継ぎメモ' },
+  { id: 'recap-oneline', icon: '🪶', ja: '会話を一行で' },
+  { id: 'recap-recent', icon: '🔁', ja: '直近のやりとりの要約' },
+  { id: 'session-timeline', icon: '🕒', ja: '会話の経緯（時系列）' },
+  { id: 'goal', icon: '🎯', ja: 'この会話の目的' },
+  { id: 'my-requests', icon: '🙋', ja: '依頼ごとの対応状況' },
+  { id: 'key-facts', icon: '📌', ja: '判明した事実' },
+  { id: 'commands-run', icon: '📟', ja: '実行したコマンド' },
+  { id: 'errors-seen', icon: '🧯', ja: '出たエラーと対処' },
+  { id: 'files-read', icon: '📖', ja: '読んだファイル' },
+  { id: 'failed-attempts', icon: '🔙', ja: 'うまくいかなかった試み' },
+  { id: 'alternatives-considered', icon: '🔀', ja: '検討した代替案' },
+  { id: 'constraints', icon: '📏', ja: '制約・要件の一覧' },
+  { id: 'translate-last-en', icon: '🔤', ja: '直前の回答を英訳' },
+  { id: 'translate-last-ja', icon: '🗾', ja: '直前の回答を日本語訳' },
+  { id: 'summarize-last', icon: '📄', ja: '直前の回答を要約' },
+  { id: 'tldr-last', icon: '⚡', ja: '直前の回答を一行で' },
+  { id: 'explain-last', icon: '🔬', ja: '直前の回答を詳しく' },
+  { id: 'example-last', icon: '📎', ja: '直前の回答の具体例' },
+  { id: 'steps-last', icon: '🪜', ja: '直前の回答を手順に' },
+  { id: 'table-last', icon: '📊', ja: '直前の回答を表に' },
+  { id: 'diagram-last', icon: '🌳', ja: '直前の回答を図に' },
+  { id: 'terms-last', icon: '🔠', ja: '直前の回答の用語解説' },
+  { id: 'counter-last', icon: '🥊', ja: '直前の回答への反論' },
+  { id: 'verify-last', icon: '🔍', ja: '直前の回答の確からしさ' },
+  { id: 'caveats-last', icon: '🚸', ja: '直前の回答の注意点' },
+  { id: 'alternatives-last', icon: '🚏', ja: '直前の回答の別解' },
+  { id: 'questions-last', icon: '❔', ja: '直前の回答への確認質問' },
+  { id: 'code-explain-last', icon: '💻', ja: '直前のコードを解説' },
+  { id: 'command-explain-last', icon: '🐚', ja: '直前のコマンドを解説' },
+  { id: 'error-explain-last', icon: '🚨', ja: '直前のエラーを解説' },
+  { id: 'change-explain-last', icon: '🧾', ja: '直前の変更を解説' },
+  { id: 'review-last', icon: '🧐', ja: '直前の変更のレビュー' },
 ]
 
 const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
@@ -52,7 +84,7 @@ async function openHint($: Engine, s: Stage, clock: Clock) {
 // ---------------------------------------------------------------------------
 // The definitions
 
-test('eleven built-in context actions, as the ticket names them, in both languages', () => {
+test('forty-three built-in context actions, as the tickets name them, in both languages', () => {
   const context = ACTIONS.filter(isContext).flatMap(a => (a.kind === 'fork' ? [a] : []))
   expect(context.map(a => a.id)).toEqual(CONTEXT.map(c => c.id))
   for (const [i, a] of context.entries()) {

@@ -162,6 +162,43 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(s.models).toEqual([])
   })
 
+  test(`[${options.language}] [desktop] without the keyboard, the line says how too`, { options }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, 'desktop')
+    await band.unmount()
+
+    const focused = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop' })
+    expect(await focused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    await focused.unmount()
+
+    const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop', props: { ...PICKER_PANE.props, isFocused: false } })
+    expect(await unfocused.find({ text: t.pickerNoFocus })).toBeDefined()
+    await unfocused.unmount()
+  })
+
+  test(`[${options.language}] [mobile] no line about the keyboard, focused or not: the actions are buttons to tap`, { options }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, 'mobile')
+    await band.unmount()
+
+    const focused = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
+    expect(await focused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    await focused.unmount()
+
+    const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile', props: { ...PICKER_PANE.props, isFocused: false } })
+    expect(await unfocused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    // The rest of the dialog is drawn as usual: the actions' buttons, then Close.
+    const labels = (await unfocused.findAll({ type: 'Button' })).map(b => String(b.props.label))
+    expect(labels).toHaveLength(ACTIONS.length + 1)
+    const close = await unfocused.find({ key: PICKER_CLOSE })
+    expect(close?.props.label).toBe(t.pickerClose)
+    await unfocused.unmount()
+  })
+
   test(`[${options.language}] ⋯ reads ${t.allActions} on hover, and the dialog is titled ${t.pickerTitle}`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)

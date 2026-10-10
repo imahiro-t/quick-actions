@@ -1,7 +1,7 @@
 {
   "name": "quick-actions",
   "version": "0.1.0",
-  "description": "Quick Actions: icon actions on the text selected in the Claude Code transcript (translate, explain, summarize, find the evidence) and on the conversation itself (recap, decisions, next steps, handoff and more), without a selection through /quick-actions hint. The ones you use most come first (pin your own in settings) and every action is under ⋯, in English or Japanese",
+  "description": "Quick Actions: icon actions on the text selected in the Claude Code transcript (translation, explanation, summary, finding the evidence), on the conversation itself (context actions: recap, decisions, next steps, handoff and more) and standalone actions that need neither, shown as { } (a timer, a calculator, a template and more). Without a selection, /quick-actions hint brings up the hint line and /quick-actions <id> [argument] runs an action by its ID (e.g. /quick-actions timer 5m). The ones you use most come first (pin your own in settings) and every action is under ⋯, in English or Japanese",
   "author": { "name": "Takashi Imahiro" },
   "license": "MIT",
   "types": "./types/index.d.ts",
@@ -9,7 +9,7 @@
     "actions": {
       "type": "string",
       "title": "Actions",
-      "description": "Comma-separated action IDs to pin at the front of the hint line, in this order (e.g. explain,recap). Actions on the selection and on the conversation (context actions) alike, and the IDs of your customActions too, can go here. The other actions follow in the order you use them, and every action is under ⋯. Leave empty for no pins (the first time: explain,recap,translate,decisions,summarize,code,timer first); unknown IDs are ignored.",
+      "description": "Comma-separated action IDs to pin at the front of the hint line, in this order (e.g. explain,recap). Actions of any kind can go here: on the selection, on the conversation (context actions, e.g. recap) and standalone actions that use neither (e.g. timer), and the IDs of your customActions too. The other actions follow in the order you use them, and every action is under ⋯. Leave empty for no pins (the first time: explain,recap,translate-ja,decisions,summarize,code,timer first); unknown IDs are ignored.",
       "default": ""
     },
     "hintCount": {

@@ -3118,7 +3118,7 @@ export const ACTIONS: readonly ActionSpec[] = [
         'Give a code review checklist covering correctness, readability, tests, performance and security.',
         'If <input> is given, it names a language or an area (for example, frontend): fit the items to it;',
         'otherwise keep them general.',
-        'Write each item as a question to check, grouped by those headings.',
+        'Write each item as a question to check, grouped by those five areas, each area named on its own line before its items.',
         WANT_LIST,
       ),
     },

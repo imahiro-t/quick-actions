@@ -867,6 +867,8 @@ test('the thirty-one catalog standalone actions run by a model (ideas, drafting 
     expect(prompt.indexOf(WANT[form])).toBeGreaterThan(-1)
     expect(prompt.indexOf(WANT[form])).toBeLessThan(prompt.indexOf(STYLE))
     for (const other of Object.values(WANT)) if (other !== WANT[form]) expect(prompt).not.toContain(other)
+    // Headings only where WANT_TEMPLATE lets them past STYLE's "no headings".
+    expect(prompt.split(WANT[form]).join('')).not.toMatch(/heading/i)
     expect(prompt).not.toMatch(/selected|selection|conversation/i)
     // No current date reaches the model.
     expect(prompt).not.toMatch(/today|latest|this year|current date/i)

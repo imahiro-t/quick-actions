@@ -3,6 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelection } from '../hooks/actions'
 import { matchesFilter } from '../hooks/filter'
+import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -441,6 +442,17 @@ const specOf = (id: string) => {
   return spec
 }
 
+// Clear hands the focus ring back to the filter field with
+// settleQuietly($.ui.focus(toFilterField(PICKER))). The test kit has no
+// implementation of a plugin's own $.ui.focus (it rejects with "no
+// implementation for ui.focus", and a test's ui.focus hook is not reached by
+// it), so what the move asks for is checked on toFilterField, and the presses
+// below check that Clear still empties the field with the move refused.
+test('Clear asks for the focus ring on the dialog\'s filter field', () => {
+  expect(toFilterField(PICKER)).toEqual({ requestId: PICKER, key: PICKER_FILTER })
+  expect(FILTER_KEY).toBe(PICKER_FILTER)
+})
+
 for (const surface of SURFACES) {
   for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     test(`[${surface}] [${options.language}] the filter field: above the list, its placeholder, the focus; no Clear while empty`, { options }, async ($, on) => {
@@ -457,6 +469,13 @@ for (const surface of SURFACES) {
       expect(field?.props.value).toBe('')
       expect(field?.props.autoFocus).toBe(true)
       expect(field?.props.label).toBeUndefined()
+      // What Enter does, in the dialog's language: the first action left runs;
+      // with none left, it says so.
+      expect(field?.props.submitLabel).toBe(t.pickerFilterSubmit)
+      await picker.input({ key: PICKER_FILTER, text: 'zzzz', kind: 'change' })
+      expect((await picker.find({ key: PICKER_FILTER }))?.props.submitLabel).toBe(t.pickerFilterSubmitNone)
+      await picker.input({ key: PICKER_FILTER, text: '', kind: 'change' })
+      expect((await picker.find({ key: PICKER_FILTER }))?.props.submitLabel).toBe(t.pickerFilterSubmit)
       expect((await picker.find({ type: 'Select' }))?.props.autoFocus).toBeUndefined()
       expect(await picker.find({ key: PICKER_FILTER_CLEAR })).toBeUndefined()
       // Drawn after the legend and before the list.
@@ -643,9 +662,12 @@ for (const surface of SURFACES) {
     await picker.input({ key: PICKER_FILTER, text: '要約', kind: 'change' })
     const narrowed = await actionButtons()
     expect(narrowed).toEqual(all.filter(id => matchesFilter(specOf(id), '要約')))
-    // Clear, in the palette's muted colour.
+    // Clear, in the palette's muted colour; pressed, it lists every action again.
     const clear = await picker.find({ key: PICKER_FILTER_CLEAR })
     expect(clear).toBeDefined()
+    await picker.press({ key: PICKER_FILTER_CLEAR })
+    expect(await actionButtons()).toEqual(all)
+    await picker.input({ key: PICKER_FILTER, text: '要約', kind: 'change' })
 
     await picker.input({ key: PICKER_FILTER, text: 'zzzz', kind: 'change' })
     expect(await actionButtons()).toEqual([])

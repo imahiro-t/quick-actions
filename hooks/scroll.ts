@@ -1,4 +1,4 @@
-import type { UiScrollArgs, UiScrollResult } from 'claude-code'
+import type { UiScrollArgs } from 'claude-code'
 
 // The newest result is drawn first in the pane, so bringing the pane back to
 // its top shows it even when the person had scrolled down to older ones.
@@ -9,11 +9,11 @@ import type { UiScrollArgs, UiScrollResult } from 'claude-code'
 export const toLatest = (pane: string): UiScrollArgs => ({ in: pane, to: 'start' })
 
 /**
- * Waits for the scroll and lets nothing out: a refusal ({ deny }) or a
- * rejection leaves the pane where it was, and the action that asked for the
- * scroll runs on regardless.
+ * Waits for the scroll (or a focus move) and lets nothing out: a refusal
+ * ({ deny }) or a rejection leaves the pane where it was, and whatever asked
+ * for it runs on regardless.
  */
-export async function settleQuietly(scrolled: Promise<UiScrollResult>): Promise<void> {
+export async function settleQuietly(scrolled: Promise<unknown>): Promise<void> {
   try {
     await scrolled
   } catch {

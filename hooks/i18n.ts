@@ -79,6 +79,10 @@ export type Messages = {
   pickerFilterPlaceholder: string
   /** The button beside the filter field that empties it. */
   pickerFilterClear: string
+  /** What Enter in the filter field does, drawn beside it while it has focus. */
+  pickerFilterSubmit: string
+  /** The same, while the filter matches no action (Enter then runs nothing). */
+  pickerFilterSubmitNone: string
   /** Stands for the ⋯ dialog's list when the filter matches no action. */
   pickerNoMatch: string
   /** The command's result when it opened the ⋯ dialog. */
@@ -155,6 +159,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerClose: '閉じる',
     pickerFilterPlaceholder: '絞り込み（ID・名前・種類）',
     pickerFilterClear: 'クリア',
+    pickerFilterSubmit: '先頭を実行',
+    pickerFilterSubmitNone: '一致なし',
     pickerNoMatch: '一致するアクションがありません',
     pickerOpened: 'ダイアログでアクションを選んでください。',
     hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
@@ -240,6 +246,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerClose: 'Close',
     pickerFilterPlaceholder: 'Filter (ID, name, kind)',
     pickerFilterClear: 'Clear',
+    pickerFilterSubmit: 'run first',
+    pickerFilterSubmitNone: 'no match',
     pickerNoMatch: 'No action matches',
     pickerOpened: 'Pick an action in the dialog.',
     hintOpened: 'Pick an action on the hint line below the prompt.',

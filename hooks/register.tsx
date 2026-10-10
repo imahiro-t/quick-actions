@@ -34,6 +34,7 @@ import type { OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
+import { FILTER_KEY, toFilterField } from './focus'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -60,7 +61,7 @@ const MORE_KEY = '_more'
 const PICKER_SELECT_KEY = '_picker'
 const PICKER_CLOSE_KEY = '_picker-close'
 // The dialog's filter field, and the button beside it that empties it.
-const PICKER_FILTER_KEY = '_filter'
+const PICKER_FILTER_KEY = FILTER_KEY
 const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
 // The most candidates an unknown ID is answered with.
 const CANDIDATES = 10
@@ -909,7 +910,14 @@ export const register: Register = (on, options) => {
       }
       await pick($, l, first)
     }
-    const clear = { label: t.pickerFilterClear, onPress: () => setFilter('') }
+    // Clear empties the field and hands the focus ring back to it (see ./focus).
+    const clear = {
+      label: t.pickerFilterClear,
+      onPress: async () => {
+        await setFilter('')
+        await settleQuietly($.ui.focus(toFilterField(PICKER)))
+      },
+    }
 
     return (
       <Box flexDirection="column" {...painted(style)}>
@@ -921,6 +929,7 @@ export const register: Register = (on, options) => {
               key={PICKER_FILTER_KEY}
               placeholder={t.pickerFilterPlaceholder}
               value={filter}
+              submitLabel={shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit}
               autoFocus
               onInput={value => {
                 void setFilter(value)

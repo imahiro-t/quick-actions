@@ -272,8 +272,13 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     const listed = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
     const free = actionsFor(options.language).filter(d => !needsSelection(d))
-    expect(listed.map(o => o.value)).toEqual(expect.arrayContaining(free.map(d => d.id)))
-    expect(listed).toHaveLength(free.length)
+    // A Select takes 64 options at most: past that, the first 64 and a line saying how many more the filter reaches.
+    const ids = free.map(d => d.id)
+    for (const o of listed) expect(ids).toContain(o.value)
+    expect(listed).toHaveLength(Math.min(free.length, SELECT_MAX_OPTIONS))
+    if (free.length > SELECT_MAX_OPTIONS) {
+      expect(await picker.find({ text: t.pickerMore(free.length - SELECT_MAX_OPTIONS) })).toBeDefined()
+    }
     expect(free.filter(isContext).length).toBeGreaterThan(0)
     expect(free.filter(isStandalone).map(d => d.id)).toEqual(['timer'])
     for (const o of listed) expect(o.label.startsWith('<') || o.label.startsWith('{')).toBe(true)
@@ -507,11 +512,13 @@ for (const surface of SURFACES) {
     for (const query of ['要約', 'japanese', '< 要約', 'ﾀｲﾏｰ', 'context']) {
       await picker.input({ key: PICKER_FILTER, text: query, kind: 'change' })
       const narrowed = (await listed(picker)) ?? []
-      // Every action that matches, and nothing else: those among the first 64 first,
-      // in their order, then the ones past them.
+      // Every action that matches (up to the 64 a Select takes), and nothing else: those among the
+      // first 64 first, in their order, then the ones past them.
       const matching = ACTIONS.filter(a => matchesFilter(a, query)).map(a => a.id)
       const head = all.filter(id => matchesFilter(specOf(id), query))
-      expect([...narrowed].sort()).toEqual([...matching].sort())
+      expect(narrowed).toHaveLength(Math.min(matching.length, SELECT_MAX_OPTIONS))
+      for (const id of narrowed) expect(matching).toContain(id)
+      if (matching.length <= SELECT_MAX_OPTIONS) expect([...narrowed].sort()).toEqual([...matching].sort())
       expect(narrowed.slice(0, head.length)).toEqual(head)
       expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe(query)
     }

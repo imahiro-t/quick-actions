@@ -62,6 +62,11 @@ const ON_CONVERSATION = [
   'steps-last', 'table-last', 'diagram-last', 'terms-last', 'counter-last', 'verify-last', 'caveats-last',
   'alternatives-last', 'questions-last', 'code-explain-last', 'command-explain-last', 'error-explain-last',
   'change-explain-last', 'review-last',
+  'next-move', 'blind-spots', 'unstuck', 'root-cause', 'debug-plan', 'simpler-approach', 'devil-advocate',
+  'premortem', 'tradeoffs', 'scope-check', 'done-check', 'verify-plan', 'rollback-plan', 'impact', 'effort-estimate',
+  'task-dependencies', 'session-tests', 'session-edge-cases', 'session-security', 'session-perf',
+  'session-error-handling', 'session-compat', 'session-a11y', 'session-i18n', 'session-observability',
+  'session-refactor', 'session-tech-debt', 'session-docs', 'session-naming', 'session-release-check',
 ]
 // The standalone built-ins (on neither), last.
 const STANDALONE = ['timer']
@@ -85,13 +90,13 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the hundred and forty-eight built-ins (a hundred and four on the selection, forty-three on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the hundred and seventy-eight built-ins (a hundred and four on the selection, seventy-three on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(148)
+  expect(ids).toHaveLength(178)
   expect(ON_SELECTION).toHaveLength(104)
-  expect(ON_CONVERSATION).toHaveLength(43)
+  expect(ON_CONVERSATION).toHaveLength(73)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -458,11 +463,66 @@ test('the thirty-two catalog context actions (looking back, the last answer): as
   expect(ids.slice(at, at + 32)).toEqual(CATALOG_ROWS_CONTEXT.map(r => r[0]))
 })
 
+// The thirty context actions added from the catalog (SELM-00031): how the work goes on (the next move) and
+// checks of the session's changes from one point of view at a time. ID, icon and labels, as the catalog has
+// them; each a fork on the conversation with the session's model.
+const CATALOG_ROWS_PROGRESS_CHECKS: readonly (readonly [string, string, string, string])[] = [
+  ['next-move', '👣', '次の一手', 'Next move'],
+  ['blind-spots', '🔦', '見落としチェック', 'Blind spots'],
+  ['unstuck', '🆘', '行き詰まりの打開策', 'Get unstuck'],
+  ['root-cause', '🌱', '原因の仮説', 'Root-cause hypotheses'],
+  ['debug-plan', '🐞', 'デバッグの進め方', 'Debug plan'],
+  ['simpler-approach', '🪄', 'もっと簡単な方法', 'Simpler approach'],
+  ['devil-advocate', '😈', 'あえて反対意見', "Devil's advocate"],
+  ['premortem', '🪦', '失敗の事前検討', 'Pre-mortem'],
+  ['tradeoffs', '🤝', 'トレードオフ', 'Trade-offs'],
+  ['scope-check', '🧩', 'スコープの確認', 'Scope check'],
+  ['done-check', '🏁', '完了条件の確認', 'Done check'],
+  ['verify-plan', '🩺', '確認手順', 'How to verify'],
+  ['rollback-plan', '⏪', '戻し方', 'Rollback plan'],
+  ['impact', '💥', '影響範囲', 'Impact'],
+  ['effort-estimate', '⏳', '残作業の見積もり', 'Effort estimate'],
+  ['task-dependencies', '🧶', '作業の依存関係', 'Task dependencies'],
+  ['session-tests', '🧪', '会話のテスト観点', 'Session test ideas'],
+  ['session-edge-cases', '🧷', '会話のエッジケース', 'Session edge cases'],
+  ['session-security', '🔐', '会話のセキュリティ点検', 'Session security review'],
+  ['session-perf', '🚄', '会話の性能点検', 'Session performance review'],
+  ['session-error-handling', '🦺', '会話のエラー処理点検', 'Session error handling review'],
+  ['session-compat', '🧬', '会話の互換性点検', 'Session compatibility review'],
+  ['session-a11y', '♿', '会話のアクセシビリティ点検', 'Session accessibility review'],
+  ['session-i18n', '🌏', '会話の国際化点検', 'Session i18n review'],
+  ['session-observability', '🪵', '会話のログ・監視点検', 'Session observability review'],
+  ['session-refactor', '🔨', '会話のリファクタリング案', 'Session refactor ideas'],
+  ['session-tech-debt', '🧹', '会話で生じた技術的負債', 'Session tech debt'],
+  ['session-docs', '📚', '会話の変更で要るドキュメント更新', 'Session docs to update'],
+  ['session-naming', '🪧', '会話の新規要素の命名案', 'Session naming ideas'],
+  ['session-release-check', '🚀', '会話の変更のリリース前チェック', 'Session pre-release check'],
+]
+
+test('the thirty catalog context actions (the next move, checks of the session): as the catalog has them', () => {
+  expect(CATALOG_ROWS_PROGRESS_CHECKS).toHaveLength(30)
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en] of CATALOG_ROWS_PROGRESS_CHECKS) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'fork', target: 'context' })
+    if (spec === undefined) continue
+    // The session's model, and no argument.
+    expect('model' in spec).toBe(false)
+    expect('arg' in spec && spec.arg !== undefined).toBe(false)
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+  }
+  // In the catalog's order, right after review-last.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('review-last') + 1
+  expect(ids.slice(at, at + 30)).toEqual(CATALOG_ROWS_PROGRESS_CHECKS.map(r => r[0]))
+})
+
 test('the catalog context actions look only: they say to change nothing and run nothing; the first eleven are as they were', () => {
   expect(LOOK_ONLY).toContain('Do not change any file')
   expect(LOOK_ONLY).toContain('do not run any command')
   expect(LOOK_ONLY).toContain('only from what the conversation already shows')
-  const added = new Set(CATALOG_ROWS_CONTEXT.map(r => r[0]))
+  const added = new Set([...CATALOG_ROWS_CONTEXT, ...CATALOG_ROWS_PROGRESS_CHECKS].map(r => r[0]))
   for (const a of ACTIONS.filter(isContext)) {
     if (a.kind !== 'fork') throw new Error(`${a.id} is not a fork`)
     expect(a.prompt.includes(LOOK_ONLY)).toBe(added.has(a.id))
@@ -502,6 +562,25 @@ test('the catalog context actions: what tells the close ones apart', () => {
   expect(promptFor('recap-recent')).toContain('only the last few exchanges')
   // Facts without guesses.
   expect(promptFor('key-facts')).toContain('Leave out guesses')
+  // One move alone, short.
+  expect(promptFor('next-move')).toContain('only one')
+  expect(promptFor('next-move')).toContain('about 3 to 5 lines')
+  // Three ways out not tried yet; three criticisms.
+  expect(promptFor('unstuck')).toContain('three ways out that have not been tried yet')
+  expect(promptFor('devil-advocate')).toContain('the three strongest criticisms')
+  // By stated completion criterion, three verdicts, the unmet ones last, inferred ones marked; not per request.
+  expect(promptFor('done-check')).toContain('the stated completion criteria, one criterion per line')
+  expect(promptFor('done-check')).toContain('met, not met or cannot tell')
+  expect(promptFor('done-check')).toContain('only the criteria not met')
+  expect(promptFor('done-check')).toContain('marking each as inferred')
+  expect(promptFor('done-check')).toContain('not the status of each request')
+  // Steps shown, never carried out; suggestions and lists alone.
+  expect(promptFor('verify-plan')).toContain('do not carry any of them out')
+  expect(promptFor('rollback-plan')).toContain('do not run any of it')
+  expect(promptFor('session-refactor')).toContain('Only suggest: do not change anything.')
+  expect(promptFor('session-docs')).toContain('do not edit any document')
+  // Accessibility says so when there is no UI.
+  expect(promptFor('session-a11y')).toContain('If the conversation has nothing to do with a UI, say so.')
 })
 
 test('the five research subagents: read-only on the repository or the web alone, sources asked for, nothing changed', () => {

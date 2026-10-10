@@ -64,6 +64,36 @@ const CONTEXT = [
   { id: 'error-explain-last', icon: '🚨', ja: '直前のエラーを解説' },
   { id: 'change-explain-last', icon: '🧾', ja: '直前の変更を解説' },
   { id: 'review-last', icon: '🧐', ja: '直前の変更のレビュー' },
+  { id: 'next-move', icon: '👣', ja: '次の一手' },
+  { id: 'blind-spots', icon: '🔦', ja: '見落としチェック' },
+  { id: 'unstuck', icon: '🆘', ja: '行き詰まりの打開策' },
+  { id: 'root-cause', icon: '🌱', ja: '原因の仮説' },
+  { id: 'debug-plan', icon: '🐞', ja: 'デバッグの進め方' },
+  { id: 'simpler-approach', icon: '🪄', ja: 'もっと簡単な方法' },
+  { id: 'devil-advocate', icon: '😈', ja: 'あえて反対意見' },
+  { id: 'premortem', icon: '🪦', ja: '失敗の事前検討' },
+  { id: 'tradeoffs', icon: '🤝', ja: 'トレードオフ' },
+  { id: 'scope-check', icon: '🧩', ja: 'スコープの確認' },
+  { id: 'done-check', icon: '🏁', ja: '完了条件の確認' },
+  { id: 'verify-plan', icon: '🩺', ja: '確認手順' },
+  { id: 'rollback-plan', icon: '⏪', ja: '戻し方' },
+  { id: 'impact', icon: '💥', ja: '影響範囲' },
+  { id: 'effort-estimate', icon: '⏳', ja: '残作業の見積もり' },
+  { id: 'task-dependencies', icon: '🧶', ja: '作業の依存関係' },
+  { id: 'session-tests', icon: '🧪', ja: '会話のテスト観点' },
+  { id: 'session-edge-cases', icon: '🧷', ja: '会話のエッジケース' },
+  { id: 'session-security', icon: '🔐', ja: '会話のセキュリティ点検' },
+  { id: 'session-perf', icon: '🚄', ja: '会話の性能点検' },
+  { id: 'session-error-handling', icon: '🦺', ja: '会話のエラー処理点検' },
+  { id: 'session-compat', icon: '🧬', ja: '会話の互換性点検' },
+  { id: 'session-a11y', icon: '♿', ja: '会話のアクセシビリティ点検' },
+  { id: 'session-i18n', icon: '🌏', ja: '会話の国際化点検' },
+  { id: 'session-observability', icon: '🪵', ja: '会話のログ・監視点検' },
+  { id: 'session-refactor', icon: '🔨', ja: '会話のリファクタリング案' },
+  { id: 'session-tech-debt', icon: '🧹', ja: '会話で生じた技術的負債' },
+  { id: 'session-docs', icon: '📚', ja: '会話の変更で要るドキュメント更新' },
+  { id: 'session-naming', icon: '🪧', ja: '会話の新規要素の命名案' },
+  { id: 'session-release-check', icon: '🚀', ja: '会話の変更のリリース前チェック' },
 ]
 
 const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
@@ -84,7 +114,7 @@ async function openHint($: Engine, s: Stage, clock: Clock) {
 // ---------------------------------------------------------------------------
 // The definitions
 
-test('forty-three built-in context actions, as the tickets name them, in both languages', () => {
+test('seventy-three built-in context actions, as the tickets name them, in both languages', () => {
   const context = ACTIONS.filter(isContext).flatMap(a => (a.kind === 'fork' ? [a] : []))
   expect(context.map(a => a.id)).toEqual(CONTEXT.map(c => c.id))
   for (const [i, a] of context.entries()) {
@@ -347,8 +377,15 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.unmount()
   picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  // The context actions and the standalone one: nothing that needs a selection.
-  expect(listed.map(o => o.value).sort()).toEqual([...CONTEXT.map(c => c.id), 'timer'].sort())
+  // The context actions and the standalone one: nothing that needs a selection. A Select takes 64 options
+  // at most (more than that many need no selection now); the filter reaches the rest.
+  const free = [...CONTEXT.map(c => c.id), 'timer']
+  expect(listed).toHaveLength(Math.min(free.length, 64))
+  for (const o of listed) expect(free).toContain(o.value)
+  await picker.input({ key: '_filter', text: 'session-release-check', kind: 'change' })
+  const reached = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+  expect(reached.map(o => o.value)).toContain('session-release-check')
+  await picker.input({ key: '_filter', text: '', kind: 'change' })
   await picker.select({ key: PICKER_SELECT, value: 'todo' })
   await picker.unmount()
   expect(s.forks).toHaveLength(1)

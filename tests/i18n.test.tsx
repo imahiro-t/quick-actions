@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -247,7 +247,16 @@ for (const language of ['en', 'ja'] as const) {
           .map((a, i) => [a.id, s.models[i]?.system ?? ''] as const),
       )
       for (const [id, system] of systems) {
-        if (id === 'translate-ja' || id === 'translate-en') continue
+        // A translation or a converted text asks for no answer style; never for the other language either.
+        if (NO_STYLE.includes(id)) {
+          expect(system).not.toContain(`Answer in ${other}`)
+          // Those with a short note name its language: this one, never the other.
+          if (ANSWER_LANGUAGE_ONLY.includes(id)) {
+            expect(system).toContain(`in ${name}`)
+            expect(system).not.toContain(`in ${other}`)
+          }
+          continue
+        }
         expect(system).not.toContain(`Answer in ${other}`)
         expect(system).not.toContain(`in ${other}.`)
         expect(system).toContain(`Answer in ${name}`)

@@ -257,7 +257,7 @@ test('the usage scores order the kinds as one; with a selection, the actions on 
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[💡]', '[🧸]', '[🔬]', '[💬]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '[💃]', '✕', '⋯'])
 
   // With nothing selected, the same order with the context actions alone.
   s.selected = null
@@ -272,7 +272,7 @@ test('`actions` pins either kind', { options: { actions: 'recap,explain,handoff'
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['<🧭>', '[💡]', '<📝>', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['<🧭>', '[💡]', '<📝>', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)

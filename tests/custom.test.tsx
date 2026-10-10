@@ -583,7 +583,7 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     // The valid custom one and explain pinned; the invalid ones nowhere.
-    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🧸]', '[🔬]', '✕', '⋯'])
+    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])

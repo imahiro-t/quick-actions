@@ -23,10 +23,18 @@ import { parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { BAND, PANE, PLUGIN, promptOf, reselect, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, promptOf, reselect, stage, start } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, evidence.
-const ON_SELECTION = ['translate-ja', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
+const ON_SELECTION = [
+  'translate-ja', 'translate-en', 'translate-zh', 'translate-zh-tw', 'translate-ko', 'translate-es', 'translate-fr',
+  'translate-de', 'translate-pt', 'translate-vi', 'easy-japanese', 'furigana', 'translation-variants', 'check-translation',
+  'explain', 'eli5', 'deep-dive', 'ask', 'define-terms', 'examples', 'analogy', 'background', 'pros-cons',
+  'compare-items', 'counterargument', 'expand-acronyms',
+  'summarize', 'tldr', 'key-points', 'to-bullets', 'outline', 'action-items', 'extract-numbers', 'extract-entities',
+  'title-ideas', 'to-faq', 'to-timeline', 'to-diagram',
+  'code', 'why', 'web-check',
+]
 // The built-ins on the conversation (context actions), after them.
 const ON_CONVERSATION = [
   'recap', 'decisions', 'todo', 'open-questions', 'simplify-last', 'translate-last',
@@ -54,11 +62,11 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the twenty-three built-ins (eleven on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the fifty-three built-ins (forty-one on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(23)
+  expect(ids).toHaveLength(53)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -121,6 +129,81 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
   // An icon may repeat, within a kind too (with a hundred or so of each, a
   // unique glyph each would mean less): the hover label and the ID tell them
   // apart. The IDs stay unique (checked above).
+})
+
+// The thirty actions on the selection added from the catalog (SELM-00027): ID, icon, labels and model, as the catalog has them.
+const CATALOG_ROWS: readonly (readonly [string, string, string, string, 'haiku' | 'sonnet'])[] = [
+  ['translate-zh', '🀄', '中国語訳（簡体字）', 'To Chinese (Simplified)', 'haiku'],
+  ['translate-zh-tw', '🏮', '中国語訳（繁体字）', 'To Chinese (Traditional)', 'haiku'],
+  ['translate-ko', '🌏', '韓国語訳', 'To Korean', 'haiku'],
+  ['translate-es', '💃', 'スペイン語訳', 'To Spanish', 'haiku'],
+  ['translate-fr', '🥐', 'フランス語訳', 'To French', 'haiku'],
+  ['translate-de', '🥨', 'ドイツ語訳', 'To German', 'haiku'],
+  ['translate-pt', '⚽', 'ポルトガル語訳', 'To Portuguese', 'haiku'],
+  ['translate-vi', '🛵', 'ベトナム語訳', 'To Vietnamese', 'haiku'],
+  ['easy-japanese', '🌱', 'やさしい日本語に', 'Plain Japanese', 'haiku'],
+  ['furigana', '🈁', '読みがな', 'Readings (furigana)', 'haiku'],
+  ['translation-variants', '🔀', '直訳と意訳', 'Literal vs natural', 'sonnet'],
+  ['check-translation', '🪞', '訳文チェック', 'Check a translation', 'sonnet'],
+  ['define-terms', '📖', '用語の定義', 'Define terms', 'haiku'],
+  ['examples', '🧪', '具体例', 'Examples', 'sonnet'],
+  ['analogy', '🎭', 'たとえ話', 'Analogy', 'haiku'],
+  ['background', '📜', '背景と経緯', 'Background', 'sonnet'],
+  ['pros-cons', '🪙', 'メリット・デメリット', 'Pros and cons', 'sonnet'],
+  ['compare-items', '🆚', '違いを比較', 'Compare', 'sonnet'],
+  ['counterargument', '🥊', '反論・別の見方', 'Counterpoints', 'sonnet'],
+  ['expand-acronyms', '🔠', '略語の展開', 'Expand acronyms', 'haiku'],
+  ['key-points', '📌', '要点3つ', 'Three key points', 'haiku'],
+  ['to-bullets', '🔘', '箇条書きに', 'As bullet points', 'haiku'],
+  ['outline', '📑', '見出し構成', 'Outline', 'haiku'],
+  ['action-items', '🎬', 'やることを抽出', 'Action items', 'haiku'],
+  ['extract-numbers', '🔢', '数値・日付を抽出', 'Numbers and dates', 'haiku'],
+  ['extract-entities', '📇', '固有名詞を抽出', 'Names and entities', 'haiku'],
+  ['title-ideas', '🪧', 'タイトル案', 'Title ideas', 'haiku'],
+  ['to-faq', '🙋', 'FAQにする', 'As an FAQ', 'haiku'],
+  ['to-timeline', '📅', '時系列に並べる', 'As a timeline', 'haiku'],
+  ['to-diagram', '🌳', '図にする（Mermaid）', 'As a diagram', 'sonnet'],
+]
+
+test('the thirty catalog actions on the selection: complete, as the catalog has them, answering as their kind of output asks', () => {
+  expect(CATALOG_ROWS).toHaveLength(30)
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en, model] of CATALOG_ROWS) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'complete', model })
+    // On the selection: target left out.
+    expect(spec!.target).toBeUndefined()
+    if (spec!.kind !== 'complete') continue
+    if (NO_STYLE.includes(id)) {
+      // A translation or a converted text: no answer style.
+      expect(spec!.prompt).not.toContain(STYLE)
+      if (ANSWER_LANGUAGE_ONLY.includes(id)) {
+        // Its short note in the answer language, filled in by language.
+        expect(spec!.prompt).toContain(ANSWER_LANGUAGE)
+        for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
+          const prompt = promptOf(resolveSpec(spec!, lang))
+          expect(prompt).not.toContain(ANSWER_LANGUAGE)
+          expect(prompt).toContain(`in ${name}`)
+        }
+      } else {
+        expect(spec!.prompt).not.toContain(ANSWER_LANGUAGE)
+      }
+    } else {
+      // An explanation or a summary: the answer language and style at the end.
+      expect(spec!.prompt).toContain(STYLE)
+      expect(promptOf(resolveSpec(spec!, 'en'))).toContain('Answer in English')
+      expect(promptOf(resolveSpec(spec!, 'ja'))).toContain('Answer in Japanese')
+    }
+  }
+  // The ones that only present a draft say they change no file.
+  for (const id of ['check-translation', 'title-ideas', 'to-diagram']) {
+    const spec = byId.get(id)!
+    expect(spec.kind === 'complete' && spec.prompt).toContain('Change no file')
+  }
+  // Every one of the thirty is in one of the two groups, and the groups hold nothing else new.
+  const ids = CATALOG_ROWS.map(r => r[0])
+  expect(ids.filter(id => NO_STYLE.includes(id))).toHaveLength(11)
+  expect(ids.filter(id => !NO_STYLE.includes(id))).toHaveLength(19)
 })
 
 test('the kinds and how each may run: target of three values, kind of four', () => {

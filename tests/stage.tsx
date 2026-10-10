@@ -16,6 +16,21 @@ import type { ActionDef, ActionSpec } from '../hooks/actions'
 
 export const PLUGIN = 'quick-actions'
 
+// The complete actions on the selection whose prompt carries no answer style
+// (no STYLE): they return a translation or a converted text, not an
+// explanation. Shared by the tests of the definitions and of the languages.
+export const NO_STYLE: readonly string[] = [
+  'translate-ja', 'translate-en',
+  // The translation or the rewrite alone.
+  'translate-zh', 'translate-zh-tw', 'translate-ko', 'translate-es', 'translate-fr', 'translate-de',
+  'translate-pt', 'translate-vi', 'easy-japanese',
+  // The converted text, with a short note in the answer language.
+  'furigana', 'to-diagram',
+]
+
+// Those of NO_STYLE that name the answer language (ANSWER_LANGUAGE) for their short note.
+export const ANSWER_LANGUAGE_ONLY: readonly string[] = ['furigana', 'to-diagram']
+
 const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
 export const BAND = {

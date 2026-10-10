@@ -307,6 +307,23 @@ export const timerCompute = ({ arg, now, lang }: LocalInput): LocalOutput => {
   }
 }
 
+/**
+ * A translation on the selection into the language named, in the words of
+ * translate-ja and translate-en: the translation alone, no answer style.
+ */
+const translateInto = (id: string, icon: string, label: Localized, language: string): CompleteAction<Localized> => ({
+  id,
+  icon,
+  label,
+  kind: 'complete',
+  model: 'haiku',
+  prompt: [
+    `Translate the selected text into natural ${language}.`,
+    'Keep code, identifiers, paths and commands as they are.',
+    'Reply with the translation alone.',
+  ].join(' '),
+})
+
 // The order of definition the hint line and the ⋯ dialog fall back to for
 // actions not pinned and not used: the actions on the selection, in the order
 // of their purpose (translation, meaning, summary, then evidence), then the
@@ -335,6 +352,66 @@ export const ACTIONS: readonly ActionSpec[] = [
       'Keep code, identifiers, paths and commands as they are.',
       'Reply with the translation alone.',
     ].join(' '),
+  },
+  translateInto('translate-zh', '🀄', { ja: '中国語訳（簡体字）', en: 'To Chinese (Simplified)' }, 'Simplified Chinese'),
+  translateInto('translate-zh-tw', '🏮', { ja: '中国語訳（繁体字）', en: 'To Chinese (Traditional)' }, 'Traditional Chinese as used in Taiwan'),
+  translateInto('translate-ko', '🌏', { ja: '韓国語訳', en: 'To Korean' }, 'Korean'),
+  translateInto('translate-es', '💃', { ja: 'スペイン語訳', en: 'To Spanish' }, 'Spanish'),
+  translateInto('translate-fr', '🥐', { ja: 'フランス語訳', en: 'To French' }, 'French'),
+  translateInto('translate-de', '🥨', { ja: 'ドイツ語訳', en: 'To German' }, 'German'),
+  translateInto('translate-pt', '⚽', { ja: 'ポルトガル語訳', en: 'To Portuguese' }, 'Brazilian Portuguese'),
+  translateInto('translate-vi', '🛵', { ja: 'ベトナム語訳', en: 'To Vietnamese' }, 'Vietnamese'),
+  {
+    id: 'easy-japanese',
+    icon: '🌱',
+    label: { ja: 'やさしい日本語に', en: 'Plain Japanese' },
+    kind: 'complete',
+    model: 'haiku',
+    // Always answers in Japanese, whatever the setting: the rewrite is the answer.
+    prompt: [
+      'Rewrite the selected text, whether it is Japanese or another language, as Easy Japanese (yasashii nihongo):',
+      'short sentences and basic, everyday vocabulary that needs no furigana, keeping the meaning.',
+      'Keep code, identifiers, paths and commands as they are.',
+      'Reply with the rewrite alone.',
+    ].join(' '),
+  },
+  {
+    id: 'furigana',
+    icon: '🈁',
+    label: { ja: '読みがな', en: 'Readings (furigana)' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: [
+      'Return the selected text as it is, with the reading in hiragana added in parentheses',
+      'right after each hard-to-read word and kanji word.',
+      'Write nothing but that text.',
+      `If the text contains no Japanese, say only that, briefly, in ${ANSWER_LANGUAGE}.`,
+    ].join(' '),
+  },
+  {
+    id: 'translation-variants',
+    icon: '🔀',
+    label: { ja: '直訳と意訳', en: 'Literal vs natural' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'The selected text is either Japanese or English. Translate it into the other of the two languages twice:',
+      'once literally, keeping close to the wording, and once naturally, as a native speaker would put it.',
+      'Show the two translations as they are, then explain in two or three lines how they differ and what nuance each carries.',
+    ),
+  },
+  {
+    id: 'check-translation',
+    icon: '🪞',
+    label: { ja: '訳文チェック', en: 'Check a translation' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'The selected text holds a source text and its translation. Compare the two and list as bullet points',
+      'the mistranslations, the omissions and the unnatural phrases, each with a suggested fix.',
+      'Change no file; only present it: open with one line saying these are suggested fixes.',
+      'If the selection holds only one side of the pair, say so instead.',
+    ),
   },
   {
     id: 'explain',
@@ -381,6 +458,97 @@ export const ACTIONS: readonly ActionSpec[] = [
     prompt: 'Explain the selected text in the context of what we are working on in this session.',
   },
   {
+    id: 'define-terms',
+    icon: '📖',
+    label: { ja: '用語の定義', en: 'Define terms' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Pick out the technical terms and the concepts particular to the selected text, about ten at most,',
+      'and define each one in one or two lines.',
+    ),
+  },
+  {
+    id: 'examples',
+    icon: '🧪',
+    label: { ja: '具体例', en: 'Examples' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'Give two or three concrete examples of the concept or claim in the selected text.',
+      'Where code suits the topic, include a short code snippet in an example.',
+    ),
+  },
+  {
+    id: 'analogy',
+    icon: '🎭',
+    label: { ja: 'たとえ話', en: 'Analogy' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Put what the selected text says into one or two analogies from everyday life,',
+      'then add one line on where the analogy does not hold.',
+    ),
+  },
+  {
+    id: 'background',
+    icon: '📜',
+    label: { ja: '背景と経緯', en: 'Background' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'Explain the background of the technology, term or convention in the selected text:',
+      'why it came about, how it developed over time, and where it stands today.',
+      'Keep it to about 10 lines.',
+    ),
+  },
+  {
+    id: 'pros-cons',
+    icon: '🪙',
+    label: { ja: 'メリット・デメリット', en: 'Pros and cons' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'For the approach, proposal or technology in the selected text, list its advantages and its disadvantages',
+      'as bullet points under two short headings, one for each,',
+      'then add one line on the situations it suits. The two headings are wanted here, whatever the style below says.',
+    ),
+  },
+  {
+    id: 'compare-items',
+    icon: '🆚',
+    label: { ja: '違いを比較', en: 'Compare' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'Compare the options, terms or versions that appear in the selected text in a table, one row per point of comparison.',
+      'If the text names only one, compare it with its usual alternatives instead.',
+      'A table is wanted here, whatever the style below says.',
+    ),
+  },
+  {
+    id: 'counterargument',
+    icon: '🥊',
+    label: { ja: '反論・別の見方', en: 'Counterpoints' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: sys(
+      'Give three to five points against the claim in the selected text:',
+      'strong counterarguments, other ways to see it, and cases where its assumptions break down.',
+    ),
+  },
+  {
+    id: 'expand-acronyms',
+    icon: '🔠',
+    label: { ja: '略語の展開', en: 'Expand acronyms' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Expand each abbreviation and acronym in the selected text to its full name and add one line on what it means.',
+      'Where the context leaves more than one expansion possible, list the candidates.',
+    ),
+  },
+  {
     id: 'summarize',
     icon: '📝',
     label: { ja: '要約', en: 'Summarize' },
@@ -401,6 +569,120 @@ export const ACTIONS: readonly ActionSpec[] = [
       'Summarize the selected text in a single sentence on a single line.',
       'Reply with that sentence alone, with no preamble.',
     ),
+  },
+  {
+    id: 'key-points',
+    icon: '📌',
+    label: { ja: '要点3つ', en: 'Three key points' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Pick only the three most important points of the selected text,',
+      'each with one line on why it matters.',
+    ),
+  },
+  {
+    id: 'to-bullets',
+    icon: '🔘',
+    label: { ja: '箇条書きに', en: 'As bullet points' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Restructure the selected text as bullet points without dropping any information:',
+      'reorganize it, do not summarize it.',
+    ),
+  },
+  {
+    id: 'outline',
+    icon: '📑',
+    label: { ja: '見出し構成', en: 'Outline' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Extract the structure of the selected text as an outline: a hierarchy of headings,',
+      'each with a one-line gist of what falls under it.',
+    ),
+  },
+  {
+    id: 'action-items',
+    icon: '🎬',
+    label: { ja: 'やることを抽出', en: 'Action items' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'From the selected text (meeting notes, an email, an issue and the like), list the things to be done,',
+      'each with who is responsible and the deadline where the text gives them.',
+      'If there is nothing to be done, say so.',
+    ),
+  },
+  {
+    id: 'extract-numbers',
+    icon: '🔢',
+    label: { ja: '数値・日付を抽出', en: 'Numbers and dates' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Gather the numbers, amounts, dates and durations in the selected text into a table,',
+      'each with what it stands for. A table is wanted here, whatever the style below says.',
+    ),
+  },
+  {
+    id: 'extract-entities',
+    icon: '📇',
+    label: { ja: '固有名詞を抽出', en: 'Names and entities' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'List the proper nouns in the selected text, grouped by kind:',
+      'people, organizations, products, file names, URLs and any other kind that appears.',
+    ),
+  },
+  {
+    id: 'title-ideas',
+    icon: '🪧',
+    label: { ja: 'タイトル案', en: 'Title ideas' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Suggest five headings, titles or subject lines for the selected text, shortest first.',
+      'Change no file; only present it: open with one line saying these are title ideas.',
+    ),
+  },
+  {
+    id: 'to-faq',
+    icon: '🙋',
+    label: { ja: 'FAQにする', en: 'As an FAQ' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: sys(
+      'Rework what the selected text says into three to seven pairs of a likely question and its answer.',
+    ),
+  },
+  {
+    id: 'to-timeline',
+    icon: '📅',
+    label: { ja: '時系列に並べる', en: 'As a timeline' },
+    kind: 'complete',
+    model: 'haiku',
+    // No current date reaches the model: the order is the text's own, never one relative to today.
+    prompt: sys(
+      'Put the events in the selected text (a log, a history, meeting notes and the like) in order of their time or date,',
+      'one line each. Where no time can be read from the text, keep the order they appear in and say so.',
+    ),
+  },
+  {
+    id: 'to-diagram',
+    icon: '🌳',
+    label: { ja: '図にする（Mermaid）', en: 'As a diagram' },
+    kind: 'complete',
+    model: 'sonnet',
+    prompt: [
+      'Draw the steps, relations or structure in the selected text as a Mermaid diagram,',
+      'of the kind that suits it (a flowchart, a sequence diagram and so on).',
+      'Change no file; only present it.',
+      'Open with one line noting that this is a draft diagram, then give the diagram in a single ```mermaid code block.',
+      `Write that note and the labels of the nodes and arrows in ${ANSWER_LANGUAGE}, keeping code and identifiers as they are.`,
+    ].join(' '),
   },
   {
     id: 'code',

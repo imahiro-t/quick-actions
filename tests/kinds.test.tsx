@@ -95,7 +95,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
+      expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
 
       await reselect(s, clock)
       await band.press({ key: 'web-check' })
@@ -268,6 +268,12 @@ for (const surface of SURFACES) {
 // filter would (ID, labels in both languages, kind names), in the dialog's
 // order with every kind, and the pointer to the dialog; never every ID.
 
+// The ten translations on the selection, in the order of definition: the first ten candidates for `translat`.
+const ON_SELECTION_TRANSLATIONS = [
+  'translate-ja', 'translate-en', 'translate-zh', 'translate-zh-tw', 'translate-ko',
+  'translate-es', 'translate-fr', 'translate-de', 'translate-pt', 'translate-vi',
+]
+
 /** The candidates an unknown ID's answer names, from the text in either language. */
 const candidatesIn = (r: unknown) => {
   const text = (r as { text: string }).text
@@ -280,8 +286,9 @@ for (const [lang, t] of [['ja', MESSAGES.ja], ['en', MESSAGES.en]] as const) {
     const s = stage(on)
     await start($)
     const r = await runCommand($, 'translat')
-    // The actions on the selection before the context ones, as the dialog lays them out.
-    expect(r).toEqual({ text: t.unknownId('translat', ['translate-ja', 'translate-en', 'translate-last']) })
+    // The actions on the selection before the context ones, as the dialog lays them out, ten at most:
+    // the translations on the selection fill them, so translate-last (on the conversation) is left out.
+    expect(r).toEqual({ text: t.unknownId('translat', ON_SELECTION_TRANSLATIONS) })
     expect(JSON.stringify(r)).toContain('/quick-actions')
     expect(s.models).toEqual([])
     expect(s.opened).toEqual([])
@@ -313,13 +320,14 @@ test('candidates are matched by label in either language and by kind name', { op
   stage(on)
   await start($)
   // The old ID of the Japanese translation: told, with the new one among its candidates.
-  expect(candidatesIn(await runCommand($, 'translate'))).toEqual(['translate-ja', 'translate-en', 'translate-last'])
-  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja'])
+  expect(candidatesIn(await runCommand($, 'translate'))).toEqual(ON_SELECTION_TRANSLATIONS)
+  // By the English label too: Plain Japanese.
+  expect(candidatesIn(await runCommand($, 'japanese'))).toEqual(['translate-ja', 'easy-japanese'])
   expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(['timer'])
 })
 
 test('the candidates follow the order the dialog shows, pins first', { options: { ...JA, actions: 'translate-last,translate-en' } }, async ($, on) => {
   stage(on)
   await start($)
-  expect(candidatesIn(await runCommand($, 'translat'))).toEqual(['translate-last', 'translate-en', 'translate-ja'])
+  expect(candidatesIn(await runCommand($, 'translat'))).toEqual(['translate-last', 'translate-en', ...ON_SELECTION_TRANSLATIONS.filter(id => id !== 'translate-en').slice(0, 8)])
 })

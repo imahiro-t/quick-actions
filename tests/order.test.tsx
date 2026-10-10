@@ -165,7 +165,7 @@ test('arrange: the default set, when it leads, comes first, its actions on the s
   const withSelection = ids(arrange(ordered, [], true, defaults))
   expect(withSelection.slice(0, 7)).toEqual(['explain', 'translate-ja', 'summarize', 'code', 'recap', 'decisions', 'timer'])
   // Then the rest, the actions on the selection first.
-  expect(withSelection.slice(7, 9)).toEqual(['translate-en', 'eli5'])
+  expect(withSelection.slice(7, 9)).toEqual(['translate-en', 'translate-zh'])
   expect(withSelection).toHaveLength(ACTIONS.length)
   expect(ids(arrange(ordered, [], false, defaults)).slice(0, 4)).toEqual(['recap', 'decisions', 'timer', 'todo'])
   // As drawn on the hint line: [💡] [🌐] [📝] [🔎] <🧭> <✅>, and with no selection <🧭> <✅> {⏳}.
@@ -213,7 +213,7 @@ test('the hint line follows the stored scores', async ($, on) => {
 
   // tldr then why, then the unused in the order of definition; `web` is no action.
   const icons = await iconsOf($)
-  expect(icons).toEqual([...['tldr', 'why', 'translate-ja', 'translate-en', 'explain', 'eli5'].map(iconOf), '✕', '⋯'])
+  expect(icons).toEqual([...['tldr', 'why', 'translate-ja', 'translate-en', 'translate-zh', 'translate-zh-tw'].map(iconOf), '✕', '⋯'])
 })
 
 test('a broken store still shows the default order', async ($, on) => {
@@ -225,7 +225,7 @@ test('a broken store still shows the default order', async ($, on) => {
   expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 })
 
-for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', ACTIONS.length], ['0', 6], ['many', 6]] as const) {
+for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', Math.min(30, ACTIONS.length)], ['0', 6], ['many', 6]] as const) {
   test(`hintCount ${hintCount}: ${shown} actions on the hint line`, { options: { hintCount } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)

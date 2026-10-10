@@ -683,7 +683,7 @@ for (const surface of SURFACES) {
 
 // The dialog asks for rows enough for its list, its lines, its field and its
 // button, up to 30: past that the pane scrolls.
-for (const [count, rows] of [[0, ACTIONS.length + 6], [1, Math.min(ACTIONS.length + 7, 30)], [20, 30]] as const) {
+for (const [count, rows] of [[0, Math.min(ACTIONS.length + 6, 30)], [1, Math.min(ACTIONS.length + 7, 30)], [20, 30]] as const) {
   const customActions = JSON.stringify(
     Array.from({ length: count }, (_, i) => ({ id: `extra-${i}`, icon: '🧩', label: `Extra ${i}`, kind: 'complete', model: 'haiku', prompt: 'Answer.' })),
   )

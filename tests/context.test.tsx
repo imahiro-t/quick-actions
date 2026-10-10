@@ -94,6 +94,35 @@ const CONTEXT = [
   { id: 'session-docs', icon: '📚', ja: '会話の変更で要るドキュメント更新' },
   { id: 'session-naming', icon: '🪧', ja: '会話の新規要素の命名案' },
   { id: 'session-release-check', icon: '🚀', ja: '会話の変更のリリース前チェック' },
+  { id: 'draft-commit', icon: '💾', ja: 'コミットメッセージ案' },
+  { id: 'draft-pr', icon: '📬', ja: 'PR 説明文の下書き' },
+  { id: 'draft-changelog', icon: '📰', ja: '変更履歴の下書き' },
+  { id: 'draft-status', icon: '📣', ja: '進捗報告の下書き' },
+  { id: 'draft-issue', icon: '🐛', ja: 'Issue の下書き' },
+  { id: 'draft-review-request', icon: '🙏', ja: 'レビュー依頼文' },
+  { id: 'draft-question', icon: '📨', ja: '質問文の下書き' },
+  { id: 'draft-adr', icon: '📜', ja: '設計判断の記録（ADR）' },
+  { id: 'draft-resume-prompt', icon: '🎬', ja: '再開用プロンプト' },
+  { id: 'draft-stakeholder-update', icon: '👔', ja: '非エンジニア向け説明' },
+  { id: 'draft-retro', icon: '🔄', ja: '振り返り（KPT）' },
+  { id: 'learnings', icon: '🎓', ja: '今回の学び' },
+  { id: 'session-glossary', icon: '📒', ja: '会話の用語集' },
+  { id: 'concepts', icon: '🧠', ja: '押さえるべき概念' },
+  { id: 'session-cheatsheet', icon: '📇', ja: '会話のチートシート' },
+  { id: 'session-quiz', icon: '🎲', ja: '会話の理解度クイズ' },
+  { id: 'session-faq', icon: '💁', ja: '会話の FAQ' },
+  { id: 'study-next', icon: '🔖', ja: '会話から次に学ぶテーマ' },
+  { id: 'session-keywords', icon: '🔑', ja: '会話のテーマの検索キーワード' },
+  { id: 'tips', icon: '💡', ja: '会話で知った小技' },
+  { id: 'mistakes', icon: '🙈', ja: 'Claude の誤り' },
+  { id: 'prompt-tips', icon: '💬', ja: '指示の出し方の改善' },
+  { id: 'claude-md-ideas', icon: '📐', ja: 'CLAUDE.md に書くとよいこと' },
+  { id: 'contradictions', icon: '🔃', ja: '矛盾の検出' },
+  { id: 'code-map', icon: '🏠', ja: '登場したコードの地図' },
+  { id: 'workflow-diagram', icon: '🧵', ja: '作業の流れ図' },
+  { id: 'environment', icon: '💽', ja: '環境情報の整理' },
+  { id: 'packages', icon: '📦', ja: '追加・変更したパッケージ' },
+  { id: 'links', icon: '🔗', ja: '登場した URL・資料' },
 ]
 
 const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
@@ -114,7 +143,7 @@ async function openHint($: Engine, s: Stage, clock: Clock) {
 // ---------------------------------------------------------------------------
 // The definitions
 
-test('seventy-three built-in context actions, as the tickets name them, in both languages', () => {
+test('a hundred and two built-in context actions, as the tickets name them, in both languages', () => {
   const context = ACTIONS.filter(isContext).flatMap(a => (a.kind === 'fork' ? [a] : []))
   expect(context.map(a => a.id)).toEqual(CONTEXT.map(c => c.id))
   for (const [i, a] of context.entries()) {

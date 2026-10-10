@@ -67,6 +67,11 @@ const ON_CONVERSATION = [
   'task-dependencies', 'session-tests', 'session-edge-cases', 'session-security', 'session-perf',
   'session-error-handling', 'session-compat', 'session-a11y', 'session-i18n', 'session-observability',
   'session-refactor', 'session-tech-debt', 'session-docs', 'session-naming', 'session-release-check',
+  'draft-commit', 'draft-pr', 'draft-changelog', 'draft-status', 'draft-issue', 'draft-review-request',
+  'draft-question', 'draft-adr', 'draft-resume-prompt', 'draft-stakeholder-update', 'draft-retro',
+  'learnings', 'session-glossary', 'concepts', 'session-cheatsheet', 'session-quiz', 'session-faq', 'study-next',
+  'session-keywords', 'tips', 'mistakes', 'prompt-tips', 'claude-md-ideas',
+  'contradictions', 'code-map', 'workflow-diagram', 'environment', 'packages', 'links',
 ]
 // The standalone built-ins (on neither), last.
 const STANDALONE = ['timer']
@@ -90,13 +95,13 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the hundred and seventy-eight built-ins (a hundred and four on the selection, seventy-three on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the two hundred and seven built-ins (a hundred and four on the selection, a hundred and two on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(178)
+  expect(ids).toHaveLength(207)
   expect(ON_SELECTION).toHaveLength(104)
-  expect(ON_CONVERSATION).toHaveLength(73)
+  expect(ON_CONVERSATION).toHaveLength(102)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -518,11 +523,67 @@ test('the thirty catalog context actions (the next move, checks of the session):
   expect(ids.slice(at, at + 30)).toEqual(CATALOG_ROWS_PROGRESS_CHECKS.map(r => r[0]))
 })
 
+// The twenty-nine context actions added from the catalog (SELM-00032): drafts shown in the pane alone,
+// learnings drawn from the conversation, and analysis of the conversation. ID, icon and labels, as the
+// catalog has them; each a fork on the conversation with the session's model.
+const CATALOG_ROWS_DRAFTS_LEARNING: readonly (readonly [string, string, string, string])[] = [
+  ['draft-commit', '💾', 'コミットメッセージ案', 'Commit message draft'],
+  ['draft-pr', '📬', 'PR 説明文の下書き', 'PR description draft'],
+  ['draft-changelog', '📰', '変更履歴の下書き', 'Changelog entry draft'],
+  ['draft-status', '📣', '進捗報告の下書き', 'Status update draft'],
+  ['draft-issue', '🐛', 'Issue の下書き', 'Issue draft'],
+  ['draft-review-request', '🙏', 'レビュー依頼文', 'Review request draft'],
+  ['draft-question', '📨', '質問文の下書き', 'Question draft'],
+  ['draft-adr', '📜', '設計判断の記録（ADR）', 'ADR draft'],
+  ['draft-resume-prompt', '🎬', '再開用プロンプト', 'Resume prompt'],
+  ['draft-stakeholder-update', '👔', '非エンジニア向け説明', 'For non-engineers'],
+  ['draft-retro', '🔄', '振り返り（KPT）', 'Retrospective (KPT)'],
+  ['learnings', '🎓', '今回の学び', 'Learnings'],
+  ['session-glossary', '📒', '会話の用語集', 'Session glossary'],
+  ['concepts', '🧠', '押さえるべき概念', 'Key concepts'],
+  ['session-cheatsheet', '📇', '会話のチートシート', 'Session cheat sheet'],
+  ['session-quiz', '🎲', '会話の理解度クイズ', 'Session quiz'],
+  ['session-faq', '💁', '会話の FAQ', 'Session FAQ'],
+  ['study-next', '🔖', '会話から次に学ぶテーマ', 'Next study topics from session'],
+  ['session-keywords', '🔑', '会話のテーマの検索キーワード', 'Session search keywords'],
+  ['tips', '💡', '会話で知った小技', 'Tricks picked up'],
+  ['mistakes', '🙈', 'Claude の誤り', "Claude's mistakes"],
+  ['prompt-tips', '💬', '指示の出し方の改善', 'Prompting tips'],
+  ['claude-md-ideas', '📐', 'CLAUDE.md に書くとよいこと', 'CLAUDE.md ideas'],
+  ['contradictions', '🔃', '矛盾の検出', 'Contradictions'],
+  ['code-map', '🏠', '登場したコードの地図', 'Code map'],
+  ['workflow-diagram', '🧵', '作業の流れ図', 'Workflow diagram'],
+  ['environment', '💽', '環境情報の整理', 'Environment'],
+  ['packages', '📦', '追加・変更したパッケージ', 'Packages changed'],
+  ['links', '🔗', '登場した URL・資料', 'Links mentioned'],
+]
+
+test('the twenty-nine catalog context actions (drafts, learnings, analysis of the conversation): as the catalog has them', () => {
+  expect(CATALOG_ROWS_DRAFTS_LEARNING).toHaveLength(29)
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  for (const [id, icon, ja, en] of CATALOG_ROWS_DRAFTS_LEARNING) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'fork', target: 'context' })
+    if (spec === undefined) continue
+    // The session's model, and no argument.
+    expect('model' in spec).toBe(false)
+    expect('arg' in spec && spec.arg !== undefined).toBe(false)
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+  }
+  // In the catalog's order, right after session-release-check.
+  const ids = ACTIONS.map(a => a.id)
+  const at = ids.indexOf('session-release-check') + 1
+  expect(ids.slice(at, at + 29)).toEqual(CATALOG_ROWS_DRAFTS_LEARNING.map(r => r[0]))
+})
+
 test('the catalog context actions look only: they say to change nothing and run nothing; the first eleven are as they were', () => {
   expect(LOOK_ONLY).toContain('Do not change any file')
   expect(LOOK_ONLY).toContain('do not run any command')
   expect(LOOK_ONLY).toContain('only from what the conversation already shows')
-  const added = new Set([...CATALOG_ROWS_CONTEXT, ...CATALOG_ROWS_PROGRESS_CHECKS].map(r => r[0]))
+  const added = new Set(
+    [...CATALOG_ROWS_CONTEXT, ...CATALOG_ROWS_PROGRESS_CHECKS, ...CATALOG_ROWS_DRAFTS_LEARNING].map(r => r[0]),
+  )
   for (const a of ACTIONS.filter(isContext)) {
     if (a.kind !== 'fork') throw new Error(`${a.id} is not a fork`)
     expect(a.prompt.includes(LOOK_ONLY)).toBe(added.has(a.id))
@@ -581,6 +642,34 @@ test('the catalog context actions: what tells the close ones apart', () => {
   expect(promptFor('session-docs')).toContain('do not edit any document')
   // Accessibility says so when there is no UI.
   expect(promptFor('session-a11y')).toContain('If the conversation has nothing to do with a UI, say so.')
+  // Drafts are shown alone: nothing committed, created, sent or put in the input box.
+  expect(promptFor('draft-commit')).toContain('do not commit')
+  expect(promptFor('draft-pr')).toContain('do not create a pull request')
+  expect(promptFor('draft-issue')).toContain('do not create an issue')
+  expect(promptFor('draft-resume-prompt')).toContain('do not put it in the input box')
+  for (const id of CATALOG_ROWS_DRAFTS_LEARNING.map(r => r[0]).filter(id => id.startsWith('draft-'))) {
+    expect(promptFor(id)).toMatch(/Only show (the draft|the text|it)/)
+  }
+  // A prompt for Claude, not the handoff note for a person.
+  expect(promptFor('draft-resume-prompt')).toContain('written as instructions to Claude, not as a note for a person')
+  // A cheat sheet of what was actually used, by use; not the record of commands, not the tricks.
+  expect(promptFor('session-cheatsheet')).toContain('actually used in this conversation, grouped by use')
+  expect(promptFor('session-cheatsheet')).toContain('that is the commands run')
+  expect(promptFor('commands-run')).toContain('not a cheat sheet grouped by use')
+  // Only the surprising tricks, not every command used.
+  expect(promptFor('tips')).toContain('List only the tricks from this conversation that are little known or surprising')
+  expect(promptFor('tips')).toContain('that is the cheat sheet')
+  // The whole conversation, not only the last answer.
+  expect(promptFor('session-glossary')).toContain('not only the last answer')
+  // The flow of the whole work, drawn as a diagram.
+  expect(promptFor('workflow-diagram')).toContain('the work done in this conversation as a whole')
+  expect(promptFor('workflow-diagram')).toContain('The diagram is wanted here, whatever the style below says.')
+  // No web; no edit of CLAUDE.md.
+  expect(promptFor('study-next')).toContain('Do not search the web')
+  expect(promptFor('claude-md-ideas')).toContain('do not edit CLAUDE.md')
+  // Both languages for the keywords; the unknown said to be unknown.
+  expect(promptFor('session-keywords')).toContain('in both Japanese and English')
+  expect(promptFor('environment')).toContain('say it is not known')
 })
 
 test('the five research subagents: read-only on the repository or the web alone, sources asked for, nothing changed', () => {

@@ -2245,6 +2245,332 @@ export const ACTIONS: readonly ActionSpec[] = [
         'Keep it to about 10 to 15 lines.',
       ),
     },
+
+    // Drafts, shown in the pane alone: nothing is committed, created, sent or put in the input box.
+    {
+      id: 'draft-commit',
+      icon: '💾',
+      label: { ja: 'コミットメッセージ案', en: 'Commit message draft' },
+      prompt: lookBack(
+        'Draft a commit message for the changes made in this session: a one-line summary, a blank line, then a short body on what changed and why.',
+        'Show it in a code block, ready to paste, whatever the style below says.',
+        'Only show the draft: do not commit and do not run git.',
+        'If nothing was changed in this session, say so.',
+      ),
+    },
+    {
+      id: 'draft-pr',
+      icon: '📬',
+      label: { ja: 'PR 説明文の下書き', en: 'PR description draft' },
+      prompt: lookBack(
+        'Draft a pull request description for the changes made in this session: a title, a summary, the changes, and how to verify them.',
+        'Show it in a code block, ready to paste, whatever the style below says.',
+        'Only show the draft: do not create a pull request and do not push anything.',
+        'If nothing was changed in this session, say so.',
+        'Keep it to about 15 to 20 lines.',
+      ),
+    },
+    {
+      id: 'draft-changelog',
+      icon: '📰',
+      label: { ja: '変更履歴の下書き', en: 'Changelog entry draft' },
+      prompt: lookBack(
+        'Draft changelog or release-note entries for the changes made in this session, written for the people who use the product:',
+        'what changes for them, not the implementation details, one entry per bullet, grouped as added, changed and fixed where that helps.',
+        'Only show the draft: do not edit any changelog. If nothing was changed in this session, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'draft-status',
+      icon: '📣',
+      label: { ja: '進捗報告の下書き', en: 'Status update draft' },
+      prompt: lookBack(
+        'Draft a short status update on this work for the team or a manager, in four parts:',
+        'what was done, where things stand, what comes next, and what is blocking or worrying.',
+        'Only show the draft: do not send it anywhere.',
+        'Keep it to about 8 to 12 lines.',
+      ),
+    },
+    {
+      id: 'draft-issue',
+      icon: '🐛',
+      label: { ja: 'Issue の下書き', en: 'Issue draft' },
+      prompt: lookBack(
+        'Draft an issue for a problem or a piece of work left over that this conversation found:',
+        'a title, the steps to reproduce, what was expected and what happened instead, and any notes.',
+        'Show it in a code block, ready to paste, whatever the style below says.',
+        'Only show the draft: do not create an issue. If the conversation found no such problem, say so.',
+      ),
+    },
+    {
+      id: 'draft-review-request',
+      icon: '🙏',
+      label: { ja: 'レビュー依頼文', en: 'Review request draft' },
+      prompt: lookBack(
+        'Draft a message asking a reviewer to review the changes made in this session:',
+        'the gist of the changes, the points you most want looked at, and how to verify them.',
+        'Only show the draft: do not send it or request a review. If nothing was changed in this session, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'draft-question',
+      icon: '📨',
+      label: { ja: '質問文の下書き', en: 'Question draft' },
+      prompt: lookBack(
+        'Draft a question about the current problem to ask a colleague or a forum:',
+        'the situation, what has been tried and what happened, and what exactly you want to know.',
+        'Make it self-contained, so that someone who has not seen this conversation can follow it.',
+        'Only show the draft: do not post or send it.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'draft-adr',
+      icon: '📜',
+      label: { ja: '設計判断の記録（ADR）', en: 'ADR draft' },
+      prompt: lookBack(
+        'Draft an architecture decision record (ADR) for the main design decision made in this conversation',
+        '(one record per decision if there are several): Context, Decision, Rationale and Consequences.',
+        'Show it in a code block, ready to paste, whatever the style below says.',
+        'Only show the draft: do not create any file. If no design decision was made, say so.',
+      ),
+    },
+    {
+      id: 'draft-resume-prompt',
+      icon: '🎬',
+      label: { ja: '再開用プロンプト', en: 'Resume prompt' },
+      prompt: lookBack(
+        'Write a short, self-contained prompt to paste into a new Claude Code session to pick this work up again:',
+        'written as instructions to Claude, not as a note for a person (that is the handoff note),',
+        'with the goal, where things stand, the decisions to keep and the next step.',
+        'Show only the prompt itself, in a code block, whatever the style below says.',
+        'Only show it: do not put it in the input box.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'draft-stakeholder-update',
+      icon: '👔',
+      label: { ja: '非エンジニア向け説明', en: 'For non-engineers' },
+      prompt: lookBack(
+        'Explain this work to people who are not engineers (stakeholders, managers, customers):',
+        'why it was done, what it achieved and what it changes for them,',
+        'without technical terms or jargon.',
+        'Only show the text: do not send it anywhere.',
+        'Keep it to about 5 to 8 lines.',
+      ),
+    },
+    {
+      id: 'draft-retro',
+      icon: '🔄',
+      label: { ja: '振り返り（KPT）', en: 'Retrospective (KPT)' },
+      prompt: lookBack(
+        'Look back on this session as a KPT retrospective in three parts:',
+        'Keep (what went well and is worth keeping), Problem (what went badly or slowed things down), and Try (what to try next time),',
+        'a few bullets each.',
+        'Only show it: do not post or send it anywhere.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+
+    // Learning and knowledge drawn from the conversation.
+    {
+      id: 'learnings',
+      icon: '🎓',
+      label: { ja: '今回の学び', en: 'Learnings' },
+      prompt: lookBack(
+        'List the lessons learned in this conversation, one bullet each,',
+        'written so that they help the next time the same situation comes up (what to do, or what to avoid, and when).',
+        'If nothing was learned worth keeping, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'session-glossary',
+      icon: '📒',
+      label: { ja: '会話の用語集', en: 'Session glossary' },
+      prompt: lookBack(
+        'Make a glossary of the technical terms, abbreviations and project-specific names that came up anywhere in this conversation (not only the last answer),',
+        'each with one line on what it means in this conversation.',
+        'If there are none, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'concepts',
+      icon: '🧠',
+      label: { ja: '押さえるべき概念', en: 'Key concepts' },
+      prompt: lookBack(
+        'List the background knowledge and concepts someone needs to understand this conversation,',
+        'each explained in two or three lines.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'session-cheatsheet',
+      icon: '📇',
+      label: { ja: '会話のチートシート', en: 'Session cheat sheet' },
+      prompt: lookBack(
+        'Make a cheat sheet of the commands, APIs and settings actually used in this conversation, grouped by use (investigating, building, testing, configuring and the like).',
+        'One item per line: the form to type and a few words on what it is for.',
+        'Do not give the order they were run in or their results (that is the commands run), and do not explain surprising tricks (that is the tricks picked up).',
+        'If nothing was used, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'session-quiz',
+      icon: '🎲',
+      label: { ja: '会話の理解度クイズ', en: 'Session quiz' },
+      prompt: lookBack(
+        'Write three to five questions that check understanding of what this conversation covered.',
+        'List the questions first, then put all the answers, each with a short explanation, together at the end.',
+      ),
+    },
+    {
+      id: 'session-faq',
+      icon: '💁',
+      label: { ja: '会話の FAQ', en: 'Session FAQ' },
+      prompt: lookBack(
+        'Turn what this conversation covered into an FAQ: the questions other people are likely to ask about it, each followed by its answer (Q and A).',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'study-next',
+      icon: '🔖',
+      label: { ja: '会話から次に学ぶテーマ', en: 'Next study topics from session' },
+      prompt: lookBack(
+        'Suggest topics worth studying next to go deeper into what this conversation covered,',
+        'each with why it is worth learning and a hint on how to look into it.',
+        'Do not search the web: suggest from the conversation alone.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'session-keywords',
+      icon: '🔑',
+      label: { ja: '会話のテーマの検索キーワード', en: 'Session search keywords' },
+      prompt: lookBack(
+        'Suggest search keywords for looking up the current problem or topic of this conversation on the web or in documentation,',
+        'in both Japanese and English, each with a few words on what it should find.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'tips',
+      icon: '💡',
+      label: { ja: '会話で知った小技', en: 'Tricks picked up' },
+      prompt: lookBack(
+        'List only the tricks from this conversation that are little known or surprising (an uncommon option, a way of writing something, a feature of a tool),',
+        'each with one or two lines on why it is handy and when to use it.',
+        'Leave out well-known basics, and do not list every command used (that is the cheat sheet).',
+        'If there are no such tricks, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'mistakes',
+      icon: '🙈',
+      label: { ja: 'Claude の誤り', en: "Claude's mistakes" },
+      prompt: lookBack(
+        'List the mistakes you (Claude) made in this conversation and the points where you were corrected,',
+        'each with what was actually right.',
+        'If there were none, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'prompt-tips',
+      icon: '💬',
+      label: { ja: '指示の出し方の改善', en: 'Prompting tips' },
+      prompt: lookBack(
+        'Looking at the instructions the user gave in this conversation, suggest how they could be put',
+        'so that the work goes faster and more accurately (what to say up front, what was ambiguous, what was missing),',
+        'each with a short example of a better way to say it.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'claude-md-ideas',
+      icon: '📐',
+      label: { ja: 'CLAUDE.md に書くとよいこと', en: 'CLAUDE.md ideas' },
+      prompt: lookBack(
+        'From the instructions and conventions the user had to repeat in this conversation, pick the ones worth writing in CLAUDE.md,',
+        'each with the text to add.',
+        'Only suggest the text: do not edit CLAUDE.md. If nothing was repeated, say so.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+
+    // Analysing and organizing the conversation.
+    {
+      id: 'contradictions',
+      icon: '🔃',
+      label: { ja: '矛盾の検出', en: 'Contradictions' },
+      prompt: lookBack(
+        'List the statements, policies or facts in this conversation that contradict each other,',
+        'each with which one is newer or more likely to be right.',
+        'If there are none, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'code-map',
+      icon: '🏠',
+      label: { ja: '登場したコードの地図', en: 'Code map' },
+      prompt: lookBack(
+        'Map the files, functions and modules that came up in this conversation and how they relate to each other',
+        '(which calls, imports or contains which), as a tree in a code block or as nested bullets.',
+        'If no code came up, say so.',
+        'Keep it to about 15 to 20 lines.',
+      ),
+    },
+    {
+      id: 'workflow-diagram',
+      icon: '🧵',
+      label: { ja: '作業の流れ図', en: 'Workflow diagram' },
+      prompt: lookBack(
+        'Show the flow of the work done in this conversation as a whole (investigating, changing, checking and so on, with any loops back)',
+        'as a text diagram, either an ASCII diagram or Mermaid code in a code block, and add one or two lines on how to read it.',
+        'The diagram is wanted here, whatever the style below says.',
+      ),
+    },
+    {
+      id: 'environment',
+      icon: '💽',
+      label: { ja: '環境情報の整理', en: 'Environment' },
+      prompt: lookBack(
+        'Sum up the environment this conversation shows: the OS, the versions of languages and tools, and the relevant settings,',
+        'one item per line.',
+        'For each item the conversation does not show, say it is not known.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'packages',
+      icon: '📦',
+      label: { ja: '追加・変更したパッケージ', en: 'Packages changed' },
+      prompt: lookBack(
+        'List the packages and dependencies added, updated or removed in this session,',
+        'each with whether it was added, updated or removed and one line on what it is for.',
+        'If none were changed, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'links',
+      icon: '🔗',
+      label: { ja: '登場した URL・資料', en: 'Links mentioned' },
+      prompt: lookBack(
+        'List the references that came up in this conversation (URLs, documents, issue and pull request numbers and the like),',
+        'each with one line on what it is.',
+        'If there are none, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
   ].map(contextAction),
 
   // Standalone actions: neither the selection nor the conversation, their

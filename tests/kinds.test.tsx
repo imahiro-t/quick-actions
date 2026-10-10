@@ -290,6 +290,12 @@ for (const [lang, t] of [['ja', MESSAGES.ja], ['en', MESSAGES.en]] as const) {
     // the translations on the selection fill them, so translate-last (on the conversation) is left out.
     expect(r).toEqual({ text: t.unknownId('translat', ON_SELECTION_TRANSLATIONS) })
     expect(JSON.stringify(r)).toContain('/quick-actions')
+    // Under ten matches across the kinds, none in the default set: the ones on the selection first,
+    // then simplify-last on the conversation.
+    expect(candidatesIn(await runCommand($, 'やさし'))).toEqual(['easy-japanese', 'eli5', 'simplify-last'])
+    // With the default set leading (no pins, no usage yet): its actions on the selection, then its
+    // context ones, then the rest, as the dialog lays them out.
+    expect(candidatesIn(await runCommand($, '要約'))).toEqual(['summarize', 'recap', 'tldr'])
     expect(s.models).toEqual([])
     expect(s.opened).toEqual([])
     expect(s.toasts).toEqual([])

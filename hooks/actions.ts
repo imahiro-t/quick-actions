@@ -600,7 +600,7 @@ export const ACTIONS: readonly ActionSpec[] = [
     model: 'haiku',
     prompt: sys(
       'Extract the structure of the selected text as an outline: a hierarchy of headings,',
-      'each with a one-line gist of what falls under it.',
+      'each with a one-line gist of what falls under it. The outline is wanted here, whatever the style below says.',
     ),
   },
   {

@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { BAND, JA, PANE, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, JA, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
 
 // These check the Japanese texts as they were before the language setting,
 // so each pins `language: 'ja'` (left to `auto`, a test would see English).
@@ -14,7 +14,9 @@ for (const surface of SURFACES) {
     await clock.advance(400)
 
     const band = await $.ui.mount({ ...BAND, surface })
+    await reselect(s, clock)
     await band.press({ key: 'explain' })
+    await reselect(s, clock)
     await band.press({ key: 'translate' })
 
     expect(s.models.map(m => m.model)).toEqual(['sonnet', 'haiku'])
@@ -35,6 +37,7 @@ for (const surface of SURFACES) {
     await clock.advance(400)
 
     const band = await $.ui.mount({ ...BAND, surface })
+    await reselect(s, clock)
     await band.press({ key: 'ask' })
 
     expect(s.forks[0]).toContain('exit 137')
@@ -55,7 +58,9 @@ for (const surface of SURFACES) {
     await clock.advance(400)
 
     const band = await $.ui.mount({ ...BAND, surface })
+    await reselect(s, clock)
     await band.press({ key: 'code' })
+    await reselect(s, clock)
     await band.press({ key: 'code' })
 
     expect(s.registered.map(r => r.name)).toEqual(['code'])
@@ -126,9 +131,12 @@ for (const surface of SURFACES) {
       const band = await $.ui.mount({ ...BAND, surface })
 
       s.answer = 'empty'
+      await reselect(s, clock)
       await band.press({ key: 'explain' })
+      await reselect(s, clock)
       await band.press({ key: 'ask' })
       s.spawnDeny = 'not allowed here'
+      await reselect(s, clock)
       await band.press({ key: 'code' })
 
       const pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement } })
@@ -152,8 +160,11 @@ for (const surface of SURFACES) {
 
     // Refused beneath the plugin, each call rejects with an Error.
     s.refuse = 'rate limited'
+    await reselect(s, clock)
     await band.press({ key: 'explain' })
+    await reselect(s, clock)
     await band.press({ key: 'ask' })
+    await reselect(s, clock)
     await band.press({ key: 'code' })
 
     const pane = await $.ui.mount({ ...PANE, surface })
@@ -182,6 +193,7 @@ for (const surface of SURFACES) {
       s.selected = 'Permission denied (publickey)'
       await clock.advance(400)
       const band = await $.ui.mount({ ...BAND, surface })
+      await reselect(s, clock)
       await band.press({ key: 'explain' })
 
       const pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement } })

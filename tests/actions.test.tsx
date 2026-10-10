@@ -2,12 +2,14 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { ACTIONS, DEFAULT_ACTION_IDS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
 import type { ActionSpec } from '../hooks/actions'
-import { BAND, PANE, PLUGIN, stage, start } from './stage'
+import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
 
 test('at least 20 actions, unique IDs, every field filled in', () => {
   expect(ACTIONS.length).toBeGreaterThanOrEqual(20)
   const ids = ACTIONS.map(a => a.id)
   expect(new Set(ids).size).toBe(ids.length)
+  // `close` is the ✕ button's key on the hint line.
+  expect(ids).not.toContain('close')
   for (const a of ACTIONS) {
     expect(a.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
     expect(a.icon).not.toBe('')
@@ -86,10 +88,11 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual(ACTIONS.map(a => a.icon))
+      expect(icons).toEqual([...ACTIONS.map(a => a.icon), '✕'])
 
       for (const a of defs) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
+        await reselect(s, clock)
         await band.press({ key: a.id })
         if (a.kind === 'complete') {
           expect(s.models.length).toBe(before.models + 1)

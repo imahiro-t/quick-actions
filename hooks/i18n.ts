@@ -60,6 +60,8 @@ export type Messages = {
   emptyPane: string
   inlineHint: string
   quote: (text: string) => string
+  /** The hover label of the hint line's ✕ button. */
+  close: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -79,6 +81,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     emptyPane: 'テキストを選択して、プロンプト下のヒント行のアイコンを押してください。',
     inlineHint: 'ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。',
     quote: text => `「${text}」`,
+    close: '閉じる',
     languageName: 'Japanese',
     agentDescription: label => `選択テキストの${label}（selection-actions 専用）`,
   },
@@ -95,6 +98,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     emptyPane: 'Select some text, then press an icon on the hint line below the prompt.',
     inlineHint: 'Widen the terminal to 110 columns or more to show this pane on the right (in fullscreen).',
     quote: text => `"${text}"`,
+    close: 'Close',
     languageName: 'English',
     agentDescription: label => `${label} for the selected text (selection-actions only)`,
   },

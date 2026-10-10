@@ -13,6 +13,7 @@ declare module 'claude-code' {
   interface PluginState {
     'selection-actions': {
       selection: string | null
+      dismissed: string | null
       results: Result[]
     }
   }

@@ -24,7 +24,7 @@ There are two kinds of action, mixed in one row:
 4. An action not on the hint line is under the ⋯ at its end: it opens a dialog (so does `/quick-actions` without an ID)
    - The actions (built-in and valid custom ones) are listed in the hint line's order, as `[icon] label` or `<icon> label`. The list shows the first 64 of that order
    - When there are more, a line under the list says `N more: type in the filter to reach them`: type an ID or a name in the filter above the list to narrow it down, and pick one (Enter runs the first)
-   - Which ones fall past the first 64 follows the order. With a selection, the actions on the selection come before the context actions, apart from your pins and, the first time, the [default set](#actions). So the context actions you have not pinned, and the actions on the selection you use least (the first time, later ones such as `web-check`), are reached through the filter. The ones you use most and the pinned ones come first
+   - Which ones fall past the first 64 follows the order. With a selection, the actions on the selection come before the context actions, apart from your pins and, the first time, the [default set](#actions). So the context actions you have not pinned, the actions on the selection you use least (the first time, later ones such as `web-check`), and newly added custom actions on the selection (they follow the built-ins until used) are reached through the filter. The actions on the selection you use most, and the pinned ones of either kind, come first
    - In the mobile app, and with [`paneTheme`](#panetheme) set to `light` / `dark`, the dialog lists every action as buttons, with no such limit
    - Opened with nothing selected (`/quick-actions` without an ID, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context actions alone
    - ↑ / ↓ move, Enter runs, Esc closes it running nothing. A click picks too, and the Close button closes it
@@ -203,7 +203,7 @@ Like the other settings, a change in `/config` takes effect at once; after `clau
 
 ### `customActions`
 
-Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and the ⋯ dialog like a built-in; put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
+Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
 
 In `/config`, under `quick-actions`, enter the array on one line in `customActions`, for example:
 
@@ -294,7 +294,7 @@ The pane heads their results with the icon and label, followed by "this conversa
 
 ## Adding an action
 
-There are two ways: in the settings (`customActions`), which needs no change to the plugin, or in the source, for developers of the plugin. Either way the hint line, the ⋯ dialog, the pane and the command treat the action like a built-in: it joins the hint line (in the order of use) and the ⋯ dialog, and putting its ID in `actions` pins it to the front.
+There are two ways: in the settings (`customActions`), which needs no change to the plugin, or in the source, for developers of the plugin. Either way the hint line, the ⋯ dialog, the pane and the command treat the action like a built-in: it joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
 
 ### From the settings (customActions)
 
@@ -405,7 +405,7 @@ When the setting is not valid JSON, or not an array, every custom definition is 
 
 ### In the source (for developers)
 
-A built-in is one more definition in the `ACTIONS` array of `hooks/actions.ts`. The hint line, the pane and the runner (`hooks/register.tsx`) need no change. The action added joins the hint line (in the order of use) and the ⋯ dialog.
+A built-in is one more definition in the `ACTIONS` array of `hooks/actions.ts`. The hint line, the pane and the runner (`hooks/register.tsx`) need no change. The action added joins the hint line (in the order of use) and can be picked from the ⋯ dialog (while it is past the first 64 listed, type its ID or label in the filter).
 
 Common fields:
 

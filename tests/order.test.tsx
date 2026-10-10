@@ -5,7 +5,9 @@ import { ACTIONS, DEFAULT_ACTION_IDS, markedIcon } from '../hooks/actions'
 import {
   DEFAULT_HINT_COUNT,
   HALF_LIFE_MS,
+  arrange,
   decayed,
+  defaultsLead,
   orderActions,
   parseHintCount,
   parsePins,
@@ -128,6 +130,56 @@ test('orderActions: the score of an action that does not exist is ignored', () =
   expect(order).not.toContain('gone')
 })
 
+// ---------------------------------------------------------------------------
+// Laid out for the moment: arrange
+
+// Two of each kind, in a mixed order as orderActions might settle it.
+const MIXED = [
+  { id: 'ctx-a', target: 'context' as const },
+  { id: 'sel-a' },
+  { id: 'none-a', target: 'none' as const },
+  { id: 'sel-b', target: 'selection' as const },
+  { id: 'ctx-b', target: 'context' as const },
+  { id: 'none-b', target: 'none' as const },
+]
+
+test('arrange: with a selection, the actions on it first, then the others mixed, each in the order given', () => {
+  expect(ids(arrange(MIXED, [], true))).toEqual(['sel-a', 'sel-b', 'ctx-a', 'none-a', 'ctx-b', 'none-b'])
+})
+
+test('arrange: with none, the actions on the selection are left out', () => {
+  expect(ids(arrange(MIXED, [], false))).toEqual(['ctx-a', 'none-a', 'ctx-b', 'none-b'])
+})
+
+test('arrange: pins of any kind lead in their order; with no selection, the pinned actions on it are left out', () => {
+  const pins = [{ id: 'none-b' }, { id: 'sel-b' }, { id: 'ctx-b' }]
+  expect(ids(arrange(MIXED, pins, true))).toEqual(['none-b', 'sel-b', 'ctx-b', 'sel-a', 'ctx-a', 'none-a'])
+  expect(ids(arrange(MIXED, pins, false))).toEqual(['none-b', 'ctx-b', 'ctx-a', 'none-a'])
+  // A pin no action has is skipped.
+  expect(ids(arrange(MIXED, [{ id: 'gone' }], true))).toEqual(['sel-a', 'sel-b', 'ctx-a', 'none-a', 'ctx-b', 'none-b'])
+})
+
+test('arrange: the default set, when it leads, comes first, its actions on the selection before its others', () => {
+  const ordered = orderActions(ACTIONS, [], {}, NOW)
+  const defaults = DEFAULT_ACTION_IDS.map(id => ({ id }))
+  const withSelection = ids(arrange(ordered, [], true, defaults))
+  expect(withSelection.slice(0, 7)).toEqual(['explain', 'translate', 'summarize', 'code', 'recap', 'decisions', 'timer'])
+  // Then the rest, the actions on the selection first.
+  expect(withSelection.slice(7, 9)).toEqual(['translate-en', 'eli5'])
+  expect(withSelection).toHaveLength(ACTIONS.length)
+  expect(ids(arrange(ordered, [], false, defaults)).slice(0, 4)).toEqual(['recap', 'decisions', 'timer', 'todo'])
+  // As drawn on the hint line: [💡] [🌐] [📝] [🔎] <🧭> <✅>, and with no selection <🧭> <✅> {⏳}.
+  expect(arrange(ordered, [], true, defaults).slice(0, 6).map(markedIcon)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>'])
+  expect(arrange(ordered, [], false, defaults).slice(0, 3).map(markedIcon)).toEqual(['<🧭>', '<✅>', '{⏳}'])
+})
+
+test('defaultsLead: only with no pins and no usage of an action that exists', () => {
+  expect(defaultsLead(ACTIONS, [], {}, NOW)).toBe(true)
+  expect(defaultsLead(ACTIONS, [], { gone: at(5) }, NOW)).toBe(true)
+  expect(defaultsLead(ACTIONS, [], { why: at(1) }, NOW)).toBe(false)
+  expect(defaultsLead(ACTIONS, parsePins(ACTIONS, 'why'), {}, NOW)).toBe(false)
+})
+
 test('parseHintCount: a whole number of 1 or more, else 6', () => {
   expect(DEFAULT_HINT_COUNT).toBe(6)
   expect(parseHintCount(undefined)).toBe(6)
@@ -170,7 +222,7 @@ test('a broken store still shows the default order', async ($, on) => {
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await iconsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 })
 
 for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', ACTIONS.length], ['0', 6], ['many', 6]] as const) {

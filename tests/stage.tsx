@@ -1,6 +1,8 @@
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import type { ActionDef, ActionSpec } from '../hooks/actions'
+
 // Stands for the engine beneath the plugin in every test: records what the
 // plugin asks of the models and the agents and answers it.
 //
@@ -194,3 +196,7 @@ export async function reselect(s: Stage, clock: Clock) {
   s.selected = text
   await clock.advance(400)
 }
+
+/** A definition's prompt; undefined for a local action, which has none, or for no definition. */
+export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
+  def === undefined || def.kind === 'local' ? undefined : def.prompt

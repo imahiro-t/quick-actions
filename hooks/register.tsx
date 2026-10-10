@@ -4,21 +4,31 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Result } from '../types'
 import {
   ACTIONS,
+  DEFAULT_ACTION_IDS,
+  NO_INPUT,
   PLUGIN,
   READ_ONLY_TOOLS,
+  TICKER_LIMIT,
   findAction,
   isContext,
+  isStandalone,
   markedIcon,
   messageOf,
+  needsSelection,
   resolveAll,
   subagentType,
   wrap,
+  wrapInput,
 } from './actions'
-import type { ActionDef, ActionSpec, ResolvedSubagentAction } from './actions'
+import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from './actions'
+import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
+import type { ArgValue } from './args'
 import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
-import { USAGE_KEY, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
+import { localInputFor, runLocal, tickerStep } from './local'
+import type { Frame } from './local'
+import { USAGE_KEY, arrange, defaultsLead, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
@@ -47,6 +57,8 @@ const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
 const PICKER_SELECT_KEY = '_picker'
 const PICKER_CLOSE_KEY = '_picker-close'
+// The stop button of a run over time in the result pane, one per entry.
+const stopKey = (id: number) => `_stop-${id}`
 
 // The colours of the result pane and the ⋯ dialog (the `paneTheme` setting)
 // are worked out in ./palette, why they are as they are included. These two
@@ -133,14 +145,16 @@ async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
 }
 
 // A subagent answers later, through turn.complete; the others answer here.
-async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, id: number, text: string) {
+// `prompt` is its task with what it works on (the selection, or a standalone
+// action's argument, or nothing more).
+async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, id: number, prompt: string) {
   const t = MESSAGES[lang]
   try {
     await ensureAgent($, def)
     const spawned = await $.agent.spawn({
       subagentType: subagentType(def),
       description: def.label,
-      prompt: `${def.task}\n\n${wrap(text)}`,
+      prompt,
     })
     if (spawned.deny !== undefined || spawned.agentId === undefined) {
       await settle($, id, false, t.couldNotStart(spawned.deny ?? 'no agent id'))
@@ -171,48 +185,287 @@ function recordUsage($: EngineInterface, id: string): Promise<void> {
   return usageWrite
 }
 
-// Every way an action runs (an icon, the ⋯ dialog, the command) comes here.
-// `text` is the selected text a selection action runs on; a context action
-// runs on the conversation and reads none. Any run closes the hint line that
-// `/quick-actions hint` opened.
-async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
+// The local offset and the time zone's label, read here alone: a local
+// action's compute is handed them (see LocalInput), never the globals.
+const utcOffsetMinutes = (ms: number) => -new Date(ms).getTimezoneOffset()
+
+/** The time zone's name, or `UTC+09:00` when Intl cannot tell (or there is no Intl). */
+function timeZoneLabel(now: number): string {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (typeof zone === 'string' && zone !== '') return zone
+  } catch {
+    // No Intl here: the offset stands in.
+  }
+  return utcLabel(utcOffsetMinutes(now))
+}
+
+/** `n` random bytes from crypto, or from Math.random where crypto cannot give them. */
+function randomBytes(n: number): Uint8Array {
+  const bytes = new Uint8Array(Math.max(0, Math.floor(n)))
+  try {
+    // getRandomValues fills at most 65,536 bytes a call.
+    for (let i = 0; i < bytes.length; i += 65_536) crypto.getRandomValues(bytes.subarray(i, i + 65_536))
+  } catch {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  return bytes
+}
+
+/** A number in [0, 1) from four random bytes. */
+const random = () => {
+  const [a = 0, b = 0, c = 0, d = 0] = randomBytes(4)
+  return ((a << 24) >>> 0 | (b << 16) | (c << 8) | d) / 2 ** 32
+}
+
+// The runs over time going on now, by their entry's ID: how to stop the
+// period, when it started, and the text last shown. A reload cancels the
+// periods of the old module (the engine does) and starts with none: an entry
+// left running is then drawn as stopped (see the pane).
+type Ticker = { cancel: () => void; startedAt: number; lastText: string | undefined }
+const tickers = new Map<number, Ticker>()
+
+/** Ends the run of entry `id`, if one goes on: its period cancelled, out of the map. Whether there was one. */
+function endTicker(id: number): boolean {
+  const ticker = tickers.get(id)
+  if (ticker === undefined) return false
+  tickers.delete(id)
+  ticker.cancel()
+  return true
+}
+
+/**
+ * Stops the run of entry `id` (its stop button, the pane closing): the entry
+ * is done, saying how long it ran. No toast: the person stopped it.
+ */
+async function stopTicker($: EngineInterface, lang: Lang, id: number) {
+  const ticker = tickers.get(id)
+  if (ticker === undefined || !endTicker(id)) return
+  const now = (await readQuietly($.clock.now())) ?? ticker.startedAt
+  await settle($, id, true, MESSAGES[lang].tickerStopped(formatClock(now - ticker.startedAt)))
+}
+
+/** Writes the entry's text while it runs. */
+async function showFrame($: EngineInterface, id: number, text: string) {
+  await update($, results, list => list.map(r => (r.id === id ? { ...r, ticker: true as const, text } : r)))
+}
+
+/** Tells the person a run is done; a toast that fails is let go. */
+function finishedToast($: EngineInterface, text: string) {
+  void Promise.resolve()
+    .then(() => $.ui.toast(text))
+    .catch(() => {
+      // The pane says it is done.
+    })
+}
+
+/** One period of the run of entry `id`: what tickerStep says, done through `$`. */
+async function tick($: EngineInterface, lang: Lang, id: number, label: string, frame: Frame) {
+  const ticker = tickers.get(id)
+  if (ticker === undefined) return
+  const now = await readQuietly($.clock.now())
+  // Stopped meanwhile, or no time to show it at.
+  if (now === undefined || tickers.get(id) !== ticker) return
+  await applyStep($, lang, id, label, ticker, tickerStep(frame, { startedAt: ticker.startedAt, now, lastText: ticker.lastText }), now)
+}
+
+async function applyStep(
+  $: EngineInterface,
+  lang: Lang,
+  id: number,
+  label: string,
+  ticker: Ticker,
+  step: ReturnType<typeof tickerStep>,
+  now: number,
+) {
   const t = MESSAGES[lang]
-  const context = isContext(def)
+  switch (step.kind) {
+    case 'same':
+      return
+    case 'show':
+      ticker.lastText = step.text
+      await showFrame($, id, step.text)
+      return
+    case 'done':
+      endTicker(id)
+      await settle($, id, true, step.text)
+      finishedToast($, step.toast ?? t.tickerFinishedToast(label))
+      return
+    case 'limit':
+      endTicker(id)
+      await settle($, id, true, t.tickerStopped(formatClock(now - ticker.startedAt)))
+      return
+    case 'failed':
+      endTicker(id)
+      await settle($, id, false, t.failed(step.reason))
+  }
+}
+
+/** Starts a run over time on entry `id`: its first frame now, then one every `intervalMs`. */
+async function startTicker($: EngineInterface, lang: Lang, id: number, label: string, now: number, run: { intervalMs: number; frame: Frame }) {
+  const t = MESSAGES[lang]
+  if (tickers.size >= TICKER_LIMIT) {
+    await settle($, id, false, t.tickerLimit(TICKER_LIMIT))
+    return
+  }
+  const ticker: Ticker = { cancel: () => {}, startedAt: now, lastText: undefined }
+  tickers.set(id, ticker)
+  try {
+    const period = $.clock.every(run.intervalMs, () => {
+      void tick($, lang, id, label, run.frame)
+    })
+    ticker.cancel = () => period.cancel()
+    // Stopped before the period was set (the pane closed meanwhile): stop it too.
+    if (tickers.get(id) !== ticker) period.cancel()
+  } catch (err) {
+    endTicker(id)
+    await settle($, id, false, t.failed(messageOf(err)))
+    return
+  }
+  await applyStep($, lang, id, label, ticker, tickerStep(run.frame, { startedAt: now, now, lastText: undefined }), now)
+}
+
+/**
+ * A local action on entry `id`: its compute on the text (an action on the
+ * selection) or the argument (a standalone one), what comes of it decided by
+ * runLocal. Only the time, the zone, the offset and the randomness are read here.
+ */
+async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, id: number, src: { text?: string; arg?: ArgValue }) {
+  const t = MESSAGES[lang]
+  let now: number
+  try {
+    now = await $.clock.now()
+  } catch (err) {
+    await settle($, id, false, t.failed(messageOf(err)))
+    return
+  }
+  const input = localInputFor(def, { ...src, now, timeZone: timeZoneLabel(now), lang, utcOffsetMinutes, random, randomBytes })
+  const outcome = runLocal(def, input, { selection: needsSelection(def), lang })
+  if (outcome.kind === 'settle') {
+    await settle($, id, outcome.ok, outcome.text)
+    return
+  }
+  await startTicker($, lang, id, def.label, now, outcome)
+}
+
+/** What a new entry says it ran on. */
+type EntryHead = Pick<Result, 'target' | 'quote' | 'arg'>
+
+/**
+ * What every run does first, whatever it runs on: one more use of the action,
+ * the hint line `/quick-actions hint` opened closed, a new entry (running) at
+ * the top of the pane, the pane open and brought back to its top. An entry
+ * pushed out past KEEP stops its run over time, if it has one. The new entry's ID.
+ */
+async function begin($: EngineInterface, def: ActionDef, head: EntryHead): Promise<number> {
   // Not awaited: the score must not hold up the answer.
   void recordUsage($, def.id)
   await update($, hint, () => null)
   const id = nextId++
-  const result: Result = { id, action: def.id, quote: context ? '' : quoteOf(text), status: 'running', text: '' }
+  const result: Result = { id, action: def.id, ...head, status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
+  if (tickers.size > 0) {
+    const kept = new Set((await read($, results)).map(r => r.id))
+    for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
+  }
   await $.ui.open({ id: PANE, title: PANE_TITLE, columns: PANE_COLUMNS })
   // Back to the top, where this newest result is drawn (see ./scroll).
   await settleQuietly($.ui.scroll(toLatest(PANE)))
+  return id
+}
 
-  if (def.kind === 'subagent') {
-    await startSubagent($, def, lang, id, text)
-    return
-  }
-
+/** A model call on entry `id`, settled with its answer or why there is none. */
+type ModelAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string }
+async function complete($: EngineInterface, lang: Lang, id: number, call: () => Promise<ModelAnswer>) {
+  const t = MESSAGES[lang]
   try {
-    const r =
-      def.kind === 'fork'
-        ? await $.model.fork({
-            prompt: context ? `${def.prompt} ${answerStyle(lang)}` : `${wrap(text)}\n\n${def.prompt} ${answerStyle(lang)}`,
-          })
-        : await $.model.complete({
-            model: def.model,
-            system: def.prompt,
-            prompt: wrap(text),
-            effort: 'low',
-            maxTokens: def.maxTokens ?? 1500,
-            timeoutMs: 60_000,
-          })
-
+    const r = await call()
     await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : t.noAnswer(r.reason))
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(messageOf(err)))
   }
+}
+
+// Every way an action on the selection or the conversation runs (an icon, the
+// ⋯ dialog, the command) comes here. `text` is the selected text a selection
+// action runs on; a context action runs on the conversation and reads none.
+// Any run closes the hint line that `/quick-actions hint` opened. A
+// standalone action runs through runStandalone instead, which takes no text.
+async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
+  const context = isContext(def)
+  const id = await begin($, def, context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text) })
+
+  if (def.kind === 'local') {
+    await runLocalAction($, def, lang, id, { text })
+    return
+  }
+  if (def.kind === 'subagent') {
+    await startSubagent($, def, lang, id, `${def.task}\n\n${wrap(text)}`)
+    return
+  }
+  await complete($, lang, id, () =>
+    def.kind === 'fork'
+      ? $.model.fork({
+          prompt: context ? `${def.prompt} ${answerStyle(lang)}` : `${wrap(text)}\n\n${def.prompt} ${answerStyle(lang)}`,
+        })
+      : $.model.complete({
+          model: def.model,
+          system: def.prompt,
+          prompt: wrap(text),
+          effort: 'low',
+          maxTokens: def.maxTokens ?? 1500,
+          timeoutMs: 60_000,
+        }),
+  )
+}
+
+/**
+ * A standalone action: on neither the selection nor the conversation, so it
+ * takes no text, only its argument as the command gave it (undefined: none,
+ * its default then). The command checks the argument before it gets here.
+ */
+async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, arg?: string) {
+  const t = MESSAGES[lang]
+  const given = arg?.trim() || undefined
+  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given) }) })
+
+  let value: ArgValue | undefined
+  if (def.kind !== 'fork' && def.arg !== undefined) {
+    const now = (await readQuietly($.clock.now())) ?? 0
+    const parsed = parseArg(def.arg, given, { now, utcOffsetMinutes })
+    if (!parsed.ok) {
+      await settle($, id, false, t.invalidArg(def.id, given ?? '', def.arg.hint))
+      return
+    }
+    value = parsed.value
+  }
+
+  if (def.kind === 'local') {
+    await runLocalAction($, def, lang, id, value === undefined ? {} : { arg: value })
+    return
+  }
+  // A model is sent the instructions and the argument alone, as text.
+  const input = value === undefined ? undefined : String(value)
+  if (def.kind === 'subagent') {
+    await startSubagent($, def, lang, id, input === undefined ? def.task : `${def.task}\n\n${wrapInput(input)}`)
+    return
+  }
+  if (def.kind === 'fork') {
+    // Never defined (a fork carries the conversation); not run should one be.
+    await settle($, id, false, t.failed('fork'))
+    return
+  }
+  await complete($, lang, id, () =>
+    $.model.complete({
+      model: def.model,
+      system: def.prompt,
+      prompt: input === undefined ? NO_INPUT : wrapInput(input),
+      effort: 'low',
+      maxTokens: def.maxTokens ?? 1500,
+      timeoutMs: 60_000,
+    }),
+  )
 }
 
 /** The text selected now, trimmed; undefined (and a toast saying so) when there is none. */
@@ -251,26 +504,31 @@ async function selectionNow($: EngineInterface): Promise<string | null> {
 }
 
 /** The order of `specs` (every action of this load) by ID, `pins` first, from the usage scores as they stand now. Never rejects. */
-async function computeOrder($: EngineInterface, specs: readonly ActionSpec[], pins: readonly ActionSpec[]): Promise<readonly string[]> {
+async function computeOrder($: EngineInterface, load: OrderLoad): Promise<readonly string[]> {
   // An unreadable store counts as no usage: the actions still show.
   const usage = parseUsage(await readQuietly($.store.get(USAGE_KEY)))
   const now = (await readQuietly($.clock.now())) ?? 0
-  return orderActions(specs, pins, usage, now).map(a => a.id)
+  // Settled with the order, once: whether the default set leads it (see arrange).
+  load.defaults = defaultsLead(load.specs, load.pins, usage, now) ? DEFAULT_ACTION_IDS.map(id => ({ id })) : []
+  return orderActions(load.specs, load.pins, usage, now).map(a => a.id)
 }
 
-/** What one load orders: every action of it, its pins, and where its settled order is kept. */
-type OrderLoad = { specs: readonly ActionSpec[]; pins: readonly ActionSpec[]; slot: OrderSlot }
+/**
+ * What one load orders: every action of it, its pins, where its settled order
+ * is kept, and the default set when that leads it (set as the order settles).
+ */
+type OrderLoad = { specs: readonly ActionSpec[]; pins: readonly ActionSpec[]; slot: OrderSlot; defaults: readonly { id: string }[] }
 
 /** The settled order of `load`'s actions by ID, computed the first time it is asked for. Never rejects. */
 async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonly string[]> {
-  return settleIn(load.slot, () => computeOrder($, load.specs, load.pins))
+  return settleIn(load.slot, () => computeOrder($, load))
 }
 
 /**
  * Opens the ⋯ dialog on `text` (null: none), or, left out, on the text
  * selected now. The text is kept in `picking` as it opens, so a pick runs on
  * it however the selection changes meanwhile. With no text, the dialog lists
- * the context actions alone.
+ * the context and standalone actions alone.
  */
 async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
   const picked = text === undefined ? await selectionNow($) : text
@@ -299,6 +557,12 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) 
   const text = (await read($, picking))?.text ?? null
   await closePicker($)
   if (def === undefined) return
+  // Standalone: run with no argument, the held text neither sent nor needed.
+  if (isStandalone(def)) {
+    if (text !== null) await update($, dismissed, () => text)
+    await runStandalone($, def, lang)
+    return
+  }
   if (isContext(def)) {
     if (text !== null) await update($, dismissed, () => text)
     await runOnConversation($, def, lang)
@@ -322,15 +586,15 @@ export const register: Register = (on, options) => {
   // The pins and the count alone are read here: they do not depend on the language.
   const pins = parsePins(allSpecs, options.actions)
   const hintCount = parseHintCount(options.hintCount)
-  // Tall enough for every action in the ⋯ dialog, its notice and its button.
-  const pickerRows = allSpecs.length + 4
+  // Tall enough for every action in the ⋯ dialog, its notice, its legend and its button.
+  const pickerRows = allSpecs.length + 5
 
   // The order of every action, settled once per load: at session start, or by
   // whichever hook needs it first. Uses during the session do not move it, so
   // an icon stays where the person reaches for it. Kept with this load, not in
   // the module: a settling an earlier load started (with its own definitions)
   // may finish after a reload, and must not become this load's order.
-  const orderLoad: OrderLoad = { specs: allSpecs, pins, slot: {} }
+  const orderLoad: OrderLoad = { specs: allSpecs, pins, slot: {}, defaults: [] }
 
   // Kept here, with this load's settings, rather than in a module-level cache
   // like actionsFor's: the custom definitions change with the setting, and
@@ -347,6 +611,9 @@ export const register: Register = (on, options) => {
   // The pane's colours: Claude Code's theme (auto), or a fixed palette.
   const paneTheme = parsePaneTheme(options.paneTheme)
 
+  // The runs over time of an earlier load were cancelled with it.
+  tickers.clear()
+
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
@@ -358,7 +625,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: COMMAND,
       description: MESSAGES[l].commandDescription,
-      argumentHint: `[action-id | ${HINT_ARG}]`,
+      argumentHint: MESSAGES[l].argumentHint,
       immediate: true,
     })
 
@@ -435,15 +702,19 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const defs = defsFor(l)
-    const wanted = e.args.trim().toLowerCase()
-    // Without an ID: the ⋯ dialog, on the text selected now (with none, the context actions).
+    // The ID (lowercased) and, after the first space, its argument (as written).
+    const { id: wanted, arg } = splitCommandArgs(e.args)
+    // Without an ID: the ⋯ dialog, on the text selected now (with none, the context and standalone actions).
     if (wanted === '') {
       await openPicker($, l, pickerRows)
       return { text: withProblems(t.pickerOpened, problems, l) }
     }
+    // An argument nothing takes: told, and nothing runs (no pane, no use counted).
+    const refuse = (id: string, given: string) => ({ text: withProblems(t.argsNotAccepted(id, given), problems, l) })
     // `hint`: the hint line, on the text selected now, held here while the
     // engine still answers it (see the poll in session.start).
     if (wanted === HINT_ARG) {
+      if (arg !== undefined) return refuse(wanted, arg)
       const held = await selectionNow($)
       await update($, hint, () => ({ text: held, armed: false }))
       await update($, dismissed, () => null)
@@ -460,7 +731,21 @@ export const register: Register = (on, options) => {
         ignored === undefined ? t.unknownId(wanted, defs.map(a => a.id)) : t.customIgnoredId(wanted, reasonText(ignored.reason, l))
       return { text: withProblems(text, problems, l) }
     }
-    if (isContext(def)) await runOnConversation($, def, l)
+    if (isStandalone(def)) {
+      if (arg !== undefined) {
+        if (def.kind === 'fork' || def.arg === undefined) return refuse(def.id, arg)
+        const now = (await readQuietly($.clock.now())) ?? 0
+        if (!parseArg(def.arg, arg, { now, utcOffsetMinutes }).ok) {
+          return { text: withProblems(t.invalidArg(def.id, arg, def.arg.hint), problems, l) }
+        }
+      }
+      // A selection there now is not used: its icons go, as after a press.
+      const current = await selectionNow($)
+      if (current !== null) await update($, dismissed, () => current)
+      await runStandalone($, def, l, arg)
+    } else if (arg !== undefined) {
+      return refuse(def.id, arg)
+    } else if (isContext(def)) await runOnConversation($, def, l)
     else if (!(await runOnSelection($, def, l))) return { text: withProblems(t.noSelection, problems, l) }
 
     return { text: withProblems(t.showing(PANE_TITLE, def.label), problems, l) }
@@ -469,9 +754,9 @@ export const register: Register = (on, options) => {
   // The icons take the hint line under the prompt, a row that is always there:
   // a band above the prompt would add a row mid-drag and shift the transcript.
   //
-  // Shown on the text selected now, both kinds of action; else, while
-  // `/quick-actions hint` holds it open, on the text it held (both kinds) or,
-  // with none, the context actions alone.
+  // Shown on the text selected now, every kind of action (those on it first,
+  // see arrange); else, while `/quick-actions hint` holds it open, on the text
+  // it held (every kind) or, with none, the context and standalone actions alone.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
     const selected = await read($, selection)
@@ -485,13 +770,17 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     // The first hintCount in the order, of the kinds that apply; pins beyond it too wait under ⋯.
     const ordered = inOrder(await ensureOrder($, orderLoad), l)
-    const enabled = (text === null ? ordered.filter(isContext) : ordered).slice(0, hintCount)
+    const enabled = arrange(ordered, pins, text !== null, orderLoad.defaults).slice(0, hintCount)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     // A press puts this line away, whichever kind it runs: the selection's
     // icons (dismissed) and the line `hint` opened.
     const press = async (a: ActionDef) => {
-      if (isContext(a)) {
+      // Standalone: run with no argument; the selection (or held text) is not sent.
+      if (isStandalone(a)) {
+        if (current !== null) await update($, dismissed, () => current)
+        await runStandalone($, a, l)
+      } else if (isContext(a)) {
         if (current !== null) await update($, dismissed, () => current)
         await runOnConversation($, a, l)
       } else if (current !== null) {
@@ -547,8 +836,9 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The ⋯ dialog: every action, in the hint line's order, as "[icon] label" or
-  // "<icon> label"; opened with no text, the context actions alone.
+  // The ⋯ dialog: every action, in the hint line's order, as "[icon] label",
+  // "<icon> label" or "{icon} label" under a legend of the marks; opened with
+  // no text, the context and standalone actions alone.
   // Opened with focus, a Select takes the keys (arrows move, Enter runs);
   // Escape closes it through closeOnEscape. Focus is a request the engine
   // refuses while the composer holds text: then a line says how to get the
@@ -559,7 +849,8 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     const state = await read($, picking)
     const all = inOrder(await ensureOrder($, orderLoad), l)
-    const ordered = state?.text === null ? all.filter(isContext) : all
+    const hasSelection = state !== null && state.text !== null
+    const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     // The mobile app draws no Select (though its table names one): there the
@@ -576,6 +867,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
+        {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
         {state === null ? (
           <Text {...muted(style)}>{t.noSelection}</Text>
         ) : Select !== undefined ? (
@@ -623,13 +915,58 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The person closed the result pane: every run over time stops with it, its
+  // entry done and saying how long it ran. The plugin never closes this pane
+  // itself, so this is the only close to follow.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    if (tickers.size > 0) {
+      // Every period is cancelled first, so none runs on whatever else fails.
+      const stopping = [...tickers.entries()]
+      try {
+        const l = await ensureLanguage($)
+        await Promise.all(stopping.map(([id]) => stopTicker($, l, id)))
+      } catch {
+        // The entries may stay drawn as running; the pane shows them stopped (no timer behind them).
+      } finally {
+        for (const [id] of stopping) endTicker(id)
+      }
+    }
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const defs = defsFor(l)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
+    const fixed = style.background !== undefined
+    /** What the entry's heading says it ran on. */
+    const onWhat = (r: Result) => {
+      const target = r.target ?? (r.quote === '' ? 'context' : 'selection')
+      if (target === 'context') return t.onConversation
+      if (target === 'none') return r.arg === undefined ? t.standalone : t.quote(r.arg)
+      return t.quote(r.quote)
+    }
+    /** A running entry: its frame and stop button while it runs over time, stopped once its run is gone (a reload), else the running text. */
+    const running = (r: Result, def: ActionDef | undefined) => {
+      if (r.ticker !== true) return <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
+      if (!tickers.has(r.id)) return <Text {...muted(style)}>{t.tickerStopped()}</Text>
+      const stop = { label: t.stop, onPress: () => stopTicker($, l, r.id) }
+      return (
+        <Box flexDirection="column">
+          <Text color={style.body}>{r.text}</Text>
+          {fixed ? (
+            <Button key={stopKey(r.id)} {...stop}>
+              <Text color={style.muted}>{t.stop}</Text>
+            </Button>
+          ) : (
+            <Button key={stopKey(r.id)} {...stop} />
+          )}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" {...painted(style)}>
@@ -653,10 +990,10 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginBottom={1}>
               <Text bold color={style.heading}>
                 {def?.icon ?? '•'} {def?.label ?? r.action}{' '}
-                <Text {...muted(style)}>{r.quote === '' ? t.onConversation : t.quote(r.quote)}</Text>
+                <Text {...muted(style)}>{onWhat(r)}</Text>
               </Text>
               {r.status === 'running' ? (
-                <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
+                running(r, def)
               ) : (
                 <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}

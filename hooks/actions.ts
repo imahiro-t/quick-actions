@@ -9,6 +9,8 @@
 // `runningText`, `description` as `{ ja, en }`); `actionsFor(lang)` hands out
 // the definitions with those resolved, which is all the rest of the module sees.
 
+import { formatClock } from './args'
+import type { ArgSpec, ArgValue } from './args'
 import { MESSAGES, answerStyle } from './i18n'
 import type { Lang, Localized } from './i18n'
 
@@ -23,28 +25,38 @@ type ActionBase<T> = {
   runningText?: T
   /**
    * What the action works on: the selected text (`selection`, the default when
-   * left out) or the conversation itself (`context`, a fork with no selection).
+   * left out), the conversation itself (`context`, a fork with no selection),
+   * or neither (`none`, a standalone action: its argument alone, if any).
    */
   target?: Target
 }
 
 /** What an action works on: see ActionBase's `target`. */
-export type Target = 'selection' | 'context'
+export type Target = 'selection' | 'context' | 'none'
 
-/** One model call on its own: `prompt` is the system prompt, the selection the user turn. */
+/**
+ * One model call on its own: `prompt` is the system prompt, the selection the
+ * user turn; for a standalone action (`target: 'none'`), its argument in
+ * `<input>` or NO_INPUT. `arg` (a standalone action's only, of type `text`)
+ * is the argument it takes.
+ */
 export type CompleteAction<T = string> = ActionBase<T> & {
   kind: 'complete'
+  target?: 'selection' | 'none'
   model: string
   prompt: string
   maxTokens?: number
+  arg?: ArgSpec<T>
 }
 
 /**
  * A fork of the session, so the answer knows the conversation: `prompt` follows
  * the selection, or stands alone for a context action (`target: 'context'`).
+ * Never standalone: a fork carries the conversation.
  */
 export type ForkAction<T = string> = ActionBase<T> & {
   kind: 'fork'
+  target?: 'selection' | 'context'
   prompt: string
 }
 
@@ -54,6 +66,9 @@ export type ContextAction<T = string> = ForkAction<T> & { target: 'context' }
 /** A subagent of its own: `prompt` is its system prompt, `task` opens the request it is spawned with. */
 export type SubagentAction<T = string> = ActionBase<T> & {
   kind: 'subagent'
+  target?: 'selection' | 'none'
+  /** A standalone subagent's argument (of type `text`), added to its task in `<input>`. */
+  arg?: ArgSpec<T>
   model: string
   prompt: string
   task: string
@@ -63,14 +78,71 @@ export type SubagentAction<T = string> = ActionBase<T> & {
   tools?: readonly string[]
 }
 
+/**
+ * What a local action's `compute` is handed. `text` is the selected text
+ * (trimmed) for an action on the selection, undefined for a standalone one;
+ * `arg` the parsed argument (its default applied) of a standalone one. The
+ * time, the time zone's label, the local offset and the randomness come from
+ * here, never from the globals, so a test fixes them.
+ */
+export type LocalInput = {
+  text: string | undefined
+  arg: ArgValue | undefined
+  /** ms since the epoch, as $.clock.now() answered. */
+  now: number
+  /** The time zone's name (Asia/Tokyo), or `UTC+09:00` when it cannot be known. For display alone. */
+  timeZone: string
+  lang: Lang
+  /** The local offset from UTC at a time, in minutes (east positive). */
+  utcOffsetMinutes: (ms: number) => number
+  /** A number in [0, 1). */
+  random: () => number
+  /** `n` random bytes. */
+  randomBytes: (n: number) => Uint8Array
+}
+
+/** One frame of a run over time: the text to show, and whether it is over (`toast`: what to say then, else the generic one). */
+export type TickerFrame = { text: string; done: boolean; toast?: string }
+
+/**
+ * What `compute` answers: a result at once, an error to show as a failure, or
+ * a run over time (a standalone action's only): `frame` is asked every
+ * `intervalMs` (250 at least) for what to show, until it says it is done.
+ */
+export type LocalOutput =
+  | { text: string }
+  | { error: string }
+  | { ticker: { intervalMs: number; frame: (now: number) => TickerFrame } }
+
+/**
+ * Run in the module, with no model: a built-in alone (no custom action can be
+ * local). On the selection (`target` left out), it gets the selected text and
+ * takes no argument; standalone (`target: 'none'`), its argument.
+ *
+ * `compute` is synchronous and pure. The hooks module has no DOM and no Node,
+ * so it uses ECMAScript's built-ins and the synchronous web APIs alone
+ * (TextEncoder / TextDecoder, atob / btoa, URL, structuredClone), and never `$`,
+ * Node modules, Buffer, crypto.subtle (it answers a promise), Intl,
+ * localeCompare or toLocale*String (their answers vary by machine), nor
+ * Date.now(), Math.random() or crypto's random functions: the time and the
+ * randomness come in LocalInput. It never reaches the network, a file, a
+ * shell, the store or a model, and it returns no promise.
+ */
+export type LocalAction<T = string> = ActionBase<T> & {
+  kind: 'local'
+  target?: 'none'
+  arg?: ArgSpec<T>
+  compute: (input: LocalInput) => LocalOutput
+}
+
 /** A subagent definition resolved for one language: its description is always filled in (see resolveSpec). */
 export type ResolvedSubagentAction = SubagentAction & { description: string }
 
 /** A definition with its texts resolved for one language: what the hint line, the pane and the runner use. */
-export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction
+export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction | LocalAction
 
 /** A definition as written in ACTIONS, its texts in both languages. */
-export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized>
+export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized> | LocalAction<Localized>
 
 export const PLUGIN = 'quick-actions'
 
@@ -89,14 +161,40 @@ export const WEB_TOOLS: readonly string[] = ['WebFetch', 'WebSearch']
 
 export const wrap = (text: string) => `<selected>\n${text}\n</selected>`
 
+/** A standalone action's argument, as the model is given it. */
+export const wrapInput = (arg: string) => `<input>\n${arg}\n</input>`
+
+/** The user turn of a standalone complete action run with no argument (in English: STYLE sets the answer's language). */
+export const NO_INPUT = 'There is no input; follow the instructions alone.'
+
+/** The longest result a local action shows, in characters; the rest is cut. */
+export const LOCAL_TEXT_LIMIT = 20_000
+
+/** The shortest period a run over time is asked for its frame at. */
+export const TICKER_MIN_INTERVAL_MS = 250
+
+/** The longest a run over time goes on (24 hours): then it stops. */
+export const TICKER_MAX_MS = 24 * 60 * 60 * 1000
+
+/** How many runs over time may go on at once, of any action. */
+export const TICKER_LIMIT = 5
+
 /** Whether the action works on the conversation rather than on selected text. */
 export const isContext = (def: { target?: Target }) => def.target === 'context'
 
+/** Whether the action is standalone: on neither the selection nor the conversation. */
+export const isStandalone = (def: { target?: Target }) => def.target === 'none'
+
+/** Whether the action works on selected text (the default when `target` is left out). */
+export const needsSelection = (def: { target?: Target }) => !isContext(def) && !isStandalone(def)
+
 /**
  * The icon as the hint line and the ⋯ dialog draw it: `[icon]` for an action on
- * the selection, `<icon>` for one on the conversation, so the two read apart.
+ * the selection, `<icon>` for one on the conversation, `{icon}` for a
+ * standalone one, so the kinds read apart.
  */
-export const markedIcon = (def: { icon: string; target?: Target }) => (isContext(def) ? `<${def.icon}>` : `[${def.icon}]`)
+export const markedIcon = (def: { icon: string; target?: Target }) =>
+  isContext(def) ? `<${def.icon}>` : isStandalone(def) ? `{${def.icon}}` : `[${def.icon}]`
 
 // What a failure shows after its label: an Error's String() would repeat
 // "Error: " there, so an Error gives its message; anything else, String().
@@ -134,26 +232,65 @@ export const localizePrompt = (prompt: string, lang: Lang) =>
 export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   const label = spec.label[lang]
   const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
+  if (spec.kind === 'local') {
+    // No prompt: `compute` is handed on as it is.
+    const { label: _l, runningText: _r, arg, ...rest } = spec
+    return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }) }
+  }
   const prompt = localizePrompt(spec.prompt, lang)
   if (spec.kind === 'subagent') {
-    const { label: _l, runningText: _r, description, ...rest } = spec
+    const { label: _l, runningText: _r, description, arg, ...rest } = spec
     return {
       ...rest,
       ...texts,
+      ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }),
       prompt,
       task: localizePrompt(spec.task, lang),
       description: description?.[lang] ?? MESSAGES[lang].agentDescription(label),
     }
   }
-  // complete and fork carry no other text to resolve.
+  if (spec.kind === 'complete') {
+    const { label: _l, runningText: _r, arg, ...rest } = spec
+    return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }), prompt }
+  }
+  // A fork carries no other text to resolve.
   const { label: _l, runningText: _r, ...rest } = spec
   return { ...rest, ...texts, prompt }
+}
+
+const TIMER_LABEL: Localized = { ja: 'タイマー', en: 'Timer' }
+
+/** The timer's default and fallback: 25 minutes. */
+export const TIMER_DEFAULT_MS = 25 * 60 * 1000
+
+/**
+ * The timer: counts down from its argument (25 minutes by default) once a
+ * second, the time left as `mm:ss` (`h:mm:ss` from an hour on, rounded up to
+ * the second), and is done when it reaches zero.
+ */
+export const timerCompute = ({ arg, now, lang }: LocalInput): LocalOutput => {
+  const duration = typeof arg === 'number' && arg > 0 ? arg : TIMER_DEFAULT_MS
+  const end = now + duration
+  const t = MESSAGES[lang]
+  const total = formatClock(duration)
+  return {
+    ticker: {
+      intervalMs: 1000,
+      frame: at => {
+        const left = end - at
+        if (left <= 0) {
+          return { text: `⏳ ${total} ${t.tickerDone}`, done: true, toast: t.timerFinishedToast(TIMER_LABEL[lang], total) }
+        }
+        return { text: t.timerLeft(formatClock(Math.ceil(left / 1000) * 1000)), done: false }
+      },
+    },
+  }
 }
 
 // The order of definition the hint line and the ⋯ dialog fall back to for
 // actions not pinned and not used: the actions on the selection, in the order
 // of their purpose (translation, meaning, summary, then evidence), then the
-// context actions on the conversation.
+// context actions on the conversation, then the standalone ones.
 export const ACTIONS: readonly ActionSpec[] = [
   {
     id: 'translate',
@@ -423,13 +560,34 @@ export const ACTIONS: readonly ActionSpec[] = [
       ),
     },
   ].map(contextAction),
+
+  // Standalone actions: neither the selection nor the conversation, their
+  // argument alone (from the command; with none, the default), after the
+  // context actions.
+  {
+    id: 'timer',
+    icon: '⏳',
+    label: TIMER_LABEL,
+    kind: 'local',
+    target: 'none',
+    arg: {
+      type: 'duration',
+      default: '25m',
+      hint: {
+        ja: '時間（1 秒〜24 時間。例: 25m, 90s, 1h30m, 5:00。省くと 25 分）',
+        en: 'a duration from 1 second to 24 hours, e.g. 25m, 90s, 1h30m, 5:00; 25 minutes when left out',
+      },
+    },
+    compute: timerCompute,
+  },
 ]
 
 /**
  * What leads the hint line until the person has used any action and pins
- * none (see ./order): one per purpose, meaning first, the two kinds in turn.
+ * none (see ./order): one per purpose, meaning first, the kinds in turn.
+ * Which of them show depends on the selection (see arrange in ./order).
  */
-export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'recap', 'translate', 'decisions', 'summarize', 'code']
+export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'recap', 'translate', 'decisions', 'summarize', 'code', 'timer']
 
 /** The action a pane entry or a command names, if it is defined. */
 export const findAction = <D extends { id: string }>(defs: readonly D[], id: string): D | undefined =>

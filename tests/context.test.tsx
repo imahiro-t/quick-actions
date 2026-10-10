@@ -53,7 +53,7 @@ async function openHint($: Engine, s: Stage, clock: Clock) {
 // The definitions
 
 test('eleven built-in context actions, as the ticket names them, in both languages', () => {
-  const context = ACTIONS.filter(isContext)
+  const context = ACTIONS.filter(isContext).flatMap(a => (a.kind === 'fork' ? [a] : []))
   expect(context.map(a => a.id)).toEqual(CONTEXT.map(c => c.id))
   for (const [i, a] of context.entries()) {
     expect(a.icon).toBe(CONTEXT[i]!.icon)
@@ -97,8 +97,8 @@ for (const surface of SURFACES) {
     const r = await openHint($, s, clock)
     expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
     const labels = await labelsOf($, surface)
-    // The default set's context actions first, then the rest in the order of definition; six in all.
-    expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+    // The default set's context and standalone actions first, then the rest in the order of definition; six in all.
+    expect(labels).toEqual(['<🧭>', '<✅>', '{⏳}', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
 
     const band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'close' })
@@ -118,7 +118,7 @@ test('with text selected, /quick-actions hint keeps both kinds though the comman
 
   await openHint($, s, clock)
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 
   // An action on the selection runs on the text held as the command ran, and the line closes.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -139,7 +139,7 @@ test('a selection made after /quick-actions hint arms it: that selection going c
 
   s.selected = 'exit 137'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)
@@ -161,7 +161,7 @@ test('the selection held as the command ran, seen late by the poll, does not arm
   s.selected = null
   await clock.advance(400)
   // Its going closes nothing: the line stays, on the text it held.
-  expect(await labelsOf($)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'summarize' })
   await band.unmount()
@@ -184,6 +184,7 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     await clock.settle()
 
     const recap = actionsFor(lang).find(a => a.id === 'recap')!
+    if (recap.kind !== 'fork') throw new Error('recap is not a fork')
     expect(s.forks).toEqual([`${recap.prompt} ${answerStyle(lang)}`])
     expect(s.forks[0]).not.toContain('<selected>')
     expect(s.models).toEqual([])
@@ -245,13 +246,18 @@ test('/quick-actions recap runs with nothing selected', async ($, on) => {
 // ---------------------------------------------------------------------------
 // One order for both kinds
 
-test('the usage scores order both kinds as one', async ($, on) => {
+// One order by score; laid out for the moment (arrange): with a selection the
+// actions on it first, so a context action used more than they are still
+// waits behind them (changed with the standalone actions, SELM-00025: with a
+// few hundred actions, scores alone would push the actions on the selection
+// off the line while the person is selecting).
+test('the usage scores order the kinds as one; with a selection, the actions on it come first', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const s = stage(on, { store: { usage: { recap: at(5), translate: at(3), decisions: at(1) } } })
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['<🧭>', '[🌐]', '<✅>', '[🔤]', '[💡]', '[🧸]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[💡]', '[🧸]', '[🔬]', '[💬]', '✕', '⋯'])
 
   // With nothing selected, the same order with the context actions alone.
   s.selected = null
@@ -291,6 +297,7 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   let listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
   expect(listed).toHaveLength(ACTIONS.length)
   expect(listed.find(o => o.value === 'explain')?.label).toBe('[💡] 意味')
+  expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} タイマー')
   expect(listed.find(o => o.value === 'handoff')?.label).toBe('<📝> 引き継ぎメモ')
   await picker.press({ key: '_picker-close' })
   await picker.unmount()
@@ -304,7 +311,8 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.unmount()
   picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  expect(listed.map(o => o.value).sort()).toEqual(CONTEXT.map(c => c.id).sort())
+  // The context actions and the standalone one: nothing that needs a selection.
+  expect(listed.map(o => o.value).sort()).toEqual([...CONTEXT.map(c => c.id), 'timer'].sort())
   await picker.select({ key: PICKER_SELECT, value: 'todo' })
   await picker.unmount()
   expect(s.forks).toHaveLength(1)

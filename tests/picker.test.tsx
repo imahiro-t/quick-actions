@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, isContext, markedIcon } from '../hooks/actions'
+import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelection } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -248,7 +248,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(s.toasts).toEqual([])
   })
 
-  test(`[${options.language}] /quick-actions without an ID and nothing selected: the dialog opens on the context actions alone`, { options }, async ($, on) => {
+  test(`[${options.language}] /quick-actions without an ID and nothing selected: the dialog opens on the context and standalone actions alone`, { options }, async ($, on) => {
     const s = stage(on)
     await start($)
 
@@ -259,10 +259,14 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     const listed = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
-    const context = actionsFor(options.language).filter(isContext)
-    expect(listed.map(o => o.value)).toEqual(expect.arrayContaining(context.map(d => d.id)))
-    expect(listed).toHaveLength(context.length)
-    for (const o of listed) expect(o.label.startsWith('<')).toBe(true)
+    const free = actionsFor(options.language).filter(d => !needsSelection(d))
+    expect(listed.map(o => o.value)).toEqual(expect.arrayContaining(free.map(d => d.id)))
+    expect(listed).toHaveLength(free.length)
+    expect(free.filter(isContext).length).toBeGreaterThan(0)
+    expect(free.filter(isStandalone).map(d => d.id)).toEqual(['timer'])
+    for (const o of listed) expect(o.label.startsWith('<') || o.label.startsWith('{')).toBe(true)
+    // The legend names the kinds listed: no [ ] with no selection.
+    expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()
     // Picked, a context action runs on the conversation: a fork with no selection in it.
     await picker.select({ key: PICKER_SELECT, value: 'recap' })
     await picker.unmount()

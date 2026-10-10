@@ -91,6 +91,38 @@ export type Messages = {
   customIgnoredToast: (count: number, first: string) => string
   /** The command's result for an ID whose custom definition was left out. */
   customIgnoredId: (id: string, reason: string) => string
+  /** The command's argument hint: an ID with its argument, or `hint`. */
+  argumentHint: string
+  /** Stands in the pane heading of a standalone action run with no argument. */
+  standalone: string
+  /** The command's result when an action (or `hint`) is given an argument it does not take. */
+  argsNotAccepted: (id: string, arg: string) => string
+  /** The command's result when an argument does not parse: `hint` says how to write one. */
+  invalidArg: (id: string, arg: string, hint: string) => string
+  /** The legend above the ⋯ dialog's list: the marks of the kinds it lists. */
+  pickerLegend: (hasSelection: boolean) => string
+  /** Ends a local action's result cut at its limit. */
+  truncated: string
+  /** A local action that answered with a promise rather than at once. */
+  localAsync: string
+  /** A local action on the selection that asked to run over time, which only a standalone one may. */
+  localTickerOnSelection: string
+  /** The stop button of a running timer (or anything else that runs over time). */
+  stop: string
+  /** A run over time, stopped: after how long, or with no time when it is not known any more. */
+  tickerStopped: (elapsed?: string) => string
+  /** A run over time, done. */
+  tickerDone: string
+  /** Refused: this many already run over time. */
+  tickerLimit: (limit: number) => string
+  /** The toast when a run over time is done. */
+  tickerFinishedToast: (label: string) => string
+  /** The toast when a timer is done: its label and how long it ran for. */
+  timerFinishedToast: (label: string, duration: string) => string
+  /** A timer running: the time left. */
+  timerLeft: (clock: string) => string
+  /** The argument of a custom standalone action, when shown with an invalid one. */
+  customArgHint: string
 }
 
 export const MESSAGES: Record<Lang, Messages> = {
@@ -103,7 +135,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `不明なアクション ID です: ${id}（使える ID: ${ids.join(', ')}）`,
     showing: (pane, label) => `${pane} ペインに ${label} の結果を表示します。`,
     commandDescription:
-      '選択中のテキストか今の会話にアクションを実行します（ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で選択がなくてもヒント行を開きます）',
+      '選択中のテキストか今の会話にアクションを実行します。単独のアクションは選択も会話も使わずに実行し、ID の後に引数を書けます（例: timer 5m）。ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で選択がなくてもヒント行を開きます',
     emptyPane: 'テキストを選択するか /quick-actions hint を実行して、プロンプト下のヒント行のアイコンを押してください。',
     inlineHint: 'ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。',
     quote: text => `「${text}」`,
@@ -148,6 +180,8 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `target は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
         case 'contextKind':
           return `target が context の定義は kind を fork にしてください（指定: ${r.kind}）`
+        case 'noneKind':
+          return `target が none のアクションは complete か subagent で書いてください（指定: ${r.kind}）`
         case 'unexpected':
           return `定義を読めませんでした: ${r.detail}`
       }
@@ -156,6 +190,22 @@ export const MESSAGES: Record<Lang, Messages> = {
     customIgnoredToast: (count, first) =>
       `Quick Actions: customActions に問題が ${count} 件あり、該当する定義を無視しました（${first}）。全件は /quick-actions を実行すると結果に表示されます`,
     customIgnoredId: (id, reason) => `${id} は customActions の定義が無効なため使えません: ${reason}`,
+    argumentHint: '[action-id [引数] | hint]',
+    standalone: '単独',
+    argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
+    invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
+    pickerLegend: hasSelection => (hasSelection ? '[ ] 選択  < > 会話  { } 単独' : '< > 会話  { } 単独'),
+    truncated: '（以下省略）',
+    localAsync: '結果をすぐに返しませんでした',
+    localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
+    stop: '停止',
+    tickerStopped: elapsed => (elapsed === undefined ? '停止しました' : `停止しました（経過 ${elapsed}）`),
+    tickerDone: '終了',
+    tickerLimit: limit => `同時に動かせるのは ${limit} 個までです。停止してから実行してください`,
+    tickerFinishedToast: label => `${label} が終了しました`,
+    timerFinishedToast: (label, duration) => `⏳ ${label} ${duration} が終了しました`,
+    timerLeft: clock => `⏳ ${clock} 残り`,
+    customArgHint: '自由テキスト（省略可、500 文字まで）',
   },
   en: {
     thinking: 'Thinking…',
@@ -166,7 +216,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     unknownId: (id, ids) => `Unknown action ID: ${id} (available IDs: ${ids.join(', ')})`,
     showing: (pane, label) => `Showing the ${label} result in the ${pane} pane.`,
     commandDescription:
-      'Run an action on the selected text or on this conversation (without an ID: pick one from every action in a dialog; hint: open the hint line, with or without a selection)',
+      'Run an action on the selected text or on this conversation; a standalone action uses neither and takes an argument after its ID (e.g. timer 5m). Without an ID: pick one from every action in a dialog; hint: open the hint line, with or without a selection',
     emptyPane: 'Select some text or run /quick-actions hint, then press an icon on the hint line below the prompt.',
     inlineHint: 'Widen the terminal to 110 columns or more to show this pane on the right (in fullscreen).',
     quote: text => `"${text}"`,
@@ -211,6 +261,8 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `target must be one of ${r.allowed.join(', ')} (given: ${r.value})`
         case 'contextKind':
           return `a definition with target context must have kind fork (given: ${r.kind})`
+        case 'noneKind':
+          return `an action with target none must be complete or subagent (given: ${r.kind})`
         case 'unexpected':
           return `the definition could not be read: ${r.detail}`
       }
@@ -219,6 +271,22 @@ export const MESSAGES: Record<Lang, Messages> = {
     customIgnoredToast: (count, first) =>
       `Quick Actions: ${count} problem(s) in customActions; the definitions concerned are ignored (${first}). Run /quick-actions to see them all in its result`,
     customIgnoredId: (id, reason) => `${id} cannot be used: its definition in customActions is invalid: ${reason}`,
+    argumentHint: '[action-id [argument] | hint]',
+    standalone: 'standalone',
+    argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
+    invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
+    pickerLegend: hasSelection => (hasSelection ? '[ ] selection  < > context  { } standalone' : '< > context  { } standalone'),
+    truncated: '(truncated)',
+    localAsync: 'the result did not come at once',
+    localTickerOnSelection: 'an action on the selection cannot run over time',
+    stop: 'Stop',
+    tickerStopped: elapsed => (elapsed === undefined ? 'Stopped' : `Stopped (after ${elapsed})`),
+    tickerDone: 'Done',
+    tickerLimit: limit => `Up to ${limit} can run at once. Stop one, then run this again`,
+    tickerFinishedToast: label => `${label} is done`,
+    timerFinishedToast: (label, duration) => `⏳ ${label} ${duration} is done`,
+    timerLeft: clock => `⏳ ${clock} left`,
+    customArgHint: 'free text (optional, up to 500 characters)',
   },
 }
 

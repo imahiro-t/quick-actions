@@ -1,10 +1,28 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, actionsFor, isContext, markedIcon, messageOf, resolveSpec, sys } from '../hooks/actions'
+import {
+  ACTIONS,
+  ANSWER_LANGUAGE,
+  DEFAULT_ACTION_IDS,
+  READ_ONLY_TOOLS,
+  STYLE,
+  TIMER_DEFAULT_MS,
+  WEB_TOOLS,
+  actionsFor,
+  isContext,
+  isStandalone,
+  markedIcon,
+  messageOf,
+  needsSelection,
+  resolveSpec,
+  sys,
+  timerCompute,
+} from '../hooks/actions'
 import { parsePins } from '../hooks/order'
-import type { ActionSpec } from '../hooks/actions'
+import type { ActionSpec, LocalInput } from '../hooks/actions'
+import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
+import { BAND, PANE, PLUGIN, promptOf, reselect, stage, start } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, evidence.
 const ON_SELECTION = ['translate', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
@@ -13,7 +31,21 @@ const ON_CONVERSATION = [
   'recap', 'decisions', 'todo', 'open-questions', 'simplify-last', 'translate-last',
   'assumptions', 'risks', 'changed-files', 'next-questions', 'handoff',
 ]
-const BUILT_IN = [...ON_SELECTION, ...ON_CONVERSATION]
+// The standalone built-ins (on neither), last.
+const STANDALONE = ['timer']
+const BUILT_IN = [...ON_SELECTION, ...ON_CONVERSATION, ...STANDALONE]
+
+// What a local action's compute is handed in these tests: every value fixed.
+const FIXED_INPUT: LocalInput = {
+  text: undefined,
+  arg: undefined,
+  now: Date.UTC(2026, 9, 10, 3, 0, 0),
+  timeZone: 'Asia/Tokyo',
+  lang: 'en',
+  utcOffsetMinutes: () => 540,
+  random: () => 0.5,
+  randomBytes: n => new Uint8Array(n).fill(7),
+}
 
 // The built-ins taken out (SELM-00010): written in the setting, they are ignored like any unknown ID.
 const REMOVED = [
@@ -21,11 +53,14 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the twenty-two built-ins (eleven of each kind), unique IDs, every field filled in', () => {
+test('the twenty-three built-ins (eleven on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
+  // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ACTIONS.filter(a => !isContext(a)).map(a => a.id)).toEqual(ON_SELECTION)
+  expect(ids).toHaveLength(23)
+  expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
+  expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
   for (const id of REMOVED) expect(ids).not.toContain(id)
   expect(new Set(ids).size).toBe(ids.length)
   // `close` is the ✕ button's key on the hint line; `hint` is the command's argument that opens it.
@@ -44,16 +79,17 @@ test('the twenty-two built-ins (eleven of each kind), unique IDs, every field fi
       expect(a.description.ja).not.toBe('')
       expect(a.description.en).not.toBe('')
     }
-    expect(a.prompt).not.toBe('')
-    expect(['complete', 'fork', 'subagent']).toContain(a.kind)
-    if (a.kind !== 'fork') expect(a.model).not.toBe('')
+    expect(['complete', 'fork', 'subagent', 'local']).toContain(a.kind)
+    expect([undefined, 'context', 'none']).toContain(a.target)
+    if (a.kind === 'local') expect(typeof a.compute).toBe('function')
+    else expect(a.prompt).not.toBe('')
+    if (a.kind === 'complete' || a.kind === 'subagent') expect(a.model).not.toBe('')
     if (a.kind === 'subagent') expect(a.task).not.toBe('')
-    // A context action is a fork on the conversation; the others leave target out (the selection).
+    // A context action is a fork on the conversation; the others on the selection leave target out.
     if (isContext(a)) expect(a.kind).toBe('fork')
-    else expect(a.target).toBeUndefined()
   }
   for (const id of DEFAULT_ACTION_IDS) expect(ids).toContain(id)
-  for (const kind of ['complete', 'fork', 'subagent']) {
+  for (const kind of ['complete', 'fork', 'subagent', 'local']) {
     expect(ACTIONS.some(a => a.kind === kind)).toBe(true)
   }
   // Both languages resolve every definition, in the same order.
@@ -78,16 +114,104 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
   // The new complete ones answer in the configured language.
   for (const id of ['eli5', 'deep-dive', 'tldr']) {
     const spec = byId.get(id)!
-    expect(resolveSpec(spec, 'en').prompt).toContain('Answer in English')
-    expect(resolveSpec(spec, 'ja').prompt).toContain('Answer in Japanese')
+    expect(promptOf(resolveSpec(spec, 'en'))).toContain('Answer in English')
+    expect(promptOf(resolveSpec(spec, 'ja'))).toContain('Answer in Japanese')
   }
-  // Icons are told apart on the hint line: within a kind by the glyph, across
-  // the kinds (🧸, 🌐 and 📝 are in both) by the [ ] or < > around it.
-  const selectionIcons = ACTIONS.filter(a => !isContext(a)).map(a => a.icon)
-  const contextIcons = ACTIONS.filter(a => isContext(a)).map(a => a.icon)
-  expect(new Set(selectionIcons).size).toBe(selectionIcons.length)
-  expect(new Set(contextIcons).size).toBe(contextIcons.length)
-  expect(new Set(ACTIONS.map(markedIcon)).size).toBe(ACTIONS.length)
+  // An icon may repeat, within a kind too (with a hundred or so of each, a
+  // unique glyph each would mean less): the hover label and the ID tell them
+  // apart. The IDs stay unique (checked above).
+})
+
+test('the kinds and how each may run: target of three values, kind of four', () => {
+  for (const a of ACTIONS) {
+    // local: standalone, or on the selection (target left out); never on the conversation.
+    if (a.kind === 'local') expect([undefined, 'none']).toContain(a.target)
+    // A fork carries the conversation, so it is never standalone.
+    if (isStandalone(a)) expect(a.kind).not.toBe('fork')
+    // An argument is a standalone action's alone; a model one takes free text only.
+    if (needsSelection(a) || isContext(a)) expect('arg' in a && a.arg !== undefined).toBe(false)
+    if (isStandalone(a) && (a.kind === 'complete' || a.kind === 'subagent') && a.arg !== undefined) expect(a.arg.type).toBe('text')
+    // An int argument is always bounded.
+    if ('arg' in a && a.arg?.type === 'int') {
+      expect(typeof a.arg.min).toBe('number')
+      expect(typeof a.arg.max).toBe('number')
+    }
+    if ('arg' in a && a.arg !== undefined) {
+      expect(a.arg.hint.ja).not.toBe('')
+      expect(a.arg.hint.en).not.toBe('')
+    }
+  }
+})
+
+test('every local compute answers at once, on a fixed input: a text, an error or a run over time, never a promise', () => {
+  for (const a of ACTIONS) {
+    if (a.kind !== 'local') continue
+    for (const lang of ['ja', 'en'] as const) {
+      const out = a.compute({ ...FIXED_INPUT, lang, text: needsSelection(a) ? 'some text' : undefined }) as unknown as Record<string, unknown>
+      expect(typeof out.then).not.toBe('function')
+      const shapes = ['text', 'error', 'ticker'].filter(k => k in out)
+      expect(shapes).toHaveLength(1)
+    }
+  }
+})
+
+test('the marks: [icon] on the selection, <icon> on the conversation, {icon} standalone', () => {
+  expect(markedIcon({ icon: '💡' })).toBe('[💡]')
+  expect(markedIcon({ icon: '🧭', target: 'context' })).toBe('<🧭>')
+  expect(markedIcon({ icon: '⏳', target: 'none' })).toBe('{⏳}')
+  expect(isStandalone({ target: 'none' })).toBe(true)
+  expect(isStandalone({})).toBe(false)
+  expect(needsSelection({})).toBe(true)
+  expect(needsSelection({ target: 'selection' })).toBe(true)
+  expect(needsSelection({ target: 'context' })).toBe(false)
+  expect(needsSelection({ target: 'none' })).toBe(false)
+})
+
+test('timer: ⏳ タイマー / Timer, local, standalone, a duration of 25 minutes by default', () => {
+  const spec = ACTIONS.find(a => a.id === 'timer')
+  expect(spec).toMatchObject({ icon: '⏳', label: { ja: 'タイマー', en: 'Timer' }, kind: 'local', target: 'none' })
+  if (spec?.kind !== 'local') throw new Error('timer is not local')
+  expect(spec.arg).toMatchObject({ type: 'duration', default: '25m' })
+  expect(markedIcon(spec)).toBe('{⏳}')
+  // Resolved, its hint reads in the language.
+  for (const lang of ['ja', 'en'] as const) {
+    const def = resolveSpec(spec, lang)
+    expect(def).toMatchObject({ id: 'timer', label: spec.label[lang], kind: 'local' })
+    if (def.kind === 'local') expect(def.arg?.hint).toBe(spec.arg?.hint[lang])
+  }
+})
+
+test('timer compute: counts down once a second as mm:ss, h:mm:ss from an hour, done at zero', () => {
+  const start = FIXED_INPUT.now
+  const tickerOf = (input: LocalInput) => {
+    const out = timerCompute(input)
+    if (!('ticker' in out)) throw new Error('no ticker')
+    return out.ticker
+  }
+  // No argument: 25 minutes.
+  const t25 = tickerOf({ ...FIXED_INPUT, lang: 'ja' })
+  expect(t25.intervalMs).toBe(1000)
+  expect(t25.frame(start)).toEqual({ text: '⏳ 25:00 残り', done: false })
+  expect(t25.frame(start + 1000)).toEqual({ text: '⏳ 24:59 残り', done: false })
+  // A part of a second left rounds up.
+  expect(t25.frame(start + 1500)).toEqual({ text: '⏳ 24:59 残り', done: false })
+  expect(t25.frame(start + TIMER_DEFAULT_MS - 1)).toEqual({ text: '⏳ 00:01 残り', done: false })
+  const done = t25.frame(start + TIMER_DEFAULT_MS)
+  expect(done.done).toBe(true)
+  expect(done.text).toContain('終了')
+  expect(done.toast).toBe(MESSAGES.ja.timerFinishedToast('タイマー', '25:00'))
+  expect(done.toast).toBe('⏳ タイマー 25:00 が終了しました')
+
+  // 5 minutes, in English.
+  const t5 = tickerOf({ ...FIXED_INPUT, arg: 5 * 60_000 })
+  expect(t5.frame(start)).toEqual({ text: '⏳ 05:00 left', done: false })
+  expect(t5.frame(start + 5 * 60_000 + 3000)).toMatchObject({ done: true, text: '⏳ 05:00 Done', toast: '⏳ Timer 05:00 is done' })
+
+  // An hour and a half: h:mm:ss.
+  const t90 = tickerOf({ ...FIXED_INPUT, arg: 90 * 60_000 })
+  expect(t90.frame(start).text).toBe('⏳ 1:30:00 left')
+  expect(t90.frame(start + 30 * 60_000 + 1).text).toBe('⏳ 1:00:00 left')
+  expect(t90.frame(start + 30 * 60_000 + 1000).text).toBe('⏳ 59:59 left')
 })
 
 test('web-check: a subagent on the web alone, in both languages, answering with sources', () => {
@@ -125,7 +249,7 @@ test('web-check: a subagent on the web alone, in both languages, answering with 
 
   // Answered in the configured language, its headings too.
   for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
-    const { prompt } = resolveSpec(spec, lang)
+    const prompt = promptOf(resolveSpec(spec, lang))
     expect(prompt).toContain(`Answer in ${name}`)
     expect(prompt).toContain(`headings in ${name}`)
     expect(prompt).not.toContain(ANSWER_LANGUAGE)
@@ -142,8 +266,8 @@ test('web-check: a subagent on the web alone, in both languages, answering with 
   expect(DEFAULT_ACTION_IDS).not.toContain('web-check')
 })
 
-test('the default set mixes the two kinds: explain, recap, translate, decisions, summarize, code', () => {
-  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'recap', 'translate', 'decisions', 'summarize', 'code'])
+test('the default set mixes the kinds: explain, recap, translate, decisions, summarize, code, timer', () => {
+  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'recap', 'translate', 'decisions', 'summarize', 'code', 'timer'])
   // A removed ID in the setting is ignored like an unknown one.
   expect(parsePins(ACTIONS, 'send,usages')).toEqual([])
   expect(parsePins(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
@@ -176,7 +300,7 @@ test('resolveSpec: ANSWER_LANGUAGE in a prompt becomes the language name', () =>
     prompt: `Explain the changes in ${ANSWER_LANGUAGE}.`,
   }
   for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
-    const { prompt } = resolveSpec(extra, lang)
+    const prompt = promptOf(resolveSpec(extra, lang))
     expect(prompt).toContain(`in ${name}.`)
     expect(prompt).not.toContain(ANSWER_LANGUAGE)
   }
@@ -213,7 +337,12 @@ for (const language of ['ja', 'en'] as const) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
         await reselect(s, clock)
         await band.press({ key: a.id })
-        if (a.kind === 'complete') {
+        if (a.kind === 'local') {
+          // In the module: no model, no fork, no subagent.
+          expect(s.models.length).toBe(before.models)
+          expect(s.forks.length).toBe(before.forks)
+          expect(s.spawned.length).toBe(before.spawned)
+        } else if (a.kind === 'complete') {
           expect(s.models.length).toBe(before.models + 1)
           expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
           expect(s.models.at(-1)?.prompt).toContain('TypeError: x is undefined')

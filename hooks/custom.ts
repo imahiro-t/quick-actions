@@ -8,7 +8,8 @@
 // (problemLine), since the language is not known yet when the setting is read.
 
 import { ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE, WEB_TOOLS } from './actions'
-import type { ActionSpec } from './actions'
+import type { ActionSpec, Target } from './actions'
+import type { ArgSpec } from './args'
 import { MESSAGES } from './i18n'
 import type { Lang, Localized } from './i18n'
 
@@ -20,8 +21,8 @@ export const MODELS: readonly string[] = ['haiku', 'sonnet', 'opus']
 
 export const KINDS: readonly string[] = ['complete', 'fork', 'subagent']
 
-/** What a custom action may work on: the selection (the default) or the conversation. */
-export const TARGETS: readonly string[] = ['selection', 'context']
+/** What a custom action may work on: the selection (the default), the conversation, or neither (standalone). */
+export const TARGETS: readonly string[] = ['selection', 'context', 'none']
 
 /** The ID format, the same as the built-ins': lowercase letters and digits, joined by single hyphens. */
 export const ID_FORMAT = /^[a-z0-9]+(-[a-z0-9]+)*$/
@@ -45,6 +46,7 @@ export type CustomReason =
   | { code: 'tools'; names: string[]; allowed: readonly string[] }
   | { code: 'target'; value: string; allowed: readonly string[] }
   | { code: 'contextKind'; kind: string }
+  | { code: 'noneKind'; kind: string }
   | { code: 'unexpected'; detail: string }
 
 /**
@@ -137,12 +139,21 @@ const tools = (d: Record<string, unknown>): string[] | undefined => {
   return [...new Set(list as string[])]
 }
 
-/** Whether the definition's `target` is `context`: left out, null or blank is `selection`; anything else fails. */
-const isContextTarget = (d: Record<string, unknown>): boolean => {
+/** The definition's `target`: left out, null or blank is `selection`; a value not in TARGETS fails. */
+const targetOf = (d: Record<string, unknown>): Target => {
   const v = d['target']
-  if (absent(v)) return false
+  if (absent(v)) return 'selection'
   if (typeof v !== 'string' || !TARGETS.includes(v)) fail({ code: 'target', value: shown(v), allowed: TARGETS })
-  return v === 'context'
+  return v as Target
+}
+
+/**
+ * The argument of a custom standalone action: always an optional free text,
+ * since a custom definition declares no argument of its own.
+ */
+const CUSTOM_ARG: ArgSpec<Localized> = {
+  type: 'text',
+  hint: { ja: MESSAGES.ja.customArgHint, en: MESSAGES.en.customArgHint },
 }
 
 /** One definition checked against the IDs already taken; the first reason found if it is not valid. */
@@ -162,10 +173,14 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     const kind = d['kind']
     if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
     const prompt = required(d, 'prompt')
-    const context = isContextTarget(d)
+    const target = targetOf(d)
+    const context = target === 'context'
     // A context action works on the conversation, which only a fork of the session knows.
     if (context && kind !== 'fork') fail({ code: 'contextKind', kind: kind as string })
+    // A standalone one has no conversation to carry: never a fork.
+    if (target === 'none' && kind === 'fork') fail({ code: 'noneKind', kind: kind as string })
     const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
+    const standalone = target === 'none' ? { target: 'none' as const, arg: CUSTOM_ARG } : {}
 
     if (kind === 'fork') {
       const forkPrompt = withoutStyle(prompt)
@@ -186,6 +201,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
       }
       return {
         ...base,
+        ...standalone,
         kind: 'complete',
         model: m,
         prompt: withStyle(prompt),
@@ -198,6 +214,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     const allowed = tools(d)
     return {
       ...base,
+      ...standalone,
       kind: 'subagent',
       model: m,
       prompt: withStyle(prompt),

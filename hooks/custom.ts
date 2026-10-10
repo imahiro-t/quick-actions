@@ -7,13 +7,13 @@
 // The reasons are kept as data and put into words only when shown
 // (problemLine), since the language is not known yet when the setting is read.
 
-import { ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE } from './actions'
+import { ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE, WEB_TOOLS } from './actions'
 import type { ActionSpec } from './actions'
 import { MESSAGES } from './i18n'
 import type { Lang, Localized } from './i18n'
 
 /** The tools a custom subagent may have: the read-only three, plus the web ones when asked for. */
-export const ALLOWED_SUBAGENT_TOOLS: readonly string[] = [...READ_ONLY_TOOLS, 'WebFetch', 'WebSearch']
+export const ALLOWED_SUBAGENT_TOOLS: readonly string[] = [...READ_ONLY_TOOLS, ...WEB_TOOLS]
 
 /** The models a custom complete or subagent action may name. */
 export const MODELS: readonly string[] = ['haiku', 'sonnet', 'opus']

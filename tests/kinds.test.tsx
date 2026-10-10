@@ -99,7 +99,7 @@ for (const language of ['ja', 'en'] as const) {
       await reselect(s, clock)
       await band.press({ key: 'web-check' })
       expect(s.registered.map(r => r.name)).toEqual(['web-check'])
-      expect([...(s.registered[0]?.tools ?? [])]).toEqual(['WebSearch', 'WebFetch'])
+      expect([...(s.registered[0]?.tools ?? [])]).toEqual(['WebFetch', 'WebSearch'])
       expect(s.registered[0]?.model).toBe('sonnet')
       expect(s.registered[0]?.description).toBe(
         language === 'ja'

@@ -85,6 +85,8 @@ export type Messages = {
   pickerFilterSubmitNone: string
   /** Stands for the ⋯ dialog's list when the filter matches no action. */
   pickerNoMatch: string
+  /** Below the ⋯ dialog's list when it holds more actions than a Select can show: how many more, and how to reach them. */
+  pickerMore: (count: number) => string
   /** The command's result when it opened the ⋯ dialog. */
   pickerOpened: string
   /** The command's result when `/quick-actions hint` opened the hint line. */
@@ -162,6 +164,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterSubmit: '先頭を実行',
     pickerFilterSubmitNone: '一致なし',
     pickerNoMatch: '一致するアクションがありません',
+    pickerMore: count => `ほか ${count} 件は絞り込みで表示`,
     pickerOpened: 'ダイアログでアクションを選んでください。',
     hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
     onConversation: '今の会話',
@@ -249,6 +252,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterSubmit: 'run first',
     pickerFilterSubmitNone: 'no match',
     pickerNoMatch: 'No action matches',
+    pickerMore: count => `${count} more: type in the filter to reach them`,
     pickerOpened: 'Pick an action in the dialog.',
     hintOpened: 'Pick an action on the hint line below the prompt.',
     onConversation: 'this conversation',

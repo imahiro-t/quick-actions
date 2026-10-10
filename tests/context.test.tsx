@@ -295,10 +295,14 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
 
   let picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   let listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  expect(listed).toHaveLength(ACTIONS.length)
+  // A Select takes 64 options at most; the filter reaches the rest.
+  expect(listed).toHaveLength(Math.min(ACTIONS.length, 64))
   expect(listed.find(o => o.value === 'explain')?.label).toBe('[💡] 意味')
-  expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} タイマー')
-  expect(listed.find(o => o.value === 'handoff')?.label).toBe('<📝> 引き継ぎメモ')
+  for (const [id, label] of [['timer', '{⏳} タイマー'], ['handoff', '<📝> 引き継ぎメモ']] as const) {
+    await picker.input({ key: '_filter', text: id, kind: 'change' })
+    const found = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+    expect(found.find(o => o.value === id)?.label).toBe(label)
+  }
   await picker.press({ key: '_picker-close' })
   await picker.unmount()
 

@@ -59,6 +59,8 @@ const KEEP = 20
 const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
 const PICKER_SELECT_KEY = '_picker'
+/** The most options the engine takes in one Select. */
+export const SELECT_MAX_OPTIONS = 64
 const PICKER_CLOSE_KEY = '_picker-close'
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
@@ -894,6 +896,12 @@ export const register: Register = (on, options) => {
     const Input = e.surface !== 'mobile' && 'Input' in elements ? elements.Input : undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
+    // A Select takes 64 options at most: past that it lists the first 64 (in
+    // the dialog's order, so the most used come first) and a line under it says
+    // how many more the filter reaches. With no filter field to reach them,
+    // the dialog draws buttons instead, every one of them.
+    const select = Select !== undefined && (shown.length <= SELECT_MAX_OPTIONS || Input !== undefined) ? Select : undefined
+    const listed = select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
@@ -953,13 +961,16 @@ export const register: Register = (on, options) => {
         ) : shown.length === 0 ? (
           // A Select takes one option at least: with none, this line instead.
           <Text {...muted(style)}>{t.pickerNoMatch}</Text>
-        ) : Select !== undefined ? (
-          <Select
-            key={PICKER_SELECT_KEY}
-            label={t.pickerLabel}
-            options={shown.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
-            onSelect={value => pick($, l, findAction(shown, value))}
-          />
+        ) : select !== undefined ? (
+          <Box flexDirection="column">
+            <Select
+              key={PICKER_SELECT_KEY}
+              label={t.pickerLabel}
+              options={listed.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
+              onSelect={value => pick($, l, findAction(listed, value))}
+            />
+            {shown.length > listed.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
+          </Box>
         ) : (
           <Box flexDirection="column">
             {shown.map((a, i) => {

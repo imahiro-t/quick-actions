@@ -34,6 +34,12 @@ const ON_SELECTION = [
   'compare-items', 'counterargument', 'expand-acronyms',
   'summarize', 'tldr', 'key-points', 'to-bullets', 'outline', 'action-items', 'extract-numbers', 'extract-entities',
   'title-ideas', 'to-faq', 'to-timeline', 'to-diagram',
+  'check-writing', 'check-english', 'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase',
+  'tone-check', 'draft-reply', 'fill-in-blanks',
+  'explain-code', 'code-complexity', 'find-bugs', 'security-check', 'perf-check', 'suggest-refactor', 'edge-cases',
+  'unit-test-ideas', 'pseudocode', 'port-code', 'explain-types', 'name-ideas', 'docstring', 'explain-regex',
+  'explain-sql', 'explain-shell', 'explain-stacktrace', 'explain-diff', 'explain-config', 'explain-cron',
+  'explain-http', 'explain-log',
   'code', 'why', 'web-check',
 ]
 // The built-ins on the conversation (context actions), after them.
@@ -63,11 +69,11 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the fifty-three built-ins (forty-one on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
+test('the eighty-five built-ins (seventy-three on the selection, eleven on the conversation, one standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(53)
+  expect(ids).toHaveLength(85)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
   expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
@@ -218,6 +224,106 @@ test('the thirty catalog actions on the selection: complete, as the catalog has 
   const ids = CATALOG_ROWS.map(r => r[0])
   expect(ids.filter(id => NO_STYLE.includes(id))).toHaveLength(11)
   expect(ids.filter(id => !NO_STYLE.includes(id))).toHaveLength(19)
+})
+
+// The thirty-two actions on the selection added from the catalog (SELM-00028), writing and code:
+// ID, icon, labels and model, as the catalog has them.
+const CATALOG_ROWS_WRITING_CODE: readonly (readonly [string, string, string, string, 'haiku' | 'sonnet'])[] = [
+  ['check-writing', '🧐', '校正', 'Proofread', 'sonnet'],
+  ['check-english', '🔍', '英文チェック', 'Check English', 'sonnet'],
+  ['keigo', '🎩', '敬語に', 'Make it polite', 'haiku'],
+  ['casual-tone', '👕', 'くだけた表現に', 'Make it casual', 'haiku'],
+  ['make-concise', '🤏', '簡潔に', 'Make it concise', 'haiku'],
+  ['rewrite-clear', '🪟', '分かりやすく書き直す', 'Rewrite clearly', 'sonnet'],
+  ['paraphrase', '🔁', '言い換え案', 'Paraphrase', 'haiku'],
+  ['tone-check', '👂', 'トーン確認', 'Tone check', 'haiku'],
+  ['draft-reply', '📨', '返信の下書き', 'Draft a reply', 'sonnet'],
+  ['fill-in-blanks', '🧩', '足りない情報', 'What is missing', 'sonnet'],
+  ['explain-code', '💻', 'コードを読み解く', 'Walk through code', 'sonnet'],
+  ['code-complexity', '📈', '計算量', 'Complexity', 'sonnet'],
+  ['find-bugs', '🐛', 'バグの可能性', 'Possible bugs', 'sonnet'],
+  ['security-check', '🔐', 'セキュリティ観点', 'Security check', 'sonnet'],
+  ['perf-check', '🚀', '性能の改善点', 'Performance tips', 'sonnet'],
+  ['suggest-refactor', '🧹', 'リファクタ案', 'Refactoring ideas', 'sonnet'],
+  ['edge-cases', '🧗', 'エッジケース', 'Edge cases', 'sonnet'],
+  ['unit-test-ideas', '🧫', 'テストケース案', 'Unit test ideas', 'sonnet'],
+  ['pseudocode', '📐', '疑似コードに', 'As pseudocode', 'haiku'],
+  ['port-code', '🔄', '別言語で書くと', 'Port to another language', 'sonnet'],
+  ['explain-types', '🧬', '型を読み解く', 'Read the types', 'sonnet'],
+  ['name-ideas', '🔖', '命名案', 'Naming ideas', 'haiku'],
+  ['docstring', '📓', 'ドキュメントコメント案', 'Doc comment', 'haiku'],
+  ['explain-regex', '🧵', '正規表現の解説', 'Explain regex', 'sonnet'],
+  ['explain-sql', '💾', 'SQLの解説', 'Explain SQL', 'sonnet'],
+  ['explain-shell', '🐚', 'コマンドの解説', 'Explain command', 'sonnet'],
+  ['explain-stacktrace', '🥞', 'スタックトレースの解説', 'Read a stack trace', 'sonnet'],
+  ['explain-diff', '➕', '差分の解説', 'Explain a diff', 'sonnet'],
+  ['explain-config', '🔧', '設定の解説', 'Explain config', 'sonnet'],
+  ['explain-cron', '⏰', 'cron式の解説', 'Explain cron', 'haiku'],
+  ['explain-http', '📡', 'HTTPの解説', 'Explain HTTP', 'haiku'],
+  ['explain-log', '🪵', 'ログの読み解き', 'Read the logs', 'sonnet'],
+]
+
+test('the thirty-two catalog actions on the selection (writing and code): complete, as the catalog has them, presenting without changing anything', () => {
+  expect(CATALOG_ROWS_WRITING_CODE).toHaveLength(32)
+  const byId = new Map(ACTIONS.map(a => [a.id, a]))
+  const promptFor = (id: string) => {
+    const spec = byId.get(id)
+    if (spec?.kind !== 'complete') throw new Error(`${id} is not complete`)
+    return spec.prompt
+  }
+  for (const [id, icon, ja, en, model] of CATALOG_ROWS_WRITING_CODE) {
+    const spec = byId.get(id)
+    expect(spec).toMatchObject({ icon, label: { ja, en }, kind: 'complete', model })
+    // On the selection: target left out.
+    expect(spec!.target).toBeUndefined()
+    // One code point, no variation selector.
+    expect([...icon]).toHaveLength(1)
+    if (NO_STYLE.includes(id)) {
+      // A rewrite, a draft or converted code: no answer style, a short note in the answer language.
+      expect(promptFor(id)).not.toContain(STYLE)
+      expect(ANSWER_LANGUAGE_ONLY).toContain(id)
+      expect(promptFor(id)).toContain(ANSWER_LANGUAGE)
+      for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
+        const prompt = promptOf(resolveSpec(spec!, lang))
+        expect(prompt).not.toContain(ANSWER_LANGUAGE)
+        expect(prompt).toContain(`in ${name}`)
+      }
+    } else {
+      // An explanation or a review: the answer language and style at the end.
+      expect(promptFor(id)).toContain(STYLE)
+      expect(promptOf(resolveSpec(spec!, 'en'))).toContain('Answer in English')
+      expect(promptOf(resolveSpec(spec!, 'ja'))).toContain('Answer in Japanese')
+    }
+  }
+  const ids = CATALOG_ROWS_WRITING_CODE.map(r => r[0])
+  const converted = ids.filter(id => NO_STYLE.includes(id))
+  expect(converted).toEqual([
+    'keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply', 'pseudocode', 'port-code', 'docstring',
+  ])
+  expect(ids.filter(id => !NO_STYLE.includes(id))).toHaveLength(23)
+
+  // Those that present a text or code of their own say they change no file.
+  const presentingText = ['check-writing', 'check-english', 'tone-check']
+  const presentingCode = ['find-bugs', 'perf-check', 'suggest-refactor', 'unit-test-ideas', 'name-ideas']
+  for (const id of [...converted, ...presentingText, ...presentingCode]) expect(promptFor(id)).toContain('Change no file')
+  // What they present stays in the selection's own language, however the answer style reads:
+  // a corrected or softened text in the language of the selected text, code and names as the selected code has them.
+  for (const id of presentingText) expect(promptFor(id)).toContain('in the same language as the selected text')
+  for (const id of presentingCode) expect(promptFor(id)).toContain('in the language and conventions of the selected code')
+  expect(promptFor('tone-check')).toContain('Write each softened version in the same language as the selected text')
+  // The rewrites and the reply are written in the selection's language too.
+  for (const id of ['keigo', 'casual-tone', 'make-concise', 'rewrite-clear', 'paraphrase', 'draft-reply']) {
+    expect(promptFor(id)).toContain('in the same language as the selected')
+  }
+
+  // The defaults the catalog names.
+  expect(promptFor('port-code')).toContain('otherwise TypeScript, or Python if the code is already TypeScript')
+  expect(promptFor('draft-reply')).toContain('Do not send it')
+  // No current date reaches the model: never the next run as a date.
+  expect(promptFor('explain-cron')).toContain('The current date and time are not known to you')
+  expect(promptFor('explain-cron')).toContain('do not give the next run as a specific date')
+  expect(promptFor('explain-cron')).toContain('time zone')
+  expect(promptFor('unit-test-ideas')).toContain('A table is wanted here, whatever the style below says.')
 })
 
 test('the kinds and how each may run: target of three values, kind of four', () => {

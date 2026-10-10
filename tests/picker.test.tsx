@@ -5,6 +5,7 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
+import { SELECT_MAX_OPTIONS } from '../hooks/register'
 import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
@@ -73,17 +74,25 @@ for (const surface of SURFACES) {
     const select = await picker.find({ type: 'Select' })
     const options = select?.props.options as { value: string; label: string }[]
     const defs = actionsFor('ja')
-    expect(options).toHaveLength(ACTIONS.length + 1)
+    // A Select takes 64 options at most: the first 64, and a line saying how many more the filter reaches.
+    const total = ACTIONS.length + 1
+    expect(total).toBeGreaterThan(SELECT_MAX_OPTIONS)
+    expect(options).toHaveLength(SELECT_MAX_OPTIONS)
+    expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - SELECT_MAX_OPTIONS) })).toBeDefined()
     // The hint line is the dialog's first few.
     expect(options.slice(0, hint.length).map(o => o.value)).toEqual(hint)
-    expect(options.map(o => o.value)).toContain('mine')
     for (const o of options) {
       const def = defs.find(d => d.id === o.value)
       if (def !== undefined) expect(o.label).toBe(`${markedIcon(def)} ${def.label}`)
     }
     expect(options.find(o => o.value === 'translate-ja')?.label).toBe('[🌐] 日本語訳')
     expect(options.find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
-    expect(options.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
+    // The custom one is in the list too, past the first 64: the filter reaches it.
+    if (!options.some(o => o.value === 'mine')) {
+      await picker.input({ key: PICKER_FILTER, text: 'mine', kind: 'change' })
+    }
+    const reached = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
+    expect(reached.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
     // The filter field above the list takes the focus, so the list does not.
     expect(select?.props.autoFocus).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
@@ -493,12 +502,18 @@ for (const surface of SURFACES) {
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
+    // The first 64 of the dialog's order: a Select takes no more.
     const all = (await listed(picker)) ?? []
-    expect(all).toHaveLength(ACTIONS.length)
+    expect(all).toHaveLength(Math.min(ACTIONS.length, SELECT_MAX_OPTIONS))
     for (const query of ['要約', 'japanese', '< 要約', 'ﾀｲﾏｰ', 'context']) {
       await picker.input({ key: PICKER_FILTER, text: query, kind: 'change' })
-      const narrowed = await listed(picker)
-      expect(narrowed).toEqual(all.filter(id => matchesFilter(specOf(id), query)))
+      const narrowed = (await listed(picker)) ?? []
+      // Every action that matches, and nothing else: those among the first 64 first,
+      // in their order, then the ones past them.
+      const matching = ACTIONS.filter(a => matchesFilter(a, query)).map(a => a.id)
+      const head = all.filter(id => matchesFilter(specOf(id), query))
+      expect([...narrowed].sort()).toEqual([...matching].sort())
+      expect(narrowed.slice(0, head.length)).toEqual(head)
       expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe(query)
     }
     // An exact ID leads, whatever the order.

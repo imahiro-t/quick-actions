@@ -31,6 +31,17 @@ const POLL_MS = 300
 const KEEP = 20
 const HOTKEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const
 
+// The pane's text colours, by Claude Code's theme keys. Docked on the right,
+// the pane sits on a background core paints in the theme
+// (composerSidebarBackground), while text with no colour is drawn in the
+// terminal's own foreground: when the theme and the terminal disagree (a dark
+// terminal on the light theme, or the other way round) that text vanishes.
+// A theme key is drawn in the same theme as that background, so it reads
+// either way. Inline, nothing paints the background, so the heading and body
+// keep the terminal's foreground there, which suits the terminal's own
+// background. dimColor needs nothing: core draws it in the theme's `inactive`.
+const PANE_COLORS = { heading: 'text', body: 'text', failed: 'error' } as const
+
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
 // types/index.d.ts types these keys under the same name, so a drift fails tsc.
@@ -276,6 +287,9 @@ export const register: Register = (on, options) => {
     const defs = actionsFor(l)
     const { Box, Text } = $.ui.resolve(e)
     const list = await read($, results)
+    const docked = e.props.placement !== 'inline'
+    const heading = docked ? PANE_COLORS.heading : undefined
+    const body = docked ? PANE_COLORS.body : undefined
 
     return (
       <Box flexDirection="column">
@@ -289,13 +303,13 @@ export const register: Register = (on, options) => {
           const def = findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
-              <Text bold>
+              <Text bold color={heading}>
                 {def?.icon ?? '•'} {def?.label ?? r.action} <Text dimColor>{t.quote(r.quote)}</Text>
               </Text>
               {r.status === 'running' ? (
                 <Text dimColor>{def?.runningText ?? t.thinking}</Text>
               ) : (
-                <Text color={r.status === 'failed' ? 'red' : undefined}>{r.text}</Text>
+                <Text color={r.status === 'failed' ? PANE_COLORS.failed : body}>{r.text}</Text>
               )}
             </Box>
           )

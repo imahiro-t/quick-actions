@@ -196,9 +196,29 @@ export const needsSelection = (def: { target?: Target }) => !isContext(def) && !
 export const markedIcon = (def: { icon: string; target?: Target }) =>
   isContext(def) ? `<${def.icon}>` : isStandalone(def) ? `{${def.icon}}` : `[${def.icon}]`
 
+/**
+ * Any value as text, never throwing: String() throws on an object with no
+ * prototype or whose toString throws, and such a value then stands as its type.
+ */
+export function textOf(value: unknown): string {
+  try {
+    return String(value)
+  } catch {
+    return Array.isArray(value) ? '[array]' : `[${typeof value}]`
+  }
+}
+
 // What a failure shows after its label: an Error's String() would repeat
-// "Error: " there, so an Error gives its message; anything else, String().
-export const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
+// "Error: " there, so an Error gives its message; anything else, its text.
+// Never throws.
+export const messageOf = (err: unknown): string => {
+  try {
+    if (err instanceof Error) return textOf(err.message)
+  } catch {
+    // A message whose getter throws: the value as text instead.
+  }
+  return textOf(err)
+}
 
 /**
  * A context action's prompt: the lines, after what every one of them says (the

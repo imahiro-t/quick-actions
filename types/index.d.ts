@@ -4,8 +4,12 @@ export type ActionId = string
 export type Result = {
   id: number
   action: ActionId
-  /** What it ran on: the selection, the conversation (context) or neither (none, a standalone action). */
-  target: 'selection' | 'context' | 'none'
+  /**
+   * What it ran on: the selection, the conversation (context) or neither
+   * (none, a standalone action). Every entry written now has it; one kept from
+   * before it existed has none (an empty quote then means the conversation).
+   */
+  target?: 'selection' | 'context' | 'none'
   /** The selected text it ran on, shortened; empty for a context or standalone action. */
   quote: string
   /** A standalone action's argument as given, shortened; left out when it ran with none. */

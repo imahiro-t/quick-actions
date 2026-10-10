@@ -32,6 +32,7 @@ import { USAGE_KEY, arrange, defaultsLead, orderActions, parseHintCount, parsePi
 import type { OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
+import { random, randomBytes } from './random'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -200,28 +201,10 @@ function timeZoneLabel(now: number): string {
   return utcLabel(utcOffsetMinutes(now))
 }
 
-/** `n` random bytes from crypto, or from Math.random where crypto cannot give them. */
-function randomBytes(n: number): Uint8Array {
-  const bytes = new Uint8Array(Math.max(0, Math.floor(n)))
-  try {
-    // getRandomValues fills at most 65,536 bytes a call.
-    for (let i = 0; i < bytes.length; i += 65_536) crypto.getRandomValues(bytes.subarray(i, i + 65_536))
-  } catch {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256)
-  }
-  return bytes
-}
-
-/** A number in [0, 1) from four random bytes. */
-const random = () => {
-  const [a = 0, b = 0, c = 0, d = 0] = randomBytes(4)
-  return ((a << 24) >>> 0 | (b << 16) | (c << 8) | d) / 2 ** 32
-}
-
 // The runs over time going on now, by their entry's ID: how to stop the
-// period, when it started, and the text last shown. A reload cancels the
-// periods of the old module (the engine does) and starts with none: an entry
-// left running is then drawn as stopped (see the pane).
+// period, when it started, and the text last shown. A reload ends every one
+// of them (see register) and starts with none: an entry left running is then
+// drawn as stopped (see the pane).
 type Ticker = { cancel: () => void; startedAt: number; lastText: string | undefined }
 const tickers = new Map<number, Ticker>()
 
@@ -241,13 +224,23 @@ function endTicker(id: number): boolean {
 async function stopTicker($: EngineInterface, lang: Lang, id: number) {
   const ticker = tickers.get(id)
   if (ticker === undefined || !endTicker(id)) return
-  const now = (await readQuietly($.clock.now())) ?? ticker.startedAt
-  await settle($, id, true, MESSAGES[lang].tickerStopped(formatClock(now - ticker.startedAt)))
+  await settleStopped($, lang, id, ticker.startedAt)
 }
 
-/** Writes the entry's text while it runs. */
+/** Settles entry `id`, whose run started at `startedAt` and was ended: done, saying how long it ran. */
+async function settleStopped($: EngineInterface, lang: Lang, id: number, startedAt: number) {
+  const now = (await readQuietly($.clock.now())) ?? startedAt
+  await settle($, id, true, MESSAGES[lang].tickerStopped(formatClock(now - startedAt)))
+}
+
+/**
+ * Writes the entry's text while it runs. Only while it runs: a write retried
+ * after the entry settled (stopped, done) leaves the settled text as it is.
+ */
 async function showFrame($: EngineInterface, id: number, text: string) {
-  await update($, results, list => list.map(r => (r.id === id ? { ...r, ticker: true as const, text } : r)))
+  await update($, results, list =>
+    list.map(r => (r.id === id && r.status === 'running' ? { ...r, ticker: true as const, text } : r)),
+  )
 }
 
 /** Tells the person a run is done; a toast that fails is let go. */
@@ -266,7 +259,7 @@ async function tick($: EngineInterface, lang: Lang, id: number, label: string, f
   const now = await readQuietly($.clock.now())
   // Stopped meanwhile, or no time to show it at.
   if (now === undefined || tickers.get(id) !== ticker) return
-  await applyStep($, lang, id, label, ticker, tickerStep(frame, { startedAt: ticker.startedAt, now, lastText: ticker.lastText }), now)
+  await applyStep($, lang, id, label, ticker, tickerStep(frame, { startedAt: ticker.startedAt, now, lastText: ticker.lastText, lang }), now)
 }
 
 async function applyStep(
@@ -322,7 +315,7 @@ async function startTicker($: EngineInterface, lang: Lang, id: number, label: st
     await settle($, id, false, t.failed(messageOf(err)))
     return
   }
-  await applyStep($, lang, id, label, ticker, tickerStep(run.frame, { startedAt: now, now, lastText: undefined }), now)
+  await applyStep($, lang, id, label, ticker, tickerStep(run.frame, { startedAt: now, now, lastText: undefined, lang }), now)
 }
 
 /**
@@ -422,20 +415,20 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
 
 /**
  * A standalone action: on neither the selection nor the conversation, so it
- * takes no text, only its argument as the command gave it (undefined: none,
- * its default then). The command checks the argument before it gets here.
+ * takes no text, only its argument. `given` is the one the command gave and
+ * already parsed (`raw` as typed, `value` what it came to); with none, the
+ * action's default is parsed here.
  */
-async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, arg?: string) {
+async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: { raw: string; value: ArgValue | undefined }) {
   const t = MESSAGES[lang]
-  const given = arg?.trim() || undefined
-  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given) }) })
+  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw) }) })
 
-  let value: ArgValue | undefined
-  if (def.kind !== 'fork' && def.arg !== undefined) {
+  let value: ArgValue | undefined = given?.value
+  if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
     const now = (await readQuietly($.clock.now())) ?? 0
-    const parsed = parseArg(def.arg, given, { now, utcOffsetMinutes })
+    const parsed = parseArg(def.arg, undefined, { now, utcOffsetMinutes })
     if (!parsed.ok) {
-      await settle($, id, false, t.invalidArg(def.id, given ?? '', def.arg.hint))
+      await settle($, id, false, t.invalidArg(def.id, '', def.arg.hint))
       return
     }
     value = parsed.value
@@ -611,8 +604,9 @@ export const register: Register = (on, options) => {
   // The pane's colours: Claude Code's theme (auto), or a fixed palette.
   const paneTheme = parsePaneTheme(options.paneTheme)
 
-  // The runs over time of an earlier load were cancelled with it.
-  tickers.clear()
+  // The runs over time of an earlier load end with it: each period cancelled
+  // here, whether or not the engine has already done so.
+  for (const id of [...tickers.keys()]) endTicker(id)
 
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
@@ -732,17 +726,20 @@ export const register: Register = (on, options) => {
       return { text: withProblems(text, problems, l) }
     }
     if (isStandalone(def)) {
+      // The argument is parsed once, here: invalid, it is refused before
+      // anything runs; valid, its value is what the run uses.
+      let given: { raw: string; value: ArgValue | undefined } | undefined
       if (arg !== undefined) {
         if (def.kind === 'fork' || def.arg === undefined) return refuse(def.id, arg)
         const now = (await readQuietly($.clock.now())) ?? 0
-        if (!parseArg(def.arg, arg, { now, utcOffsetMinutes }).ok) {
-          return { text: withProblems(t.invalidArg(def.id, arg, def.arg.hint), problems, l) }
-        }
+        const parsed = parseArg(def.arg, arg, { now, utcOffsetMinutes })
+        if (!parsed.ok) return { text: withProblems(t.invalidArg(def.id, arg, def.arg.hint), problems, l) }
+        given = { raw: arg, value: parsed.value }
       }
       // A selection there now is not used: its icons go, as after a press.
       const current = await selectionNow($)
       if (current !== null) await update($, dismissed, () => current)
-      await runStandalone($, def, l, arg)
+      await runStandalone($, def, l, given)
     } else if (arg !== undefined) {
       return refuse(def.id, arg)
     } else if (isContext(def)) await runOnConversation($, def, l)
@@ -920,15 +917,15 @@ export const register: Register = (on, options) => {
   // itself, so this is the only close to follow.
   on('ui.close', { id: PANE }, async ($, e, next) => {
     if (tickers.size > 0) {
-      // Every period is cancelled first, so none runs on whatever else fails.
+      // Every period is cancelled first, before anything is awaited, so none
+      // runs on whatever else fails; the entries are settled after.
       const stopping = [...tickers.entries()]
+      for (const [id] of stopping) endTicker(id)
       try {
         const l = await ensureLanguage($)
-        await Promise.all(stopping.map(([id]) => stopTicker($, l, id)))
+        await Promise.all(stopping.map(([id, ticker]) => settleStopped($, l, id, ticker.startedAt)))
       } catch {
-        // The entries may stay drawn as running; the pane shows them stopped (no timer behind them).
-      } finally {
-        for (const [id] of stopping) endTicker(id)
+        // The entries may stay running in the state; with no run behind them, the pane draws them stopped.
       }
     }
     return next(e)

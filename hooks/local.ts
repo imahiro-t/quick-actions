@@ -5,7 +5,7 @@
 // nothing here reaches `$`, so a test checks every case directly, the ones no
 // built-in has yet (a local action on the selection) included.
 
-import { LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection } from './actions'
+import { LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection, textOf } from './actions'
 import type { LocalAction, LocalInput, TickerFrame } from './actions'
 import type { ArgValue } from './args'
 import { MESSAGES } from './i18n'
@@ -56,9 +56,21 @@ export type LocalOutcome =
 export const clampInterval = (ms: number) =>
   Number.isFinite(ms) && ms > TICKER_MIN_INTERVAL_MS ? ms : TICKER_MIN_INTERVAL_MS
 
-/** A result past the limit, cut there and marked as cut. */
+/**
+ * A result past the limit, cut there and marked as cut. Characters are counted
+ * as code points, as a text argument's are, so an emoji is one and is never
+ * split in half.
+ */
 export function truncate(text: string, lang: Lang): string {
-  return text.length > LOCAL_TEXT_LIMIT ? `${text.slice(0, LOCAL_TEXT_LIMIT)}\n${MESSAGES[lang].truncated}` : text
+  // No more code points than code units: a text this short is within the limit.
+  if (text.length <= LOCAL_TEXT_LIMIT) return text
+  let end = 0
+  for (let count = 0; count < LOCAL_TEXT_LIMIT; count++) {
+    if (end >= text.length) return text
+    const code = text.codePointAt(end) ?? 0
+    end += code > 0xffff ? 2 : 1
+  }
+  return end >= text.length ? text : `${text.slice(0, end)}\n${MESSAGES[lang].truncated}`
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object'
@@ -71,29 +83,34 @@ const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typ
  */
 export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, opts: { selection: boolean; lang: Lang }): LocalOutcome {
   const t = MESSAGES[opts.lang]
-  let out: unknown
+  // The compute's run and the reading of its answer alike: a getter on that
+  // answer may throw too.
   try {
-    out = def.compute(input)
+    return outcomeOf(def.compute(input), opts.selection, opts.lang)
   } catch (err) {
     return { kind: 'settle', ok: false, text: t.failed(messageOf(err)) }
   }
+}
+
+function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
+  const t = MESSAGES[lang]
   if (isRecord(out) && typeof out['then'] === 'function') {
     // Not awaited: a compute is synchronous by contract. Its rejection, if any, goes nowhere.
     void Promise.resolve(out).catch(() => {})
     return { kind: 'settle', ok: false, text: t.failed(t.localAsync) }
   }
   if (isRecord(out) && typeof out['text'] === 'string') {
-    return { kind: 'settle', ok: true, text: truncate(out['text'], opts.lang) }
+    return { kind: 'settle', ok: true, text: truncate(out['text'], lang) }
   }
   if (isRecord(out) && typeof out['error'] === 'string') {
     return { kind: 'settle', ok: false, text: out['error'] }
   }
   if (isRecord(out) && isRecord(out['ticker']) && typeof out['ticker']['frame'] === 'function') {
-    if (opts.selection) return { kind: 'settle', ok: false, text: t.failed(t.localTickerOnSelection) }
+    if (selection) return { kind: 'settle', ok: false, text: t.failed(t.localTickerOnSelection) }
     const ticker = out['ticker'] as { intervalMs: unknown; frame: Frame }
     return { kind: 'ticker', intervalMs: clampInterval(Number(ticker.intervalMs)), frame: ticker.frame }
   }
-  return { kind: 'settle', ok: false, text: t.failed(String(out)) }
+  return { kind: 'settle', ok: false, text: t.failed(textOf(out)) }
 }
 
 /** One step of a run over time. */
@@ -108,17 +125,23 @@ export type TickerStep =
  * What a run over time shows at `now`: its frame when the text changed
  * (`show`) or nothing new (`same`); `done` when the frame says it is over;
  * `limit` once it has gone on for TICKER_MAX_MS; `failed` when the frame throws
- * or answers no text. Never throws.
+ * or answers no text. A frame's text past the limit is cut as a result's is
+ * (in `lang`). Never throws.
  */
-export function tickerStep(frame: Frame, at: { startedAt: number; now: number; lastText: string | undefined }): TickerStep {
-  let f: unknown
+export function tickerStep(
+  frame: Frame,
+  at: { startedAt: number; now: number; lastText: string | undefined; lang: Lang },
+): TickerStep {
   try {
-    f = frame(at.now)
+    return stepOf(frame(at.now), at)
   } catch (err) {
     return { kind: 'failed', reason: messageOf(err) }
   }
-  if (!isRecord(f) || typeof f['text'] !== 'string') return { kind: 'failed', reason: String(f) }
-  const text = f['text']
+}
+
+function stepOf(f: unknown, at: { startedAt: number; now: number; lastText: string | undefined; lang: Lang }): TickerStep {
+  if (!isRecord(f) || typeof f['text'] !== 'string') return { kind: 'failed', reason: textOf(f) }
+  const text = truncate(f['text'], at.lang)
   if (f['done'] === true) {
     const toast = f['toast']
     return typeof toast === 'string' ? { kind: 'done', text, toast } : { kind: 'done', text }

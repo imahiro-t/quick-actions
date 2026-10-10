@@ -113,27 +113,32 @@ test('/selection-actions with nothing selected says so', { options: JA }, async 
   expect(s.toasts).toContain('選択されたテキストがありません')
 })
 
+// Docked, a failure is the theme's error colour, on the background core paints
+// in the theme; inline, it is the raw red the terminal draws, on the terminal's own background.
 for (const surface of SURFACES) {
-  test(`[${surface}] a failed call shows in the theme's error colour in the pane, never stuck at running`, { options: JA }, async ($, on) => {
-    const clock = mock.clock(on)
-    const s = stage(on)
-    await start($)
-    s.selected = 'segfault'
-    await clock.advance(400)
-    const band = await $.ui.mount({ ...BAND, surface })
+  for (const placement of ['dock', 'inline'] as const) {
+    test(`[${surface}] ${placement}: a failed call shows in the colour that suits the background, never stuck at running`, { options: JA }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'segfault'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
 
-    s.answer = 'empty'
-    await band.press({ key: 'explain' })
-    await band.press({ key: 'ask' })
-    s.spawnDeny = 'not allowed here'
-    await band.press({ key: 'code' })
+      s.answer = 'empty'
+      await band.press({ key: 'explain' })
+      await band.press({ key: 'ask' })
+      s.spawnDeny = 'not allowed here'
+      await band.press({ key: 'code' })
 
-    const pane = await $.ui.mount({ ...PANE, surface })
-    const failed = await pane.findAll({ text: /回答なし \(empty-reply\)|起動できませんでした: not allowed here/ })
-    // The boxes around them match too; the texts themselves are the three, in the theme's error colour.
-    expect(failed.filter(f => f.type === 'Text').map(f => f.props.color)).toEqual(['error', 'error', 'error'])
-    expect(await pane.find({ text: '考え中…' })).toBeUndefined()
-  })
+      const pane = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, placement } })
+      const failed = await pane.findAll({ text: /回答なし \(empty-reply\)|起動できませんでした: not allowed here/ })
+      // The boxes around them match too; the texts themselves are the three.
+      const expected = placement === 'dock' ? 'error' : 'red'
+      expect(failed.filter(f => f.type === 'Text').map(f => f.props.color)).toEqual([expected, expected, expected])
+      expect(await pane.find({ text: '考え中…' })).toBeUndefined()
+    })
+  }
 }
 
 for (const surface of SURFACES) {

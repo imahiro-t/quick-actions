@@ -187,7 +187,7 @@ echo '{"language":"ja"}' | claude plugin configure selection-actions@selection-a
 {
   id: 'cause',
   icon: '❓',
-  label: { ja: 'なぜこうなった？', en: 'Why?' },
+  label: { ja: '原因は？', en: 'What caused this?' },
   kind: 'fork',
   prompt: 'Explain why this happened, given what we did earlier in this session.',
 },

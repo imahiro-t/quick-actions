@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, DEFAULT_ACTION_IDS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
+import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, actionsFor, messageOf, resolveActions, resolveSpec, sys } from '../hooks/actions'
 import type { ActionSpec } from '../hooks/actions'
 import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
 
@@ -93,6 +93,22 @@ test('resolveActions: one more definition is all a new action needs', () => {
   // Resolved, it reads in the language and asks for an answer in it.
   expect(resolveSpec(extra, 'en')).toMatchObject({ label: 'Shout', prompt: expect.stringContaining('Answer in English') })
   expect(resolveSpec(extra, 'ja')).toMatchObject({ label: '大声で', prompt: expect.stringContaining('Answer in Japanese') })
+})
+
+test('resolveSpec: ANSWER_LANGUAGE in a prompt becomes the language name', () => {
+  const extra: ActionSpec = {
+    id: 'changes',
+    icon: '🧮',
+    label: { ja: '変更点', en: 'Changes' },
+    kind: 'complete',
+    model: 'haiku',
+    prompt: `Explain the changes in ${ANSWER_LANGUAGE}.`,
+  }
+  for (const [lang, name] of [['en', 'English'], ['ja', 'Japanese']] as const) {
+    const { prompt } = resolveSpec(extra, lang)
+    expect(prompt).toContain(`in ${name}.`)
+    expect(prompt).not.toContain(ANSWER_LANGUAGE)
+  }
 })
 
 test('resolveActions: unset, empty, unknown and odd values never throw', () => {

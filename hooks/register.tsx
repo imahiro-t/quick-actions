@@ -469,7 +469,8 @@ export const register: Register = (on, options) => {
   // Opened with focus, a Select takes the keys (arrows move, Enter runs);
   // Escape closes it through closeOnEscape. Focus is a request the engine
   // refuses while the composer holds text: then a line says how to get the
-  // keys, and the list and the close button still answer a click.
+  // keys, and the list and the close button still answer a click. The mobile
+  // app gets no such line: its actions are buttons to tap, and no keys.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -480,10 +481,11 @@ export const register: Register = (on, options) => {
     // The mobile app draws no Select (though its table names one): there the
     // actions are buttons.
     const Select = e.surface !== 'mobile' && 'Select' in elements ? elements.Select : undefined
+    const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
 
     return (
       <Box flexDirection="column">
-        {!e.props.isFocused && <Text dimColor>{t.pickerNoFocus}</Text>}
+        {keyboardNotice && <Text dimColor>{t.pickerNoFocus}</Text>}
         {text === null ? (
           <Text dimColor>{t.noSelection}</Text>
         ) : Select !== undefined ? (

@@ -20,7 +20,7 @@ A Claude Code plugin for the text you select in the conversation (the transcript
    - Every action, built-in and valid custom ones, is listed in the hint line's order, as icon and label
    - ↑ / ↓ move, Enter runs, Esc closes it running nothing. A click picks too, and the Close button closes it
    - The action picked runs on the text that was selected when the dialog opened, and its result shows in the "Selection Actions" pane
-   - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so): click your pick, or clear the prompt and open it again (with ⋯, or with `/selection-actions`, which empties the prompt as it runs)
+   - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app, where you tap your pick): click your pick, or clear the prompt and open it again (with ⋯, or with `/selection-actions`, which empties the prompt as it runs)
 
 The selected text itself is not shown on the hint line (so a multi-line selection does not make the line two rows tall).
 
@@ -393,7 +393,7 @@ claude plugin validate .
 claude plugin test .
 ```
 
-`tests/actions.test.tsx` checks every definition (unique IDs, required fields in both languages) and that, with every ID pinned and `hintCount` large enough, the hint line shows them in definition order and each runs as its kind says. Run it after adding a definition. `tests/custom.test.tsx` checks the `customActions` setting: reading and checking the definitions (each kind of invalid one left out alone, broken JSON leaving them all out), their place on the hint line, each kind run by a press and by the command, the answer language, and how the problems are told (the toast, every result of the command, the pane). `tests/i18n.test.tsx` checks the language detection and the display and answer language in both languages. `tests/order.test.tsx` checks the hint line's order (pins, the order of use, the decay, ties, the default set the first time, `hintCount`) and that each use is recorded; `tests/picker.test.tsx` checks the ⋯ dialog (its list, a pick running, closing it, the notice without the keyboard, the mobile app's buttons, custom IDs that look like its own keys) and `/selection-actions` without an ID.
+`tests/actions.test.tsx` checks every definition (unique IDs, required fields in both languages) and that, with every ID pinned and `hintCount` large enough, the hint line shows them in definition order and each runs as its kind says. Run it after adding a definition. `tests/custom.test.tsx` checks the `customActions` setting: reading and checking the definitions (each kind of invalid one left out alone, broken JSON leaving them all out), their place on the hint line, each kind run by a press and by the command, the answer language, and how the problems are told (the toast, every result of the command, the pane). `tests/i18n.test.tsx` checks the language detection and the display and answer language in both languages. `tests/order.test.tsx` checks the hint line's order (pins, the order of use, the decay, ties, the default set the first time, `hintCount`) and that each use is recorded; `tests/picker.test.tsx` checks the ⋯ dialog (its list, a pick running, closing it, the notice without the keyboard and its absence in the mobile app, the mobile app's buttons, custom IDs that look like its own keys) and `/selection-actions` without an ID.
 
 The README comes in English (README.md) and Japanese (README.ja.md). Update both when changing either.
 

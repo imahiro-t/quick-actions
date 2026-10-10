@@ -21,7 +21,15 @@ type ActionBase<T> = {
   label: T
   /** Shown in the pane while the action runs (default: Thinking… / 考え中…). */
   runningText?: T
+  /**
+   * What the action works on: the selected text (`selection`, the default when
+   * left out) or the conversation itself (`context`, a fork with no selection).
+   */
+  target?: Target
 }
+
+/** What an action works on: see ActionBase's `target`. */
+export type Target = 'selection' | 'context'
 
 /** One model call on its own: `prompt` is the system prompt, the selection the user turn. */
 export type CompleteAction<T = string> = ActionBase<T> & {
@@ -31,11 +39,17 @@ export type CompleteAction<T = string> = ActionBase<T> & {
   maxTokens?: number
 }
 
-/** A fork of the session, so the answer knows the conversation: `prompt` follows the selection. */
+/**
+ * A fork of the session, so the answer knows the conversation: `prompt` follows
+ * the selection, or stands alone for a context action (`target: 'context'`).
+ */
 export type ForkAction<T = string> = ActionBase<T> & {
   kind: 'fork'
   prompt: string
 }
+
+/** A context action: a fork on the conversation itself, with no selected text. */
+export type ContextAction<T = string> = ForkAction<T> & { target: 'context' }
 
 /** A subagent of its own: `prompt` is its system prompt, `task` opens the request it is spawned with. */
 export type SubagentAction<T = string> = ActionBase<T> & {
@@ -58,7 +72,7 @@ export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction
 /** A definition as written in ACTIONS, its texts in both languages. */
 export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized>
 
-export const PLUGIN = 'selection-actions'
+export const PLUGIN = 'quick-actions'
 
 /** Stands in a prompt for the answer language and style (answerStyle(lang)). */
 export const STYLE = '{STYLE}'
@@ -75,9 +89,36 @@ export const WEB_TOOLS: readonly string[] = ['WebFetch', 'WebSearch']
 
 export const wrap = (text: string) => `<selected>\n${text}\n</selected>`
 
+/** Whether the action works on the conversation rather than on selected text. */
+export const isContext = (def: { target?: Target }) => def.target === 'context'
+
+/**
+ * The icon as the hint line and the ⋯ dialog draw it: `[icon]` for an action on
+ * the selection, `<icon>` for one on the conversation, so the two read apart.
+ */
+export const markedIcon = (def: { icon: string; target?: Target }) => (isContext(def) ? `<${def.icon}>` : `[${def.icon}]`)
+
 // What a failure shows after its label: an Error's String() would repeat
 // "Error: " there, so an Error gives its message; anything else, String().
 export const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+/**
+ * A context action's prompt: the lines, after what every one of them says (the
+ * conversation is the subject, and nothing it does not show is guessed).
+ */
+const conversation = (...lines: string[]) =>
+  [
+    'Work on this conversation (this Claude Code session) as a whole; no text is selected.',
+    ...lines,
+    'Base everything on what the conversation shows: where it does not tell, say you do not know instead of guessing.',
+  ].join(' ')
+
+/** A context action from what tells it apart: a fork on the conversation. */
+const contextAction = (a: Omit<ContextAction<Localized>, 'kind' | 'target'>): ContextAction<Localized> => ({
+  ...a,
+  kind: 'fork',
+  target: 'context',
+})
 
 /** Joins the lines and ends them with the answer language and style, filled in by language. */
 export const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
@@ -109,9 +150,10 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   return { ...rest, ...texts, prompt }
 }
 
-// In the order of their purpose, the order of definition the hint line and the
-// ⋯ dialog fall back to for actions not pinned and not used: translation,
-// meaning, summary, then evidence.
+// The order of definition the hint line and the ⋯ dialog fall back to for
+// actions not pinned and not used: the actions on the selection, in the order
+// of their purpose (translation, meaning, summary, then evidence), then the
+// context actions on the conversation.
 export const ACTIONS: readonly ActionSpec[] = [
   {
     id: 'translate',
@@ -211,8 +253,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     model: 'sonnet',
     runningText: { ja: 'リポジトリを調査中…', en: 'Searching the repository…' },
     description: {
-      ja: '選択テキストの出どころとなるリポジトリのコードを探します（selection-actions 専用）',
-      en: 'Locates the repository code a piece of selected text comes from (selection-actions only)',
+      ja: '選択テキストの出どころとなるリポジトリのコードを探します（Quick Actions 専用）',
+      en: 'Locates the repository code a piece of selected text comes from (Quick Actions only)',
     },
     task: 'Find where in this repository the following text comes from.',
     prompt: sys(
@@ -244,8 +286,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     model: 'sonnet',
     runningText: { ja: 'Webで調査中…', en: 'Checking the web…' },
     description: {
-      ja: '選択テキストの主張を Web の出典で確かめます（selection-actions 専用）',
-      en: 'Checks the claims in a piece of selected text against sources on the web (selection-actions only)',
+      ja: '選択テキストの主張を Web の出典で確かめます（Quick Actions 専用）',
+      en: 'Checks the claims in a piece of selected text against sources on the web (Quick Actions only)',
     },
     // The web alone: no Read, Grep or Glob, so nothing from the repository can
     // end up in a search query or a URL. Queries come from the selection; the
@@ -265,13 +307,129 @@ export const ACTIONS: readonly ActionSpec[] = [
       'Keep it to about 15 to 20 lines.',
     ),
   },
+
+  // Context actions: no selection, the conversation itself. Each is a fork of
+  // the session (so it knows the conversation) with its prompt alone; the
+  // answer language and style follow at run time, as for any fork.
+  ...[
+    {
+      id: 'recap',
+      icon: '🧭',
+      label: { ja: '会話の要約', en: 'Recap' },
+      prompt: conversation(
+        'Recap this conversation so far: what we set out to do, how it went, and where things stand now.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'decisions',
+      icon: '✅',
+      label: { ja: 'ここまでの決定事項', en: 'Decisions so far' },
+      prompt: conversation(
+        'List the decisions made and the points agreed on in this conversation so far, one bullet each, most important first.',
+        'If nothing has been decided yet, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'todo',
+      icon: '📋',
+      label: { ja: '次にやること', en: 'Next steps' },
+      prompt: conversation(
+        'List the work still left to do in this conversation as a to-do list, in the order it should be done.',
+        'If nothing is left, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'open-questions',
+      icon: '❓',
+      label: { ja: '未解決の疑問', en: 'Open questions' },
+      prompt: conversation(
+        'List the questions in this conversation that are still unanswered and the points left on hold, one bullet each.',
+        'If there are none, say so.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'simplify-last',
+      icon: '🧸',
+      label: { ja: '直前の回答をやさしく', en: 'Last answer, simply' },
+      prompt: conversation(
+        'Restate your (Claude\'s) last answer in this conversation for someone with no background in the topic:',
+        'use everyday words and an analogy, and explain any technical term that cannot be avoided right where it appears.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'translate-last',
+      icon: '🌐',
+      label: { ja: '直前の回答を翻訳', en: 'Translate last answer' },
+      prompt: conversation(
+        'Translate your (Claude\'s) last answer in this conversation:',
+        'if it is mainly in Japanese, into natural English; otherwise into natural Japanese.',
+        'This choice of target language takes precedence over any instruction below about the answer language.',
+        'Keep code, identifiers, paths and commands as they are, and reply with the translation alone.',
+      ),
+    },
+    {
+      id: 'assumptions',
+      icon: '🧱',
+      label: { ja: '前提・仮定の洗い出し', en: 'Assumptions' },
+      prompt: conversation(
+        'List the premises and assumptions this conversation and the work in it rely on, stated or not, one bullet each,',
+        'and mark the ones that have not been checked.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'risks',
+      icon: '⚠️',
+      label: { ja: 'リスク・懸念点', en: 'Risks' },
+      prompt: conversation(
+        'List the risks and concerns in the current approach and the changes made in this conversation, most serious first,',
+        'each with a line on why it matters.',
+        'Keep it to about 10 to 15 lines.',
+      ),
+    },
+    {
+      id: 'changed-files',
+      icon: '🗂',
+      label: { ja: '変更したファイルとその内容', en: 'Changed files' },
+      prompt: conversation(
+        'List the files created, changed or deleted in this session, each with a line or two on what changed in it.',
+        'Only list what the conversation shows: do not guess at files or changes it does not mention.',
+        'If no file was changed, say so.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+    {
+      id: 'next-questions',
+      icon: '💭',
+      label: { ja: '次に聞くとよい質問', en: 'Questions to ask next' },
+      prompt: conversation(
+        'Suggest three to five questions worth asking you (Claude) next in this conversation, each with a short reason.',
+        'Keep it to about 10 lines.',
+      ),
+    },
+    {
+      id: 'handoff',
+      icon: '📝',
+      label: { ja: '引き継ぎメモ', en: 'Handoff note' },
+      prompt: conversation(
+        'Write a handoff note for another person or a new session to pick up this work:',
+        'the goal, where things stand, the decisions made, the work left, and anything to watch out for.',
+        'Keep it to about 15 lines.',
+      ),
+    },
+  ].map(contextAction),
 ]
 
 /**
  * What leads the hint line until the person has used any action and pins
- * none (see ./order): one per purpose, meaning first.
+ * none (see ./order): one per purpose, meaning first, the two kinds in turn.
  */
-export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'translate', 'summarize', 'code']
+export const DEFAULT_ACTION_IDS: readonly string[] = ['explain', 'recap', 'translate', 'decisions', 'summarize', 'code']
 
 /** The action a pane entry or a command names, if it is defined. */
 export const findAction = <D extends { id: string }>(defs: readonly D[], id: string): D | undefined =>

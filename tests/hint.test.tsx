@@ -30,8 +30,9 @@ for (const surface of SURFACES) {
     await band.unmount()
   })
 
-  // No pins and no usage yet: the default set leads, the rest follow in the
-  // order of definition, the first six shown, then ✕ and ⋯.
+  // No pins and no usage yet: the default set leads (actions on the selection
+  // in [ ] and on the conversation in < >, mixed), the rest follow in the order
+  // of definition, the first six shown, then ✕ and ⋯.
   test(`[${surface}] unset: the default set first, then the rest, six in all, then ✕ and ⋯`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -39,7 +40,7 @@ for (const surface of SURFACES) {
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
+    expect(await iconsFor($, surface)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
   })
 
   test(
@@ -52,7 +53,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['📝', '💡', '💬', '🌐', '🔤', '🧸', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[📝]', '[💡]', '[💬]', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
     },
   )
 
@@ -66,7 +67,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['🌐', '💡', '🔤', '🧸', '🔬', '💬', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[🌐]', '[💡]', '[🔤]', '[🧸]', '[🔬]', '[💬]', '✕', '⋯'])
     },
   )
 
@@ -80,7 +81,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
     },
   )
 

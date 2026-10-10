@@ -1,13 +1,19 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, actionsFor, messageOf, resolveSpec, sys } from '../hooks/actions'
+import { ACTIONS, ANSWER_LANGUAGE, DEFAULT_ACTION_IDS, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, actionsFor, isContext, markedIcon, messageOf, resolveSpec, sys } from '../hooks/actions'
 import { parsePins } from '../hooks/order'
 import type { ActionSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
 import { BAND, PANE, PLUGIN, reselect, stage, start } from './stage'
 
-// The built-ins, in the order of their purpose: translation, meaning, summary, evidence.
-const BUILT_IN = ['translate', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
+// The built-ins on the selection, in the order of their purpose: translation, meaning, summary, evidence.
+const ON_SELECTION = ['translate', 'translate-en', 'explain', 'eli5', 'deep-dive', 'ask', 'summarize', 'tldr', 'code', 'why', 'web-check']
+// The built-ins on the conversation (context actions), after them.
+const ON_CONVERSATION = [
+  'recap', 'decisions', 'todo', 'open-questions', 'simplify-last', 'translate-last',
+  'assumptions', 'risks', 'changed-files', 'next-questions', 'handoff',
+]
+const BUILT_IN = [...ON_SELECTION, ...ON_CONVERSATION]
 
 // The built-ins taken out (SELM-00010): written in the setting, they are ignored like any unknown ID.
 const REMOVED = [
@@ -15,13 +21,16 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the eleven built-ins, unique IDs, every field filled in', () => {
+test('the twenty-two built-ins (eleven of each kind), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   expect(ids).toEqual(BUILT_IN)
+  expect(ACTIONS.filter(a => !isContext(a)).map(a => a.id)).toEqual(ON_SELECTION)
+  expect(ACTIONS.filter(a => isContext(a)).map(a => a.id)).toEqual(ON_CONVERSATION)
   for (const id of REMOVED) expect(ids).not.toContain(id)
   expect(new Set(ids).size).toBe(ids.length)
-  // `close` is the ✕ button's key on the hint line.
+  // `close` is the ✕ button's key on the hint line; `hint` is the command's argument that opens it.
   expect(ids).not.toContain('close')
+  expect(ids).not.toContain('hint')
   for (const a of ACTIONS) {
     expect(a.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
     expect(a.icon).not.toBe('')
@@ -39,6 +48,9 @@ test('the eleven built-ins, unique IDs, every field filled in', () => {
     expect(['complete', 'fork', 'subagent']).toContain(a.kind)
     if (a.kind !== 'fork') expect(a.model).not.toBe('')
     if (a.kind === 'subagent') expect(a.task).not.toBe('')
+    // A context action is a fork on the conversation; the others leave target out (the selection).
+    if (isContext(a)) expect(a.kind).toBe('fork')
+    else expect(a.target).toBeUndefined()
   }
   for (const id of DEFAULT_ACTION_IDS) expect(ids).toContain(id)
   for (const kind of ['complete', 'fork', 'subagent']) {
@@ -69,8 +81,13 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
     expect(resolveSpec(spec, 'en').prompt).toContain('Answer in English')
     expect(resolveSpec(spec, 'ja').prompt).toContain('Answer in Japanese')
   }
-  // Icons are told apart on the hint line.
-  expect(new Set(ACTIONS.map(a => a.icon)).size).toBe(ACTIONS.length)
+  // Icons are told apart on the hint line: within a kind by the glyph, across
+  // the kinds (🧸, 🌐 and 📝 are in both) by the [ ] or < > around it.
+  const selectionIcons = ACTIONS.filter(a => !isContext(a)).map(a => a.icon)
+  const contextIcons = ACTIONS.filter(a => isContext(a)).map(a => a.icon)
+  expect(new Set(selectionIcons).size).toBe(selectionIcons.length)
+  expect(new Set(contextIcons).size).toBe(contextIcons.length)
+  expect(new Set(ACTIONS.map(markedIcon)).size).toBe(ACTIONS.length)
 })
 
 test('web-check: a subagent on the web alone, in both languages, answering with sources', () => {
@@ -125,8 +142,8 @@ test('web-check: a subagent on the web alone, in both languages, answering with 
   expect(DEFAULT_ACTION_IDS).not.toContain('web-check')
 })
 
-test('the default set is one per purpose: explain, translate, summarize, code', () => {
-  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'translate', 'summarize', 'code'])
+test('the default set mixes the two kinds: explain, recap, translate, decisions, summarize, code', () => {
+  expect([...DEFAULT_ACTION_IDS]).toEqual(['explain', 'recap', 'translate', 'decisions', 'summarize', 'code'])
   // A removed ID in the setting is ignored like an unknown one.
   expect(parsePins(ACTIONS, 'send,usages')).toEqual([])
   expect(parsePins(ACTIONS, 'proofread,why').map(a => a.id)).toEqual(['why'])
@@ -190,7 +207,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual([...ACTIONS.map(a => a.icon), '✕', '⋯'])
+      expect(icons).toEqual([...ACTIONS.map(markedIcon), '✕', '⋯'])
 
       for (const a of defs) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
@@ -200,6 +217,12 @@ for (const language of ['ja', 'en'] as const) {
           expect(s.models.length).toBe(before.models + 1)
           expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
           expect(s.models.at(-1)?.prompt).toContain('TypeError: x is undefined')
+        } else if (a.kind === 'fork' && isContext(a)) {
+          // On the conversation: the selection is not sent.
+          expect(s.forks.length).toBe(before.forks + 1)
+          expect(s.forks.at(-1)).toContain(a.prompt)
+          expect(s.forks.at(-1)).not.toContain('<selected>')
+          expect(s.forks.at(-1)).not.toContain('TypeError: x is undefined')
         } else if (a.kind === 'fork') {
           expect(s.forks.length).toBe(before.forks + 1)
           expect(s.forks.at(-1)).toContain(a.prompt)

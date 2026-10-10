@@ -95,7 +95,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual(['💡', '🔎', '📚', '🌐', '🔤', '🧸', '✕', '⋯'])
+      expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🧸]', '✕', '⋯'])
 
       await reselect(s, clock)
       await band.press({ key: 'web-check' })
@@ -104,8 +104,8 @@ for (const language of ['ja', 'en'] as const) {
       expect(s.registered[0]?.model).toBe('sonnet')
       expect(s.registered[0]?.description).toBe(
         language === 'ja'
-          ? '選択テキストの主張を Web の出典で確かめます（selection-actions 専用）'
-          : 'Checks the claims in a piece of selected text against sources on the web (selection-actions only)',
+          ? '選択テキストの主張を Web の出典で確かめます（Quick Actions 専用）'
+          : 'Checks the claims in a piece of selected text against sources on the web (Quick Actions only)',
       )
       expect(s.registered[0]?.prompt).toContain(language === 'ja' ? 'Answer in Japanese' : 'Answer in English')
       expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:web-check`])
@@ -131,7 +131,7 @@ test('the empty pane points at the hint line under the prompt', { options: JA },
   expect(await pane.find({ text: /プロンプト下のヒント行/ })).toBeDefined()
 })
 
-test('/selection-actions without an ID opens the ⋯ dialog and runs nothing', { options: { ...JA, actions: 'translate,explain' } }, async ($, on) => {
+test('/quick-actions without an ID opens the ⋯ dialog and runs nothing', { options: { ...JA, actions: 'translate,explain' } }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'Bonjour'
@@ -142,7 +142,7 @@ test('/selection-actions without an ID opens the ⋯ dialog and runs nothing', {
   expect(JSON.stringify(r)).toContain(MESSAGES.ja.pickerOpened)
 })
 
-test('/selection-actions <id> runs that action; an unknown ID is told, not run', { options: JA }, async ($, on) => {
+test('/quick-actions <id> runs that action; an unknown ID is told, not run', { options: JA }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'ls -la | grep foo'
@@ -160,13 +160,14 @@ test('/selection-actions <id> runs that action; an unknown ID is told, not run',
   expect(JSON.stringify(r)).toContain('translate-en')
 })
 
-test('/selection-actions with nothing selected says so', { options: JA }, async ($, on) => {
+test('/quick-actions <id> of an action on the selection, with nothing selected, says so', { options: JA }, async ($, on) => {
   const s = stage(on)
   await start($)
 
-  await runCommand($, '')
+  const r = await runCommand($, 'explain')
   expect(s.models).toEqual([])
   expect(s.toasts).toContain('選択されたテキストがありません')
+  expect(JSON.stringify(r)).toContain('選択されたテキストがありません')
 })
 
 // Docked, a failure is the theme's error colour, on the background core paints

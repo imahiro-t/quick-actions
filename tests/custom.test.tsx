@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
-import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
+import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, TARGETS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
 import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
@@ -9,7 +9,7 @@ import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, reselect, runCo
 // The person's own actions, from the `customActions` setting: read, checked,
 // shown on the hint line and run like the built-ins.
 
-const RESERVED = [...ACTIONS.map(a => a.id), 'close']
+const RESERVED = [...ACTIONS.map(a => a.id), 'close', 'hint']
 
 // One valid definition of each kind, in the shapes the README shows.
 const MINE = {
@@ -137,6 +137,8 @@ test('parse: each invalid definition alone is left out, with the first reason fo
     [{ ...MINE, id: 'Bad_ID' }, { code: 'idFormat' }],
     [{ ...MINE, id: 'my--id' }, { code: 'idFormat' }],
     [{ ...MINE, id: 'close' }, { code: 'idReserved' }],
+    [{ ...MINE, id: 'hint' }, { code: 'idReserved' }],
+    [{ ...MINE, id: 'recap' }, { code: 'idReserved' }],
     [{ ...MINE, id: 'explain' }, { code: 'idReserved' }],
     [{ ...MINE, id: 'code' }, { code: 'idReserved' }],
     [{ ...MINE, id: 'mine' }, { code: 'idDuplicate' }],
@@ -162,6 +164,11 @@ test('parse: each invalid definition alone is left out, with the first reason fo
     [{ ...LOOK, id: 'string-tools', tools: 'Read' }, { code: 'invalid', field: 'tools' }],
     [{ ...LOOK, id: 'odd-description', description: { en: 'only' } }, { code: 'invalid', field: 'description' }],
     [{ ...RELATE, id: 'only-style', prompt: '{STYLE}' }, { code: 'missing', field: 'prompt' }],
+    [{ ...RELATE, id: 'bad-target', target: 'foo' }, { code: 'target', value: 'foo', allowed: TARGETS }],
+    [{ ...RELATE, id: 'cased-target', target: 'Context' }, { code: 'target', value: 'Context', allowed: TARGETS }],
+    [{ ...RELATE, id: 'odd-target', target: 5 }, { code: 'target', value: '5', allowed: TARGETS }],
+    [{ ...MINE, id: 'context-complete', target: 'context' }, { code: 'contextKind', kind: 'complete' }],
+    [{ ...LOOK, id: 'context-subagent', target: 'context' }, { code: 'contextKind', kind: 'subagent' }],
   ]
   // The valid ones around them stay.
   const web = { ...LOOK, id: 'web', tools: ['WebFetch', 'WebSearch'] }
@@ -172,6 +179,27 @@ test('parse: each invalid definition alone is left out, with the first reason fo
   // The ID is kept when it is a string, for the command to name.
   expect(problems.find(p => p.reason.code === 'idFormat')?.id).toBe('Bad_ID')
   expect(problems[0]?.id).toBeNull()
+})
+
+test('parse: target is selection (the default when left out, null or blank) or context, a fork on the conversation', () => {
+  const { specs, problems } = parseCustomActions(
+    json([
+      { ...RELATE, id: 'standup', target: 'context' },
+      { ...RELATE, id: 'on-selection', target: 'selection' },
+      { ...RELATE, id: 'left-out' },
+      { ...RELATE, id: 'null-target', target: null },
+      { ...RELATE, id: 'blank-target', target: ' ' },
+      { ...MINE, id: 'complete-selection', target: 'selection' },
+    ]),
+    RESERVED,
+  )
+  expect(problems).toEqual([])
+  expect(specs.map(sp => sp.id)).toEqual(['standup', 'on-selection', 'left-out', 'null-target', 'blank-target', 'complete-selection'])
+  const [standup, ...rest] = specs
+  expect(standup).toMatchObject({ kind: 'fork', target: 'context', prompt: 'Relate the selected text to what we are working on.' })
+  // An action on the selection carries no target, as the built-ins on it do.
+  for (const spec of rest) expect(spec).not.toHaveProperty('target')
+  expect([...TARGETS]).toEqual(['selection', 'context'])
 })
 
 test('parse: only a valid definition takes its ID; a later one with it is then valid', () => {
@@ -185,6 +213,7 @@ test('parse: only a valid definition takes its ID; a later one with it is then v
 const README_EXAMPLES = [
   { id: 'pirate', icon: '🦜', label: { ja: '海賊風に言い換え', en: 'Pirate talk' }, kind: 'complete', model: 'haiku', maxTokens: 500, prompt: 'Retell the selected text the way a pirate would.' },
   { id: 'cause', icon: '❓', label: { ja: '原因は？', en: 'What caused this?' }, kind: 'fork', prompt: 'Explain why this happened, given what we did earlier in this session.' },
+  { id: 'standup', icon: '📣', label: { ja: '進捗報告', en: 'Status update' }, kind: 'fork', target: 'context', prompt: 'Write a short status update on this session for the team: what is done, what is in progress, and what is blocked.' },
   {
     id: 'review-pr',
     icon: '🧪',
@@ -203,7 +232,8 @@ const README_SETTING =
 test("the README's examples are valid definitions", () => {
   const listed = parseCustomActions(json(README_EXAMPLES), RESERVED)
   expect(listed.problems).toEqual([])
-  expect(listed.specs.map(sp => sp.id)).toEqual(['pirate', 'cause', 'review-pr'])
+  expect(listed.specs.map(sp => sp.id)).toEqual(['pirate', 'cause', 'standup', 'review-pr'])
+  expect(listed.specs.find(sp => sp.id === 'standup')).toMatchObject({ kind: 'fork', target: 'context' })
   const set = parseCustomActions(README_SETTING, RESERVED)
   expect(set.problems).toEqual([])
   expect(set.specs.map(sp => sp.id)).toEqual(['pirate'])
@@ -283,6 +313,21 @@ test('the reasons read in each language, English with no Japanese in it', () => 
   expect(withProblems('result', [], 'ja')).toBe('result')
 })
 
+test('the reasons about target read in each language, English with no Japanese in it', () => {
+  const { problems } = parseCustomActions(
+    json([{ ...RELATE, target: 'foo' }, { ...MINE, target: 'context' }, { ...MINE, id: 'hint' }]),
+    RESERVED,
+  )
+  expect(problems.map(p => p.reason.code)).toEqual(['target', 'contextKind', 'idReserved'])
+  expect(problemLine(problems[0]!, 'ja')).toBe('#1 (relate): target は selection / context のいずれかにしてください（指定: foo）')
+  expect(problemLine(problems[0]!, 'en')).toBe('#1 (relate): target must be one of selection, context (given: foo)')
+  expect(problemLine(problems[1]!, 'ja')).toBe('#2 (mine): target が context の定義は kind を fork にしてください（指定: complete）')
+  expect(problemLine(problems[1]!, 'en')).toBe('#2 (mine): a definition with target context must have kind fork (given: complete)')
+  expect(problemLine(problems[2]!, 'ja')).toContain('hint')
+  expect(problemLine(problems[2]!, 'en')).toBe('#3 (hint): the id is taken by a built-in action, close or hint')
+  for (const p of problems) expect(problemLine(p, 'en')).not.toMatch(JAPANESE)
+})
+
 // ---------------------------------------------------------------------------
 // On the hint line, by press and by command
 
@@ -303,7 +348,7 @@ for (const surface of SURFACES) {
       const band = await $.ui.mount({ ...BAND, surface })
       const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
       // Five pinned, then the first of the rest (translate), six in all.
-      expect(icons).toEqual(['🪄', '💡', '🧭', '🧪', '👀', '🌐', '✕', '⋯'])
+      expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       // Nothing was wrong: no toast.
       expect(s.toasts).toEqual([])
@@ -358,13 +403,13 @@ for (const surface of SURFACES) {
   })
 }
 
-test('each custom kind runs by `/selection-actions <id>`, in English too', { options: { ...EN, ...WITH_CUSTOM } }, async ($, on) => {
+test('each custom kind runs by `/quick-actions <id>`, in English too', { options: { ...EN, ...WITH_CUSTOM } }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'ECONNREFUSED'
 
   const ran = await runCommand($, 'mine')
-  expect(JSON.stringify(ran)).toContain('Showing the Pirate summary result in the Selection Actions pane.')
+  expect(JSON.stringify(ran)).toContain('Showing the Pirate summary result in the Quick Actions pane.')
   expect(s.models).toEqual([{ model: 'haiku', system: `${MINE.prompt} ${answerStyle('en')}`, prompt: expect.stringContaining('ECONNREFUSED') }])
 
   await runCommand($, ' RELATE ')
@@ -422,7 +467,7 @@ test('invalid definitions: a toast at start with the count and the first reason'
   expect(s.toasts).toHaveLength(1)
   expect(s.toasts[0]).toContain('2 件')
   expect(s.toasts[0]).toContain('#1 (shell-look): subagent で使えないツール Bash')
-  expect(s.toasts[0]).toContain('/selection-actions')
+  expect(s.toasts[0]).toContain('/quick-actions')
 })
 
 test('invalid definitions: the toast in English has no Japanese', { options: { ...EN, ...MIXED } }, async ($, on) => {
@@ -444,7 +489,7 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     // The valid custom one and explain pinned; the invalid ones nowhere.
-    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['🪄', '💡', '🌐', '🔤', '🧸', '🔬', '✕', '⋯'])
+    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🧸]', '[🔬]', '✕', '⋯'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])
@@ -452,7 +497,7 @@ for (const surface of SURFACES) {
   })
 }
 
-test('invalid definitions: every result of /selection-actions lists them all', { options: { ...JA, ...MIXED } }, async ($, on) => {
+test('invalid definitions: every result of /quick-actions lists them all', { options: { ...JA, ...MIXED } }, async ($, on) => {
   const s = stage(on)
   await start($)
   const listed = (r: unknown) => {
@@ -462,8 +507,8 @@ test('invalid definitions: every result of /selection-actions lists them all', {
     expect(text).toContain('- #3 (gpt): model は haiku / sonnet / opus のいずれかにしてください（指定: gpt-4）')
   }
 
-  // No ID, nothing selected.
-  const none = await runCommand($, '')
+  // An action on the selection, nothing selected.
+  const none = await runCommand($, 'explain')
   expect(s.toasts).toContain('選択されたテキストがありません')
   listed(none)
 
@@ -471,7 +516,7 @@ test('invalid definitions: every result of /selection-actions lists them all', {
   s.selected = 'segfault'
   const ran = await runCommand($, 'mine')
   expect(s.models.map(m => m.model)).toEqual(['haiku'])
-  expect(JSON.stringify(ran)).toContain('Selection Actions ペインに 海賊風の要約 の結果を表示します。')
+  expect(JSON.stringify(ran)).toContain('Quick Actions ペインに 海賊風の要約 の結果を表示します。')
   listed(ran)
 
   // The ID of a definition left out: why, and nothing run.
@@ -524,7 +569,7 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['💡', '🌐', '📝', '🔎', '🔤', '🧸', '✕', '⋯'])
+  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[💡]', '<🧭>', '[🌐]', '<✅>', '[📝]', '[🔎]', '✕', '⋯'])
   await band.unmount()
 
   const r = await runCommand($, '')

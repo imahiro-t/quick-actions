@@ -57,7 +57,8 @@ export type Stage = {
   settings: Record<string, unknown>
   settingsReads: number
   settingsDeny: string | null
-  // Set to hold every model call until it settles: the pane shows it running meanwhile.
+  // Set to hold every model call (complete and fork) and every subagent
+  // registration until it settles: the pane shows it running meanwhile.
   hold: Promise<void> | null
 }
 
@@ -90,7 +91,8 @@ export const stage = (on: On): Stage => {
     s.commands.push({ name: e.name, description: e.description })
     return { value: { command: e.name } }
   })
-  on('agent.register', (_$, e) => {
+  on('agent.register', async (_$, e) => {
+    if (s.hold !== null) await s.hold
     if (s.refuse !== null) return { deny: s.refuse }
     s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description, prompt: e.prompt })
     return { value: { agent: `${PLUGIN}:${e.name}` } }
@@ -110,8 +112,9 @@ export const stage = (on: On): Stage => {
     if (s.refuse !== null) return { deny: s.refuse }
     return { value: reply(s, `answer from ${e.model}`) }
   })
-  on('model.fork', (_$, e) => {
+  on('model.fork', async (_$, e) => {
     s.forks.push(e.prompt)
+    if (s.hold !== null) await s.hold
     if (s.refuse !== null) return { deny: s.refuse }
     return { value: reply(s, 'answer in context') }
   })

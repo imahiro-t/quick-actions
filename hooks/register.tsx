@@ -201,7 +201,9 @@ export const register: Register = (on, options) => {
   const enabledIds = resolveActions(allSpecs, options.actions).map(a => a.id)
   const firstId = enabledIds[0]!
 
-  // Per load, not per module: the custom definitions change with the setting.
+  // Kept here, with this load's settings, rather than in a module-level cache
+  // like actionsFor's: the custom definitions change with the setting, and
+  // nothing from an earlier load may linger should the module be reused.
   const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
   const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
 
@@ -223,16 +225,6 @@ export const register: Register = (on, options) => {
       immediate: true,
     })
 
-    // Told once per session, with the first reason; the command's result has
-    // them all. A toast that cannot show must not stop the session starting.
-    if (problems.length > 0) {
-      try {
-        await $.ui.toast(MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l)))
-      } catch {
-        // The command's result still lists them.
-      }
-    }
-
     // The icons follow $.ui.selection(): once it answers undefined, the next
     // poll writes null and the hint line redraws without them. The engine
     // keeps answering the last selection after its highlight goes (so a press
@@ -251,6 +243,18 @@ export const register: Register = (on, options) => {
         }
       })()
     })
+
+    // Told once per session, with the first reason; the command's result has
+    // them all. Not awaited, like the noSelection toast: a toast that is slow
+    // or cannot show must hold up neither the icons nor the next handler.
+    if (problems.length > 0) {
+      const text = MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l))
+      void Promise.resolve()
+        .then(() => $.ui.toast(text))
+        .catch(() => {
+          // The command's result still lists them.
+        })
+    }
 
     return next(e)
   })
@@ -352,8 +356,8 @@ export const register: Register = (on, options) => {
         {problems.length > 0 && (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color={colors.failed}>{t.customProblemsHeading}</Text>
-            {problems.map(p => (
-              <Text color={colors.failed}>- {problemLine(p, l)}</Text>
+            {problems.map((p, i) => (
+              <Text key={i} color={colors.failed}>- {problemLine(p, l)}</Text>
             ))}
           </Box>
         )}

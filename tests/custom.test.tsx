@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
-import { ALLOWED_SUBAGENT_TOOLS, MODELS, parseCustomActions, problemLine, withProblems } from '../hooks/custom'
+import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
 import { BAND, EN, JA, JAPANESE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
@@ -58,9 +58,21 @@ const json = (defs: unknown[]) => JSON.stringify(defs)
 // ---------------------------------------------------------------------------
 // parseCustomActions
 
-test('parse: unset, blank or not a string gives nothing and no problem', () => {
-  for (const setting of [undefined, null, '', '   ', 42, {}, []]) {
+test('parse: unset or blank gives nothing and no problem', () => {
+  for (const setting of [undefined, null, '', '   ']) {
     expect(parseCustomActions(setting, RESERVED)).toEqual({ specs: [], problems: [] })
+  }
+})
+
+test('parse: a value that is not a string leaves every definition out, and says so', () => {
+  // An array written into settings.json without quoting it is the likely one.
+  // Claude Code refuses to load the module with such a value (the options must
+  // fit plugin.json's userConfig), so this is a guard should one get through.
+  for (const setting of [[MINE], {}, [], 42, true]) {
+    expect(parseCustomActions(setting, RESERVED)).toEqual({
+      specs: [],
+      problems: [{ index: null, id: null, reason: { code: 'notString' } }],
+    })
   }
 })
 
@@ -133,19 +145,19 @@ test('parse: each invalid definition alone is left out, with the first reason fo
     [{ ...MINE, id: 'half-label', label: { ja: 'だけ' } }, { code: 'invalid', field: 'label' }],
     [{ ...MINE, id: 'odd-running', runningText: 5 }, { code: 'invalid', field: 'runningText' }],
     [{ ...MINE, id: 'no-kind', kind: undefined }, { code: 'missing', field: 'kind' }],
-    [{ ...MINE, id: 'bad-kind', kind: 'shell' }, { code: 'kind', value: 'shell' }],
+    [{ ...MINE, id: 'bad-kind', kind: 'shell' }, { code: 'kind', value: 'shell', allowed: KINDS }],
     [{ ...MINE, id: 'no-prompt', prompt: '  ' }, { code: 'missing', field: 'prompt' }],
     [{ ...MINE, id: 'no-model', model: undefined }, { code: 'missing', field: 'model' }],
-    [{ ...MINE, id: 'bad-model', model: 'gpt-4' }, { code: 'model', value: 'gpt-4' }],
-    [{ ...MINE, id: 'cased-model', model: 'Haiku' }, { code: 'model', value: 'Haiku' }],
+    [{ ...MINE, id: 'bad-model', model: 'gpt-4' }, { code: 'model', value: 'gpt-4', allowed: MODELS }],
+    [{ ...MINE, id: 'cased-model', model: 'Haiku' }, { code: 'model', value: 'Haiku', allowed: MODELS }],
     [{ ...MINE, id: 'zero-tokens', maxTokens: 0 }, { code: 'invalid', field: 'maxTokens' }],
     [{ ...MINE, id: 'many-tokens', maxTokens: 32_001 }, { code: 'invalid', field: 'maxTokens' }],
     [{ ...MINE, id: 'odd-tokens', maxTokens: '300' }, { code: 'invalid', field: 'maxTokens' }],
     [{ ...LOOK, id: 'no-task', task: undefined }, { code: 'missing', field: 'task' }],
     [{ ...LOOK, id: 'sub-no-model', model: undefined }, { code: 'missing', field: 'model' }],
-    [{ ...LOOK, id: 'bad-tools', tools: ['Read', 'Bash'] }, { code: 'tools', names: ['Bash'] }],
-    [{ ...LOOK, id: 'write-tools', tools: ['Write', 'Edit', 'Write'] }, { code: 'tools', names: ['Write', 'Edit'] }],
-    [{ ...LOOK, id: 'cased-tools', tools: ['read'] }, { code: 'tools', names: ['read'] }],
+    [{ ...LOOK, id: 'bad-tools', tools: ['Read', 'Bash'] }, { code: 'tools', names: ['Bash'], allowed: ALLOWED_SUBAGENT_TOOLS }],
+    [{ ...LOOK, id: 'write-tools', tools: ['Write', 'Edit', 'Write'] }, { code: 'tools', names: ['Write', 'Edit'], allowed: ALLOWED_SUBAGENT_TOOLS }],
+    [{ ...LOOK, id: 'cased-tools', tools: ['read'] }, { code: 'tools', names: ['read'], allowed: ALLOWED_SUBAGENT_TOOLS }],
     [{ ...LOOK, id: 'empty-tools', tools: [] }, { code: 'invalid', field: 'tools' }],
     [{ ...LOOK, id: 'string-tools', tools: 'Read' }, { code: 'invalid', field: 'tools' }],
     [{ ...LOOK, id: 'odd-description', description: { en: 'only' } }, { code: 'invalid', field: 'description' }],
@@ -180,9 +192,9 @@ const README_EXAMPLES = [
     kind: 'subagent',
     model: 'sonnet',
     task: 'Review the following code, reading the files around it.',
-    prompt: 'You review code for bugs and risky patterns. Search with Grep and Glob, read with Read, look up documentation with WebSearch and WebFetch; change nothing.',
+    prompt: 'You review code for bugs and risky patterns. Search with Grep and Glob, read with Read; change nothing.',
     runningText: { ja: 'レビュー中…', en: 'Reviewing…' },
-    tools: ['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch'],
+    tools: ['Read', 'Grep', 'Glob'],
   },
 ]
 const README_SETTING =
@@ -204,6 +216,33 @@ test("the README's examples are valid definitions", () => {
 test('the allowed tools and models are exactly the ones the ticket names', () => {
   expect([...ALLOWED_SUBAGENT_TOOLS]).toEqual(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'])
   expect([...MODELS]).toEqual(['haiku', 'sonnet', 'opus'])
+  expect([...KINDS]).toEqual(['complete', 'fork', 'subagent'])
+})
+
+test('the reasons name the allowed values from the one list that checks them', () => {
+  const { problems } = parseCustomActions(
+    json([{ ...MINE, kind: 'shell' }, { ...MINE, id: 'm', model: 'gpt-4' }, { ...LOOK, tools: ['Bash'] }]),
+    RESERVED,
+  )
+  for (const lang of ['ja', 'en'] as const) {
+    const [kind, model, tools] = problems.map(p => problemLine(p, lang))
+    for (const k of KINDS) expect(kind).toContain(k)
+    for (const m of MODELS) expect(model).toContain(m)
+    for (const t of ALLOWED_SUBAGENT_TOOLS) expect(tools).toContain(t)
+  }
+})
+
+test('a long ID is kept whole to match, and shortened only when shown', () => {
+  const long = `a${'-very'.repeat(10)}-long-id`
+  expect(long.length).toBeGreaterThan(40)
+  const { problems } = parseCustomActions(json([{ ...LOOK, id: long, task: undefined }, { ...LOOK, id: ' Spaced ' }]), RESERVED)
+  expect(problems[0]?.id).toBe(long)
+  expect(problemFor(problems, long)).toBe(problems[0])
+  const line = problemLine(problems[0]!, 'en')
+  expect(line).toContain('...')
+  expect(line).not.toContain(long)
+  // The command trims and lowercases what it is given: the written ID is matched the same way.
+  expect(problemFor(problems, 'spaced')).toBe(problems[1])
 })
 
 test('the answer language: STYLE and ANSWER_LANGUAGE are filled in for each language, never twice', () => {
@@ -487,6 +526,15 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   const r = await runCommand($, '')
   expect(s.models.map(m => m.model)).toEqual(['sonnet'])
   expect(JSON.stringify(r)).toContain('customActions を JSON として読めません')
+})
+
+test('a long ID left out: the command names its reason, not an unknown ID', { options: { ...EN, customActions: json([{ ...LOOK, id: `a${'-very'.repeat(10)}-long-id`, task: undefined }]) } }, async ($, on) => {
+  const s = stage(on)
+  await start($)
+  const r = JSON.stringify(await runCommand($, `a${'-very'.repeat(10)}-long-id`))
+  expect(r).toContain('cannot be used: its definition in customActions is invalid: the required field task is missing')
+  expect(r).not.toContain('Unknown action ID')
+  expect(s.spawned).toEqual([])
 })
 
 test('unset or all valid: the command and the toasts are as they were', { options: { ...JA, ...WITH_CUSTOM } }, async ($, on) => {

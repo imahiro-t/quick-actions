@@ -29,6 +29,7 @@ export const MAX_TOKENS_LIMIT = 32_000
 /** Why a definition, or the whole setting, was left out. */
 export type CustomReason =
   | { code: 'json'; detail: string }
+  | { code: 'notString' }
   | { code: 'notArray' }
   | { code: 'notObject' }
   | { code: 'idFormat' }
@@ -36,14 +37,16 @@ export type CustomReason =
   | { code: 'idDuplicate' }
   | { code: 'missing'; field: string }
   | { code: 'invalid'; field: string }
-  | { code: 'kind'; value: string }
-  | { code: 'model'; value: string }
-  | { code: 'tools'; names: string[] }
+  | { code: 'kind'; value: string; allowed: readonly string[] }
+  | { code: 'model'; value: string; allowed: readonly string[] }
+  | { code: 'tools'; names: string[]; allowed: readonly string[] }
+  | { code: 'unexpected'; detail: string }
 
 /**
  * One problem with the setting: `index` is the definition's place in the array
- * (from 0) and `id` its ID when it has a string one; both are null when the
- * whole setting was left out.
+ * (from 0) and `id` its ID, as written, when it has a string one; both are null
+ * when the whole setting was left out. The ID is kept whole, for the command to
+ * match; it is shortened only when shown (problemLine).
  */
 export type CustomProblem = { index: number | null; id: string | null; reason: CustomReason }
 
@@ -101,7 +104,7 @@ const optionalText = (d: Record<string, unknown>, field: string): Localized | un
 const model = (d: Record<string, unknown>): string => {
   if (absent(d['model'])) fail({ code: 'missing', field: 'model' })
   const v = d['model']
-  if (typeof v !== 'string' || !MODELS.includes(v)) fail({ code: 'model', value: shown(v) })
+  if (typeof v !== 'string' || !MODELS.includes(v)) fail({ code: 'model', value: shown(v), allowed: MODELS })
   return v as string
 }
 
@@ -125,7 +128,7 @@ const tools = (d: Record<string, unknown>): string[] | undefined => {
   const refused = list.filter(t => typeof t !== 'string' || !ALLOWED_SUBAGENT_TOOLS.includes(t))
   // One tool outside the list voids the whole definition: dropping it quietly
   // would run something other than what its author wrote.
-  if (refused.length > 0) fail({ code: 'tools', names: [...new Set(refused.map(shown))] })
+  if (refused.length > 0) fail({ code: 'tools', names: [...new Set(refused.map(shown))], allowed: ALLOWED_SUBAGENT_TOOLS })
   return [...new Set(list as string[])]
 }
 
@@ -144,7 +147,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     const runningText = optionalText(d, 'runningText')
     if (absent(d['kind'])) fail({ code: 'missing', field: 'kind' })
     const kind = d['kind']
-    if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind) })
+    if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
     const prompt = required(d, 'prompt')
     const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
 
@@ -186,18 +189,24 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     }
   } catch (err) {
     if (err instanceof Invalid) return err.reason
-    // Not expected; still never thrown out of here.
-    return { code: 'notObject' }
+    // Not expected; still never thrown out of here, and not told as some other reason.
+    return { code: 'unexpected', detail: shown(err instanceof Error ? err.message : err) }
   }
 }
 
 /**
  * The custom actions in the setting, and what was wrong with it. `reservedIds`
  * are the IDs a custom one may not take (the built-ins' and `close`). An unset
- * or blank setting gives nothing and no problem. Never throws.
+ * or blank setting gives nothing and no problem; any other value that is not a
+ * string (an array written in settings.json without quoting it, say) leaves
+ * them all out and says so. Never throws.
  */
 export function parseCustomActions(setting: unknown, reservedIds: readonly string[]): CustomActions {
-  if (typeof setting !== 'string' || setting.trim() === '') return NONE
+  if (setting === undefined || setting === null) return NONE
+  if (typeof setting !== 'string') {
+    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notString' } }] }
+  }
+  if (setting.trim() === '') return NONE
 
   let parsed: unknown
   try {
@@ -218,7 +227,7 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
     const r = parseOne(d, taken, reserved)
     if ('code' in r) {
       const rawId = isRecord(d) && typeof d['id'] === 'string' ? d['id'] : null
-      problems.push({ index, id: rawId === null ? null : shown(rawId), reason: r })
+      problems.push({ index, id: rawId, reason: r })
     } else {
       // First come, first served, as with an ID written twice in `actions`.
       taken.add(r.id)
@@ -235,12 +244,16 @@ export const reasonText = (reason: CustomReason, lang: Lang) => MESSAGES[lang].c
 export function problemLine(p: CustomProblem, lang: Lang): string {
   const why = reasonText(p.reason, lang)
   if (p.index === null) return why
-  return `#${p.index + 1}${p.id === null ? '' : ` (${p.id})`}: ${why}`
+  return `#${p.index + 1}${p.id === null ? '' : ` (${shown(p.id)})`}: ${why}`
 }
 
-/** The problem that left out the custom definition with this ID (as a command names it), if any. */
+/**
+ * The problem that left out the custom definition with this ID, if any. `id` is
+ * as the command names it (trimmed, lowercase), so the written ID is matched
+ * the same way, whole: an ID with stray spaces or capitals still finds its reason.
+ */
 export const problemFor = (problems: readonly CustomProblem[], id: string): CustomProblem | undefined =>
-  id === '' ? undefined : problems.find(p => p.id !== null && p.id.toLowerCase() === id)
+  id === '' ? undefined : problems.find(p => p.id !== null && p.id.trim().toLowerCase() === id)
 
 /** A command's result with the list of problems after it, or as it is when there are none. */
 export function withProblems(text: string, problems: readonly CustomProblem[], lang: Lang): string {

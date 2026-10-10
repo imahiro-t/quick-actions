@@ -23,7 +23,7 @@ The selected text itself is not shown on the hint line (so a multi-line selectio
 - `fork` actions (💬 Ask Claude and 🧾 Why so?) pass the current conversation to the model along with the selection
 - Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
 - The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). None of the standard actions can write files or run commands (the one subagent, 🔎 Find the code, has read-only tools)
-- Actions you add in [`customActions`](#customactions) send the selection the same way. A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, and what it read in the repository, to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
+- Actions you add in [`customActions`](#customactions) send the selection the same way. A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, and the files it read (inside the repository or out), to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
 
 ## Install
 
@@ -235,7 +235,7 @@ fork:
 }
 ```
 
-subagent (here with web search added to the read-only tools; see the warning below):
+subagent (with the read-only tools, the default, written out; adding `WebSearch` / `WebFetch` to `tools` lets it look things up on the web too, but read the warning below first):
 
 ```json
 {
@@ -245,9 +245,9 @@ subagent (here with web search added to the read-only tools; see the warning bel
   "kind": "subagent",
   "model": "sonnet",
   "task": "Review the following code, reading the files around it.",
-  "prompt": "You review code for bugs and risky patterns. Search with Grep and Glob, read with Read, look up documentation with WebSearch and WebFetch; change nothing.",
+  "prompt": "You review code for bugs and risky patterns. Search with Grep and Glob, read with Read; change nothing.",
   "runningText": { "ja": "レビュー中…", "en": "Reviewing…" },
-  "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
+  "tools": ["Read", "Grep", "Glob"]
 }
 ```
 
@@ -270,7 +270,7 @@ A definition is ignored, alone, when:
 - `kind` is not `complete` / `fork` / `subagent`, or `model` is not `haiku` / `sonnet` / `opus`
 - `tools` names a tool outside the five above: the whole definition is ignored rather than run without it, since that would run something other than what you wrote
 
-When the setting is not valid JSON, or not an array, every custom definition is ignored. The built-ins work as before in every case. To see what was ignored and why:
+When the setting is not valid JSON, or not an array, every custom definition is ignored. In settings.json the value must be a string (the array in quotes, its quotes escaped): Claude Code does not load the plugin with an unquoted array there. The built-ins work as before in every case. To see what was ignored and why:
 
 - **Run `/selection-actions`** (with or without an ID; nothing need be selected): the result ends with every problem, one per line, such as `#3 (review-pr): tools a subagent cannot have: Bash (…)`. The number is the definition's place in the array, from 1. This always works
 - A toast at the start of a session gives the count and the first problem. A change made in `/config` during a session may not show the toast again until the next one: run `/selection-actions` to check
@@ -278,7 +278,7 @@ When the setting is not valid JSON, or not an array, every custom definition is 
 
 #### A word on the tools
 
-- With `WebFetch` / `WebSearch` allowed, the subagent can send the selected text, and what it read in the repository, to outside sites: on its own, or steered by instructions written in the selection (prompt injection; the selection is only wrapped in `<selected>…</selected>`). Allow them only for actions you will run on text you trust, and keep the default read-only tools otherwise
+- With `WebFetch` / `WebSearch` allowed, the subagent can send the selected text, and whatever it read with `Read` / `Grep` / `Glob` (any file Claude Code's permissions let it read, not only the repository's), to outside sites: on its own, or steered by instructions written in the selection (prompt injection; the selection is only wrapped in `<selected>…</selected>`). Allow them only for actions you will run on text you trust, and keep the default read-only tools otherwise
 - Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted in `customActions`
 
 ### In the source (for developers)

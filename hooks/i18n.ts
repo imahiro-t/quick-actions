@@ -100,6 +100,8 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `customActions を JSON として読めません（定義をすべて無視しました）: ${r.detail}`
         case 'notArray':
           return 'customActions が JSON の配列ではありません（定義をすべて無視しました）'
+        case 'notString':
+          return 'customActions は文字列で書いてください。settings.json では JSON の配列を引用符で囲み、中の引用符をエスケープします（定義をすべて無視しました）'
         case 'notObject':
           return '定義がオブジェクトではありません'
         case 'idFormat':
@@ -113,11 +115,13 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'invalid':
           return `${r.field} の値が正しくありません`
         case 'kind':
-          return `kind は complete / fork / subagent のいずれかにしてください（指定: ${r.value}）`
+          return `kind は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
         case 'model':
-          return `model は haiku / sonnet / opus のいずれかにしてください（指定: ${r.value}）`
+          return `model は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
         case 'tools':
-          return `subagent で使えないツール ${r.names.join(', ')} を指定しています（使えるのは Read, Grep, Glob, WebFetch, WebSearch）`
+          return `subagent で使えないツール ${r.names.join(', ')} を指定しています（使えるのは ${r.allowed.join(', ')}）`
+        case 'unexpected':
+          return `定義を読めませんでした: ${r.detail}`
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
@@ -147,6 +151,8 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `customActions is not valid JSON (all definitions ignored): ${r.detail}`
         case 'notArray':
           return 'customActions is not a JSON array (all definitions ignored)'
+        case 'notString':
+          return 'write customActions as a string: in settings.json, put the JSON array in quotes and escape the quotes inside it (all definitions ignored)'
         case 'notObject':
           return 'the definition is not an object'
         case 'idFormat':
@@ -160,11 +166,13 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'invalid':
           return `the value of ${r.field} is not valid`
         case 'kind':
-          return `kind must be complete, fork or subagent (given: ${r.value})`
+          return `kind must be one of ${r.allowed.join(', ')} (given: ${r.value})`
         case 'model':
-          return `model must be haiku, sonnet or opus (given: ${r.value})`
+          return `model must be one of ${r.allowed.join(', ')} (given: ${r.value})`
         case 'tools':
-          return `tools a subagent cannot have: ${r.names.join(', ')} (allowed: Read, Grep, Glob, WebFetch, WebSearch)`
+          return `tools a subagent cannot have: ${r.names.join(', ')} (allowed: ${r.allowed.join(', ')})`
+        case 'unexpected':
+          return `the definition could not be read: ${r.detail}`
       }
     },
     customProblemsHeading: 'Ignored in customActions:',

@@ -186,7 +186,7 @@ Common fields:
 },
 ```
 
-`sys(...)` joins the sentences and ends them with the answer language and the pane's style (`STYLE`). At run time `STYLE` becomes `Answer in English, …` or `Answer in Japanese, …` to match the display language. Where a prompt needs the answer language's name mid-sentence, use `LANG` (it becomes `English` or `Japanese`), e.g. `` `Explain the changes in ${LANG}.` ``.
+`sys(...)` joins the sentences and ends them with the answer language and the pane's style (`STYLE`). At run time `STYLE` becomes `Answer in English, …` or `Answer in Japanese, …` to match the display language. Where a prompt needs the answer language's name mid-sentence, use `ANSWER_LANGUAGE` (it becomes `English` or `Japanese`), e.g. `` `Explain the changes in ${ANSWER_LANGUAGE}.` ``.
 
 ### fork
 

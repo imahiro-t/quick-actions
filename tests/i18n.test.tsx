@@ -260,7 +260,7 @@ for (const language of ['en', 'ja'] as const) {
       expect(s.registered).toHaveLength(ACTIONS.filter(a => a.kind === 'subagent').length)
       // Nothing is left of the placeholders.
       for (const text of [...s.models.map(m => m.system ?? ''), ...s.forks, ...s.registered.map(r => r.prompt)]) {
-        expect(text).not.toMatch(/\{STYLE\}|\{LANG\}/)
+        expect(text).not.toMatch(/\{STYLE\}|\{ANSWER_LANGUAGE\}/)
       }
     },
   )

@@ -6,7 +6,7 @@
 // `runningText`, `description` as `{ ja, en }`); `actionsFor(lang)` hands out
 // the definitions with those resolved, which is all the rest of the module sees.
 
-import { MESSAGES } from './i18n'
+import { MESSAGES, answerStyle } from './i18n'
 import type { Lang, Localized } from './i18n'
 
 type ActionBase<T> = {
@@ -46,18 +46,24 @@ export type SubagentAction<T = string> = ActionBase<T> & {
   tools?: readonly string[]
 }
 
+/** A subagent definition resolved for one language: its description is always filled in (see resolveSpec). */
+export type ResolvedSubagentAction = SubagentAction & { description: string }
+
 /** A definition with its texts resolved for one language: what the hint line, the pane and the runner use. */
-export type ActionDef = CompleteAction | ForkAction | SubagentAction
+export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction
 
 /** A definition as written in ACTIONS, its texts in both languages. */
 export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized>
 
 export const PLUGIN = 'selection-actions'
 
-/** Stands in a prompt for the answer language and style (MESSAGES[lang].answerStyle). */
+/** Stands in a prompt for the answer language and style (answerStyle(lang)). */
 export const STYLE = '{STYLE}'
-/** Stands in a prompt for the answer language's name (MESSAGES[lang].languageName). */
-export const LANG = '{LANG}'
+/**
+ * Stands in a prompt for the answer language's name (MESSAGES[lang].languageName).
+ * Not called LANG, so it is not read as the locale variable of that name.
+ */
+export const ANSWER_LANGUAGE = '{ANSWER_LANGUAGE}'
 
 export const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob']
 
@@ -70,35 +76,31 @@ export const messageOf = (err: unknown) => (err instanceof Error ? err.message :
 /** Joins the lines and ends them with the answer language and style, filled in by language. */
 export const sys = (...lines: string[]) => [...lines, STYLE].join(' ')
 
-/** A prompt with its STYLE and LANG filled in for the language. */
+/** A prompt with its STYLE and ANSWER_LANGUAGE filled in for the language. */
 export const localizePrompt = (prompt: string, lang: Lang) =>
-  prompt.split(STYLE).join(MESSAGES[lang].answerStyle).split(LANG).join(MESSAGES[lang].languageName)
+  prompt.split(STYLE).join(answerStyle(lang)).split(ANSWER_LANGUAGE).join(MESSAGES[lang].languageName)
 
-/** One definition with its texts and prompts resolved for the language. */
+/**
+ * One definition with its texts and prompts resolved for the language. This is
+ * the only place a subagent's default description is built.
+ */
 export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   const label = spec.label[lang]
   const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
   const prompt = localizePrompt(spec.prompt, lang)
-  switch (spec.kind) {
-    case 'complete': {
-      const { label: _l, runningText: _r, ...rest } = spec
-      return { ...rest, ...texts, prompt }
-    }
-    case 'fork': {
-      const { label: _l, runningText: _r, ...rest } = spec
-      return { ...rest, ...texts, prompt }
-    }
-    case 'subagent': {
-      const { label: _l, runningText: _r, description, ...rest } = spec
-      return {
-        ...rest,
-        ...texts,
-        prompt,
-        task: localizePrompt(spec.task, lang),
-        description: description?.[lang] ?? MESSAGES[lang].agentDescription(label),
-      }
+  if (spec.kind === 'subagent') {
+    const { label: _l, runningText: _r, description, ...rest } = spec
+    return {
+      ...rest,
+      ...texts,
+      prompt,
+      task: localizePrompt(spec.task, lang),
+      description: description?.[lang] ?? MESSAGES[lang].agentDescription(label),
     }
   }
+  // complete and fork carry no other text to resolve.
+  const { label: _l, runningText: _r, ...rest } = spec
+  return { ...rest, ...texts, prompt }
 }
 
 export const ACTIONS: readonly ActionSpec[] = [
@@ -311,8 +313,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     model: 'haiku',
     prompt: [
       'Proofread the selected text in its own language.',
-      `Give the corrected text first, then list the changes briefly in ${LANG}.`,
-      `If nothing needs fixing, say so in ${LANG}.`,
+      `Give the corrected text first, then list the changes briefly in ${ANSWER_LANGUAGE}.`,
+      `If nothing needs fixing, say so in ${ANSWER_LANGUAGE}.`,
     ].join(' '),
   },
   {

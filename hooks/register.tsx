@@ -13,8 +13,8 @@ import {
   subagentType,
   wrap,
 } from './actions'
-import type { ActionDef, SubagentAction } from './actions'
-import { MESSAGES, explicitLanguage, resolveLanguage } from './i18n'
+import type { ActionDef, ResolvedSubagentAction } from './actions'
+import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
 import { settleQuietly, toLatest } from './scroll'
 
@@ -45,13 +45,15 @@ const quoteOf = (text: string) => {
 // The language: settled in register when the setting names one; for `auto`,
 // by the first hook that needs it, whichever event comes first, and once only.
 // A reload loads the module afresh, and register sets these again.
+// Hooks read settledLanguage only through ensureLanguage, and pass the Lang it
+// returns down as an argument (`lang` below is always that settled value).
 let languageSetting: unknown
-let lang: Lang | undefined
+let settledLanguage: Lang | undefined
 let pendingLanguage: Promise<Lang> | undefined
 
-async function readQuietly<T>(read: Promise<T>): Promise<T | undefined> {
+async function readQuietly<T>(pending: Promise<T>): Promise<T | undefined> {
   try {
-    return await read
+    return await pending
   } catch {
     return undefined
   }
@@ -73,8 +75,8 @@ async function detectLanguage($: EngineInterface): Promise<Lang> {
 
 /** The language every hook draws and asks in: detected once, shared by concurrent callers. */
 async function ensureLanguage($: EngineInterface): Promise<Lang> {
-  if (lang !== undefined) return lang
-  pendingLanguage ??= detectLanguage($).then(l => (lang = l))
+  if (settledLanguage !== undefined) return settledLanguage
+  pendingLanguage ??= detectLanguage($).then(l => (settledLanguage = l))
   return pendingLanguage
 }
 
@@ -87,11 +89,11 @@ async function settle($: EngineInterface, id: number, ok: boolean, text: string)
   await update($, results, list => list.map(r => (r.id === id ? { ...r, status, text } : r)))
 }
 
-async function ensureAgent($: EngineInterface, def: SubagentAction, lang: Lang) {
+async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
   if (registeredAgents.has(def.id)) return
   await $.agent.register({
     name: def.id,
-    description: def.description ?? MESSAGES[lang].agentDescription(def.label),
+    description: def.description,
     prompt: def.prompt,
     tools: [...(def.tools ?? READ_ONLY_TOOLS)],
     model: def.model,
@@ -100,10 +102,10 @@ async function ensureAgent($: EngineInterface, def: SubagentAction, lang: Lang) 
 }
 
 // A subagent answers later, through turn.complete; the others answer here.
-async function startSubagent($: EngineInterface, def: SubagentAction, lang: Lang, id: number, text: string) {
+async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, id: number, text: string) {
   const t = MESSAGES[lang]
   try {
-    await ensureAgent($, def, lang)
+    await ensureAgent($, def)
     const spawned = await $.agent.spawn({
       subagentType: subagentType(def),
       description: def.label,
@@ -136,7 +138,7 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
   try {
     const r =
       def.kind === 'fork'
-        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${t.answerStyle}` })
+        ? await $.model.fork({ prompt: `${wrap(text)}\n\n${def.prompt} ${answerStyle(lang)}` })
         : await $.model.complete({
             model: def.model,
             system: def.prompt,
@@ -169,7 +171,7 @@ export const register: Register = (on, options) => {
   const firstId = enabledIds[0]!
 
   languageSetting = options.language
-  lang = explicitLanguage(options.language)
+  settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
 
   const enabledFor = (l: Lang): ActionDef[] => {

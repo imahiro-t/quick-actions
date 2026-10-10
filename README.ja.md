@@ -186,7 +186,7 @@ echo '{"language":"ja"}' | claude plugin configure selection-actions@selection-a
 },
 ```
 
-`sys(...)` は文をつなげて、最後に回答言語とペイン向けの文体の指定（`STYLE`）を足すヘルパーです。`STYLE` は実行時に、表示言語に合わせて `Answer in Japanese, …` / `Answer in English, …` に置き換わります。プロンプトの途中で回答言語の名前が要るときは `LANG`（`Japanese` / `English` に置き換わる）を使います（例: `` `Explain the changes in ${LANG}.` ``）。
+`sys(...)` は文をつなげて、最後に回答言語とペイン向けの文体の指定（`STYLE`）を足すヘルパーです。`STYLE` は実行時に、表示言語に合わせて `Answer in Japanese, …` / `Answer in English, …` に置き換わります。プロンプトの途中で回答言語の名前が要るときは `ANSWER_LANGUAGE`（`Japanese` / `English` に置き換わる）を使います（例: `` `Explain the changes in ${ANSWER_LANGUAGE}.` ``）。
 
 ### fork
 

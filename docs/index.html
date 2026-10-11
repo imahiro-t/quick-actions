@@ -121,9 +121,6 @@
   .empty, .error { margin: 24px 0; padding: 16px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
   [hidden] { display: none !important; }
   footer { color: var(--muted); font-size: 0.85rem; padding: 0 0 32px; }
-  footer h2 { font-size: 0.95rem; color: var(--text); margin: 0 0 4px; }
-  .legend { margin: 0 0 16px; padding-left: 1.2em; }
-  .legend code { color: var(--text); }
   .method-help { margin: 8px 0 0; font-size: 0.85rem; }
   .method-help summary { cursor: pointer; color: var(--muted); }
   .method-help ul { margin: 4px 0 0; padding-left: 1.2em; }
@@ -161,8 +158,6 @@
 
 <main class="wrap" id="main"></main>
 <footer class="wrap">
-  <h2 id="legend-title"></h2>
-  <ul class="legend" id="legend"></ul>
   <p id="footer"></p>
 </footer>
 
@@ -189,7 +184,6 @@
       language: '言語',
       controls: 'アクションの検索と絞り込み',
       methodHelp: '実行方式の意味',
-      legend: '実行方式',
       footer: 'このページは hooks/actions.ts の定義から scripts/gen-catalog.mjs で生成したデータを表示しています。',
       methods: {
         complete: 'complete: モデルを 1 回呼び出す（会話は使わない）',
@@ -213,7 +207,6 @@
       language: 'Language',
       controls: 'Search and filter the actions',
       methodHelp: 'What the run methods mean',
-      legend: 'Run methods',
       footer: 'This page shows the data scripts/gen-catalog.mjs generates from the definitions in hooks/actions.ts.',
       methods: {
         complete: 'complete: one model call (the conversation is not used)',
@@ -349,16 +342,13 @@
     data.methods.forEach(function (m) { mg.appendChild(chip('methods', m, [m], t.methods[m])) })
   }
 
-  // The run methods' meanings, shown as text too (a title only appears on hover):
-  // folded under the filters, and listed in the footer.
+  // The run methods' meanings, shown as text too (a title only appears on hover),
+  // folded under the filters.
   function fillMethodHelp(t) {
     $('method-help-title').textContent = t.methodHelp
-    $('legend-title').textContent = t.legend
-    ;['method-help-list', 'legend'].forEach(function (id) {
-      var list = $(id)
-      list.textContent = ''
-      data.methods.forEach(function (m) { list.appendChild(el('li', { text: t.methods[m] })) })
-    })
+    var list = $('method-help-list')
+    list.textContent = ''
+    data.methods.forEach(function (m) { list.appendChild(el('li', { text: t.methods[m] })) })
   }
 
   function anyOn(set) { for (var k in set) if (set[k]) return true; return false }
@@ -446,12 +436,12 @@
     state.query = e.target.value
     if (data) apply(300)
   })
-  // With no data, hide what would stay empty: the filters, the folded run-method
-  // help, and the footer's run-method legend (an empty heading and list would
-  // still be announced by screen readers). setLang never fills them without data.
+  // With no data, hide what would stay empty: the filters and the folded run-method
+  // help (an empty summary and list would still be announced by screen readers).
+  // setLang never fills them without data.
   if (!data) {
     document.querySelector('.filters').hidden = true
-    ;['method-help', 'legend-title', 'legend'].forEach(function (id) { $(id).hidden = true })
+    $('method-help').hidden = true
   }
   setLang(state.lang, false)
 })()

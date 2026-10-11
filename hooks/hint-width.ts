@@ -7,11 +7,16 @@
 // are. A person who set a small count keeps that proportion: 3 on 80 columns
 // is 6 on 160, not as many as fit.
 //
-// The line sits under the prompt, which shares the transcript's column: while
-// one of this plugin's panes is docked beside it (the terminal in fullscreen
-// from 110 columns), the line is the terminal's width less the dock's. The
-// dock is measured where it is drawn (the pane's bodyColumns plus its frame);
-// another plugin's dock cannot be seen from here and is not taken off.
+// The line sits under the prompt, which shares the transcript's column: its
+// width is the viewport's columns as the engine hands them to PromptHint. On
+// the terminal those are the transcript's column, so while a pane is docked
+// beside it (the terminal in fullscreen from 110 columns), any plugin's, they
+// are already the terminal's width less the dock's, and nothing more comes off
+// for it. (SELM-00066: seen in a pseudo-terminal, 180 columns with this
+// plugin's pane docked give a viewport of 123, the dock's 57 already off. The
+// dock was once taken off again, leaving 123 − 59 − 30 = 34 cells for the
+// buttons: past ✕ and ⋯ and the kind buttons, room for one action at most, and
+// at 160 columns none.)
 //
 // The row also holds, at its left, the permission mode the engine draws there
 // (`⏵⏵ auto mode on ·`, shift+tab cycles it), and the footer keeps two
@@ -29,9 +34,6 @@
 
 /** The width the `hintCount` setting is the count for. */
 export const BASE_COLUMNS = 80
-
-/** What a dock takes beyond its body: the frame's two sides and the rule beside the transcript (an estimate on the safe side). */
-export const DOCK_FRAME = 3
 
 /** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
 export const BUTTON_FRAME = 4
@@ -139,21 +141,18 @@ export function hasEmoji(text: string): boolean {
  */
 export const buttonWidth = (label: string) => textWidth(label) + BUTTON_FRAME + BUTTON_GAP + (hasEmoji(label) ? EMOJI_EXTRA : 0)
 
-/** What a docked pane takes off the line: its body's columns and its frame. */
-export const dockWidth = (bodyColumns: number) => bodyColumns + DOCK_FRAME
-
 /** The cells taken off the hint line's row on `surface` beside its buttons: LEAD_RESERVE where the mode is drawn at its left, else none. */
 export function leadFor(surface: string): number {
   return LEAD_SURFACES.includes(surface) ? LEAD_RESERVE : 0
 }
 
 /**
- * The columns the hint line has for its buttons: the terminal's, less the
- * dock of this plugin's pane while one is docked beside the transcript (0:
- * none) and the rest of the row (leadFor; 0: none).
+ * The columns the hint line has for its buttons: the viewport's (on the
+ * terminal the transcript's column, a docked pane's already off) less the rest
+ * of the row (leadFor; 0: none).
  */
-export function hintLineColumns(viewportColumns: number, dock: number, lead = 0): number {
-  return Math.max(0, viewportColumns - Math.max(0, dock) - Math.max(0, lead))
+export function hintLineColumns(viewportColumns: number, lead = 0): number {
+  return Math.max(0, viewportColumns - Math.max(0, lead))
 }
 
 /**

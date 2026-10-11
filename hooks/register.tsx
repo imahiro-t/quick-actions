@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { Result } from '../types'
 import {
@@ -29,7 +29,7 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
-import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns } from './hint-width'
+import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
@@ -397,7 +397,9 @@ async function begin($: EngineInterface, def: ActionDef, lang: Lang, head: Entry
     const kept = new Set((await read($, results)).map(r => r.id))
     for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
   }
-  const held = text ?? (await read($, picking))?.text ?? (await selectionNow($))
+  // The text the dialog's tab holds while it is up; a tab the engine unloaded
+  // unheard holds nothing (openPicking), so a stale text is never run on.
+  const held = text ?? (await openPicking($))?.text ?? (await selectionNow($))
   await openPanes($, lang, 'results', held, false)
   // Back to the top, where this newest result is drawn (see ./scroll).
   await settleQuietly($.ui.scroll(toLatest(PANE)))
@@ -588,19 +590,37 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, text: stri
   const last = focus ? { ...front, focus: true as const } : front
   await $.ui.open(last)
   const panes = await readQuietly($.ui.panes())
-  const left = panes?.find(p => p.id === front.id)
-  if (left !== undefined && left.isPlaced && !left.isShown) {
+  const frontPane = panes?.find(p => p.id === front.id)
+  if (frontPane !== undefined && frontPane.isPlaced && !frontPane.isShown) {
     await readQuietly($.ui.close({ id: front.id }))
     await $.ui.open(last)
   }
 }
 
 // The cells this plugin's docked pane takes off the transcript's column (its
-// body and frame), as last drawn; 0 while it is drawn inline; null while it is
-// closed or not yet drawn (a reload starts with none). Kept in the module, not
-// in the state: a render hook may not write the state, and this is what one
-// measures.
-let measuredDock: number | null = null
+// body and frame), as last drawn on each surface; 0 while it is drawn inline
+// there; absent while it is closed or not yet drawn there (a reload starts
+// with none). One entry per surface: a session may draw on several at once,
+// each seating the pane its own way (a terminal docked, a desktop inline), and
+// each hint line takes off its own surface's dock alone. Kept in the module,
+// not in the state: a render hook may not write the state, and this is what
+// one measures.
+const measuredDock = new Map<RenderSurface, number>()
+
+/**
+ * The ⋯ dialog's state while its tabs are up, by the engine's record
+ * ($.ui.panes()), not the state's alone: a pane the engine unloads (its
+ * drawing threw) is gone before any hook hears of it, so closeAll never runs
+ * and `picking` stays; here it then reads as closed. Should the record not
+ * answer, the state is taken at its word.
+ */
+async function openPicking($: EngineInterface) {
+  const state = await read($, picking)
+  if (state === null) return null
+  const panes = await readQuietly($.ui.panes())
+  if (panes === undefined) return state
+  return panes.some(p => p.id === PANE || p.id === PICKER) ? state : null
+}
 
 /** Ends every run over time, each entry done and saying how long it ran. Never rejects. */
 async function stopAllTickers($: EngineInterface) {
@@ -636,25 +656,30 @@ export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) =>
 async function closeAll($: EngineInterface, closing?: string) {
   await stopAllTickers($)
   await update($, picking, () => null)
-  measuredDock = null
+  measuredDock.clear()
   for (const id of [PICKER, PANE]) {
     if (id !== closing) await readQuietly($.ui.close({ id }))
   }
 }
 
 /**
- * Notes the width this plugin's pane takes off the transcript's column, as
- * the pane is drawn: docked, its body and frame; inline, none. On a change the
- * plugin's drawings are asked again, so the hint line follows it (the pane's
- * own redraw then finds it unchanged, and asks nothing more).
+ * Notes the width this plugin's pane takes off the transcript's column on
+ * `surface`, as the pane is drawn there: docked, its body and frame; inline,
+ * none. On a change the plugin's drawings are asked again, so that surface's
+ * hint line follows it (the pane's own redraw then finds it unchanged, and
+ * asks nothing more). Each surface writes its own entry alone, so two seating
+ * the pane differently never undo each other's: the redraws settle.
  */
-function noteDock($: EngineInterface, isOpen: boolean, placement: 'dock' | 'inline', bodyColumns: number) {
+function noteDock($: EngineInterface, surface: RenderSurface, isOpen: boolean, placement: 'dock' | 'inline', bodyColumns: number) {
   // A drawing after closeAll (the state it cleared redraws the pane before it
   // goes) measures nothing: the pane is on its way out.
-  const width = !isOpen ? null : placement === 'dock' ? dockWidth(bodyColumns) : 0
-  if (measuredDock === width) return
-  measuredDock = width
-  if (width === null) return
+  if (!isOpen) {
+    measuredDock.delete(surface)
+    return
+  }
+  const width = placement === 'dock' ? dockWidth(bodyColumns) : 0
+  if (measuredDock.get(surface) === width) return
+  measuredDock.set(surface, width)
   try {
     $.ui.invalidate('ui.render')
   } catch {
@@ -751,7 +776,7 @@ export const register: Register = (on, options) => {
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
   // The dock is measured afresh by this load's drawings.
-  measuredDock = null
+  measuredDock.clear()
 
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
@@ -937,20 +962,31 @@ export const register: Register = (on, options) => {
     const viewport = e.viewport
     let columns: number | undefined
     if (viewport !== undefined) {
-      const measured = measuredDock
-      const docked = viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS && (await read($, picking)) !== null
+      // Open by the engine's record: a tab unloaded unheard takes nothing off.
+      const isOpen = (await openPicking($)) !== null
+      // This surface's own dock, never another's (a desktop's inline pane
+      // says nothing of the terminal's docked one).
+      const measured = isOpen ? measuredDock.get(e.surface) : undefined
+      const docked = isOpen && viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS
       columns = hintLineColumns(viewport.columns, measured ?? (docked ? ASSUMED_DOCK : 0))
     }
-    // Narrow, the kind buttons are their marks alone; their hover labels say which.
+    // Narrow, the kind buttons are drawn as their marks alone; their hover
+    // labels say which.
     const compact = columns !== undefined && columns < COMPACT_BELOW
     const kindLabel = (k: HintKind) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
+    // What each kind button is named, whatever it draws (a desktop's native
+    // button and assistive tech read the label, not the drawing): which actions
+    // it shows, and, for the one shown now, that it is.
+    const kindName = (k: HintKind) => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])
     // ✕ and ⋯ always; the kind buttons while they fit beside them (on a line
     // too narrow even for their marks, the kind shown stays as it is).
     const ends = buttonWidth('✕') + buttonWidth('⋯')
     const kindsWidth = kinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0)
     const shownKinds = columns === undefined || ends + kindsWidth <= columns ? kinds : []
     const reserved = ends + (shownKinds.length > 0 ? kindsWidth : 0)
-    const count = hintCountFor(columns, hintCount, reserved, candidates.map(a => buttonWidth(markedIcon(a))))
+    // Widths measured for as many as the line could take at most, not every candidate.
+    const most = columns === undefined ? hintCount : hintTarget(columns, hintCount)
+    const count = hintCountFor(columns, hintCount, reserved, candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))))
     const enabled = candidates.slice(0, count)
     const { Box, Button, Text } = $.ui.resolve(e)
 
@@ -987,11 +1023,13 @@ export const register: Register = (on, options) => {
         {shownKinds.map(k => (
           <Box key={`act-${kindKey(k)}`} hover={{ scope: `tip-kind-${k}` }}>
             {k === kind ? (
-              <Button key={kindKey(k)} label={kindLabel(k)} onPress={() => update($, hintKind, () => k)}>
+              <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
                 <Text bold color="cyan">{kindLabel(k)}</Text>
               </Button>
             ) : (
-              <Button key={kindKey(k)} label={kindLabel(k)} dimColor onPress={() => update($, hintKind, () => k)} />
+              <Button key={kindKey(k)} label={kindName(k)} dimColor onPress={() => update($, hintKind, () => k)}>
+                {kindLabel(k)}
+              </Button>
             )}
           </Box>
         ))}
@@ -1055,7 +1093,7 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const state = await read($, picking)
-    noteDock($, state !== null, e.props.placement, e.props.bodyColumns)
+    noteDock($, e.surface, state !== null, e.props.placement, e.props.bodyColumns)
     const isAsking = (await read($, asking)) > 0
     const all = inOrder(await ensureOrder($, orderLoad), l)
     const hasSelection = state !== null && state.text !== null
@@ -1200,7 +1238,7 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     const defs = defsFor(l)
     const { Box, Button, Text } = $.ui.resolve(e)
-    noteDock($, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
+    noteDock($, e.surface, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined

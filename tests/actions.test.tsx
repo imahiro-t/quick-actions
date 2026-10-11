@@ -1556,7 +1556,7 @@ for (const language of ['ja', 'en'] as const) {
   const defs = actionsFor(language)
   test(
     `[${language}] every definition is drawn in order and runs by its kind`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 60_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

@@ -257,7 +257,7 @@ export type HintKindName = 'selection' | 'context' | 'standalone'
 
 /** What the helpers below need of a mounted hint line. */
 type Band = {
-  findAll: (query: { type?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown> }[]>
+  findAll: (query: { type?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown>; text: string }[]>
   press: (target: { key: string }) => Promise<unknown>
 }
 
@@ -271,3 +271,13 @@ export const hintKinds = async (band: Band) =>
 
 /** Switches the hint line to the actions of `kind`, as a press on its kind button does. */
 export const showKind = (band: Band, kind: HintKindName) => band.press({ key: `${KIND_KEY}${kind}` })
+
+/**
+ * The hint line's kind buttons as drawn: each one's kind, its accessible name
+ * (the label, which a desktop's native button and assistive tech read) and
+ * what it draws (its mark, the name inside it unless the line is narrow).
+ */
+export const kindButtons = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).flatMap(b =>
+    String(b.key).startsWith(KIND_KEY) ? [{ kind: String(b.key).slice(KIND_KEY.length), label: String(b.props.label), drawn: b.text }] : [],
+  )

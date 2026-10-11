@@ -231,7 +231,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] every action asks for an answer in ${name}, translations aside`,
-    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
+    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 60_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

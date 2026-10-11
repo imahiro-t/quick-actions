@@ -97,6 +97,11 @@ export type Messages = {
   hintKinds: { selection: string; context: string; standalone: string }
   /** The hover labels of the kind buttons: which actions each shows. */
   hintKindTips: { selection: string; context: string; standalone: string }
+  /**
+   * The accessible name of the kind button shown now: its hover label marked
+   * as the one shown, since bold and dim alone do not reach a name.
+   */
+  hintKindShown: (name: string) => string
   /** Shown in the ⋯ dialog while an AskUserQuestion dialog holds the keys: the actions are buttons to click. */
   pickerAsking: string
   /** The button under an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
@@ -225,6 +230,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerLegend: hasSelection => (hasSelection ? '[ ] 選択  < > 会話  { } 単独' : '< > 会話  { } 単独'),
     hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
     hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
+    hintKindShown: name => `${name}（表示中）`,
     pickerAsking: '質問ダイアログの表示中は、クリックでアクションを選べます。',
     askOpen: '⚡ Quick Actions',
     truncated: '（以下省略）',
@@ -317,6 +323,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerLegend: hasSelection => (hasSelection ? '[ ] selection  < > context  { } standalone' : '< > context  { } standalone'),
     hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
     hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
+    hintKindShown: name => `${name} (shown)`,
     pickerAsking: 'While a question dialog is up, click an action to run it.',
     askOpen: '⚡ Quick Actions',
     truncated: '(truncated)',

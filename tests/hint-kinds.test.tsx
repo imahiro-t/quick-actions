@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { buttonWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER_CLOSE, PICKER_PANE, SURFACES, hintIcons, hintKinds, runCommand, showKind, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The hint line under the prompt (SELM-00050).
@@ -32,9 +32,14 @@ async function select(s: Stage, clock: Clock, text: string | null) {
 const mountBand = ($: Engine, columns?: number, isFullscreen = false) =>
   $.ui.mount({ ...BAND, surface: 'terminal', ...(columns === undefined ? {} : { viewport: { columns, rows: 40, isFullscreen } }) })
 
-/** The cells the whole line takes: every button and its gap (the hover labels are cut where the row ends). */
-async function lineWidth(band: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) {
-  return (await band.findAll({ type: 'Button' })).reduce((sum, b) => sum + buttonWidth(String(b.props.label)), 0)
+/**
+ * The cells the whole line takes: every button as drawn and its gap (the
+ * hover labels are cut where the row ends). A kind button draws its mark, not
+ * its label (its accessible name); every other one draws its label.
+ */
+async function lineWidth(band: Parameters<typeof hintIcons>[0]) {
+  const kinds = (await kindButtons(band)).reduce((sum, b) => sum + buttonWidth(b.drawn), 0)
+  return kinds + (await hintIcons(band)).reduce<number>((sum, label) => sum + buttonWidth(String(label)), 0)
 }
 
 /** How many actions the line shows (its icons, less ✕ and ⋯). */
@@ -52,9 +57,11 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     expect(await hintKinds(band)).toEqual(['selection', 'context', 'standalone'])
-    // Labelled in the kinds' own marks, the one shown drawn bold.
-    const labels = (await band.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
-    expect(labels).toEqual(['[選択]', '<会話>', '{単独}'])
+    // Drawn in the kinds' own marks, the one shown bold; named by what each
+    // shows, the one shown saying so (SELM-00050-08: bold alone reaches no name).
+    const buttons = await kindButtons(band)
+    expect(buttons.map(b => b.drawn)).toEqual(['[選択]', '<会話>', '{単独}'])
+    expect(buttons.map(b => b.label)).toEqual(['選択範囲へのアクション（表示中）', '会話へのアクション', '単独で使うアクション'])
     const bold = (await band.findAll({ type: 'Text' })).filter(t => t.props.bold === true).map(t => t.text)
     expect(bold).toEqual(['[選択]'])
     const icons = async () => (await hintIcons(band)).slice(0, -2).map(String)
@@ -63,6 +70,8 @@ for (const surface of SURFACES) {
     await showKind(band, 'context')
     expect((await icons()).every(l => l.startsWith('<'))).toBe(true)
     expect((await band.findAll({ type: 'Text' })).filter(t => t.props.bold === true).map(t => t.text)).toEqual(['<会話>'])
+    // The name of the one shown moves with it.
+    expect((await kindButtons(band)).map(b => b.label)).toEqual(['選択範囲へのアクション', '会話へのアクション（表示中）', '単独で使うアクション'])
 
     await showKind(band, 'standalone')
     expect((await icons()).every(l => l.startsWith('{'))).toBe(true)
@@ -81,8 +90,9 @@ test('the kind buttons read what they show on hover, in each language', { option
   await select(s, clock, SELECTED)
   const band = await mountBand($)
   for (const tip of Object.values(MESSAGES.en.hintKindTips)) expect(await band.find({ text: new RegExp(tip) })).toBeDefined()
-  const labels = (await band.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
-  expect(labels).toEqual(['[selection]', '<context>', '{standalone}'])
+  const buttons = await kindButtons(band)
+  expect(buttons.map(b => b.drawn)).toEqual(['[selection]', '<context>', '{standalone}'])
+  expect(buttons.map(b => b.label)).toEqual(['Actions on the selection (shown)', 'Actions on the conversation', 'Standalone actions'])
   await band.unmount()
 })
 
@@ -195,7 +205,7 @@ test('a small hintCount keeps its proportion: 3 at 80 columns, 6 at 160', { opti
   }
 })
 
-for (const [options, name] of [[JA, 'ja'], [EN, 'en']] as const) {
+for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.en]] as const) {
   test(`[${name}] narrow, fewer icons and the kind buttons their marks alone: the line never runs past its width`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -208,8 +218,11 @@ for (const [options, name] of [[JA, 'ja'], [EN, 'en']] as const) {
       const icons = await hintIcons(band)
       expect(icons.slice(-2)).toEqual(['✕', '⋯'])
       if (columns < 60 && columns >= 30) {
-        const kinds = (await band.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
-        expect(kinds).toEqual(['[ ]', '< >', '{ }'])
+        // Drawn as their marks alone, yet still named by what each shows
+        // (SELM-00050-08): three bare marks would name nothing.
+        const kinds = await kindButtons(band)
+        expect(kinds.map(b => b.drawn)).toEqual(['[ ]', '< >', '{ }'])
+        expect(kinds.map(b => b.label)).toEqual([t.hintKindShown(t.hintKindTips.selection), t.hintKindTips.context, t.hintKindTips.standalone])
       }
       await band.unmount()
     }
@@ -280,4 +293,96 @@ test('not measured (no viewport): hintCount as it always was', async ($, on) => 
   const band = await mountBand($)
   expect(await actionCount(band)).toBe(6)
   await band.unmount()
+})
+
+// ---------------------------------------------------------------------------
+// The dock, surface by surface (SELM-00050-07), and a tab unloaded unheard
+// (SELM-00050-05)
+
+test('each surface\'s hint line takes off its own surface\'s dock alone, and the redraws settle', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  let invalidated = 0
+  on('ui.invalidate', (_$, e, next) => {
+    invalidated++
+    return next(e)
+  })
+  await start($)
+  await select(s, clock, SELECTED)
+
+  let band = await mountBand($, 160, true)
+  const alone = await actionCount(band)
+  await band.press({ key: '_more' })
+  await band.unmount()
+
+  // One pane, two surfaces: docked on the terminal, inline on the desktop.
+  const terminal = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' } })
+  const desktop = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop', props: { ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' } })
+  band = await mountBand($, 160, true)
+  const docked = await actionCount(band)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 56 - 3)
+  expect(docked).toBeLessThan(alone)
+  await band.unmount()
+
+  // The terminal drawn again after the desktop: still its own dock, not the desktop's none.
+  await terminal.redraw({ ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' })
+  await desktop.redraw({ ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' })
+  band = await mountBand($, 160, true)
+  expect(await actionCount(band)).toBe(docked)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 56 - 3)
+  await band.unmount()
+
+  // The desktop's hint line has its whole width: its pane sits inline.
+  const desktopBand = await $.ui.mount({ ...BAND, surface: 'desktop', viewport: { columns: 160, rows: 40, isFullscreen: true } })
+  expect(await actionCount(desktopBand)).toBe(alone)
+  await desktopBand.unmount()
+
+  // Unchanged widths ask for no redraw, however often either surface draws.
+  const before = invalidated
+  for (let i = 0; i < 3; i++) {
+    await terminal.redraw({ ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' })
+    await desktop.redraw({ ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' })
+  }
+  expect(invalidated).toBe(before)
+  await terminal.unmount()
+  await desktop.unmount()
+})
+
+test('tabs the engine unloaded unheard take nothing off the line, and a run never holds their old text', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+
+  let band = await mountBand($, 160, true)
+  const alone = await actionCount(band)
+  await band.press({ key: '_more' })
+  await band.unmount()
+  const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' } })
+  await pane.unmount()
+
+  // The engine unloads both tabs (a drawing threw): gone before any hook
+  // hears of it, so no close hook runs and the module's state stays.
+  s.panes = []
+  s.shown = null
+
+  band = await mountBand($, 160, true)
+  expect(await actionCount(band)).toBe(alone)
+  await band.unmount()
+
+  // A conversation action run on a new selection opens the tabs on that
+  // selection, not on the text the unloaded tab held.
+  await select(s, clock, 'exit 137')
+  band = await mountBand($)
+  await showKind(band, 'context')
+  const first = (await hintIcons(band))[0]
+  const context = (await band.findAll({ type: 'Button' })).find(b => b.props.label === first)
+  await band.press({ key: String(context?.key) })
+  await band.unmount()
+
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await picker.unmount()
+  expect(s.models.at(-1)?.prompt).toContain('exit 137')
+  expect(s.models.at(-1)?.prompt).not.toContain(SELECTED)
 })

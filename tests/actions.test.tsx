@@ -33,11 +33,11 @@ import {
   wrapInput,
 } from '../hooks/actions'
 import { TEXT_ARG_LIMIT, parseArg } from '../hooks/args'
-import { parsePins } from '../hooks/order'
+import { ofKind, parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, promptOf, reselect, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, showKind, stage, start, submitArg } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, writing, code,
 // evidence, research, data, learning, checks.
@@ -1565,13 +1565,17 @@ for (const language of ['ja', 'en'] as const) {
       s.selected = 'TypeError: x is undefined'
       await clock.advance(400)
 
+      // One kind at a time (since SELM-00050): each kind's, in the order pinned.
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(icons).toEqual([...ACTIONS.map(markedIcon), '✕', '⋯'])
+      for (const kind of ['selection', 'context', 'standalone'] as const) {
+        await showKind(band, kind)
+        expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])
+      }
 
       for (const a of defs) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
         await reselect(s, clock)
+        await showKind(band, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection')
         await band.press({ key: a.id })
         // One that takes an argument asks for it first: Enter with the field empty, its default.
         if (takesArg(a)) await submitArg($)

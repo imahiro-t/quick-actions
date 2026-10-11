@@ -17,7 +17,7 @@ import {
 } from '../hooks/order'
 import type { OrderSlot } from '../hooks/order'
 import type { Usage } from '../hooks/order'
-import { BAND, PICKER_PANE, PICKER_SELECT, reselect, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, PICKER_PANE, PICKER_SELECT, hintIcons, reselect, runCommand, stage, start, storedUsage } from './stage'
 
 // The hint line's order: pins, then the usage score (halving every 30 days),
 // ties in the order of definition; with no pin and no usage, the default set
@@ -199,7 +199,7 @@ const iconOf = (id: string) => markedIcon(ACTIONS.find(a => a.id === id)!)
 
 const iconsOf = async ($: Engine) => {
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
+  const icons = (await hintIcons(band))
   await band.unmount()
   return icons
 }
@@ -222,7 +222,7 @@ test('a broken store still shows the default order', async ($, on) => {
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+  expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
 })
 
 for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', Math.min(30, ACTIONS.length)], ['0', 6], ['many', 6]] as const) {

@@ -64,6 +64,90 @@ export const PANE = {
   },
 } as const
 
+// Transcript rows, by the requestId $.ui.selection() names (a tool call's
+// row and its result block share the call's tool_use_id).
+export const USER_ROW = {
+  plugin: PLUGIN,
+  component: 'UserMessage',
+  requestId: 'msg-user-1',
+  props: { text: 'why does it exit 137?', origin: { kind: 'composer' }, isExpanded: true },
+} as const
+
+export const ASSISTANT_ROW = {
+  plugin: PLUGIN,
+  component: 'AssistantMessage',
+  requestId: 'msg-assistant-1',
+  props: { text: 'The process was **killed**: exit 137 is SIGKILL, often the OOM killer.', isFirstOfReply: true },
+} as const
+
+export const OTHER_ASSISTANT_ROW = {
+  ...ASSISTANT_ROW,
+  requestId: 'msg-assistant-2',
+  props: { text: 'Raise the memory limit, or find what grows.', isFirstOfReply: true },
+} as const
+
+export const TOOL_USE_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolUse',
+  requestId: 'toolu_1',
+  props: { tool_use_id: 'toolu_1', tool: 'Bash', input: { command: 'dmesg | tail' }, isRunning: false, isErrored: false, isInterrupted: false },
+} as const
+
+export const TOOL_RESULT_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolResult',
+  requestId: 'toolu_1',
+  props: { tool_use_id: 'toolu_1', tool: 'Bash', output: { stdout: 'Out of memory: Killed process 4242', stderr: '', interrupted: false }, isErrored: false },
+} as const
+
+// The other transcript rows a selection can lie in. A folded group of tool
+// calls has an id of its own and names each call's; the progress row under a
+// running call names that call.
+export const TOOL_GROUP_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolGroup',
+  requestId: 'group-1',
+  props: {
+    calls: [
+      { tool_use_id: 'toolu_g1', tool: 'Read', input: { file_path: '/repo/a.ts' }, isRunning: false, isErrored: false, isInterrupted: false },
+      { tool_use_id: 'toolu_g2', tool: 'Grep', input: { pattern: 'exit' }, isRunning: false, isErrored: false, isInterrupted: false },
+    ],
+    isActive: false,
+    isExpanded: false,
+  },
+} as const
+
+export const TOOL_PROGRESS_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolProgress',
+  requestId: 'progress-1',
+  props: { tool_use_id: 'toolu_1', kind: 'background_hint', hint: '(ctrl+b to run in background)' },
+} as const
+
+export const INFO_NOTICE_ROW = {
+  plugin: PLUGIN,
+  component: 'InfoNotice',
+  requestId: 'notice-1',
+  props: { text: 'Using the model from your settings', command: '/model' },
+} as const
+
+export const TURN_DURATION_ROW = {
+  plugin: PLUGIN,
+  component: 'TurnDuration',
+  requestId: 'turn-1',
+  props: { word: 'Baked', durationMs: 3000 },
+} as const
+
+// The question dialog: only its props are used (rowIdsOf); the kit cannot
+// draw it, which must hold the engine's own dialog, and nothing beneath the
+// plugin here can be that.
+export const ASK_ROW = {
+  plugin: PLUGIN,
+  component: 'AskUserQuestion',
+  requestId: 'toolu_ask',
+  props: { tool: 'AskUserQuestion', questions: [{ question: 'Which one?', header: 'Pick', options: [], multiSelect: false }] as unknown[] },
+} as const
+
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
@@ -106,6 +190,11 @@ export const JAPANESE = /[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef]/
 
 export type Stage = {
   selected: string | null
+  // The transcript row the selection lies in, as $.ui.selection() names it
+  // (UiSelection.requestId); null, as by default: none named (a selection
+  // over several rows, in a pane or the prompt), which every test before the
+  // highlights assumed.
+  selectedRow: string | null
   models: { model: string; system?: string; prompt: string }[]
   registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string }[]
   commands: { name: string; description: string }[]
@@ -132,8 +221,18 @@ export type Stage = {
   closed: string[]
   // The rows the last open of each pane asked for, by id (undefined: none asked).
   rows: Record<string, number | undefined>
+  // The panes open now, in open order, and the one shown, as $.ui.panes() answers them.
+  panes: string[]
+  shown: string | null
+  // Whether an open of a pane already open shows it (true), or only retitles
+  // it, leaving it behind the shown one (false), the two ways a host may go.
+  reopenShows: boolean
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
+  // How many times the engine drew each site beneath the plugin, by
+  // `<component>:<requestId>`: a transcript row's hook drawing it again
+  // (highlighted or not) asks the engine's drawing again.
+  drawn: Record<string, number>
 }
 
 const reply = (s: Stage, text: string) => {
@@ -146,7 +245,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -161,19 +260,34 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
+    const site = `${e.component}:${e.requestId}`
+    s.drawn[site] = (s.drawn[site] ?? 0) + 1
+    // The question dialog is the engine's own drawing (one engine node, which
+    // a plugin's tree must hold exactly once); the rest a Box standing for it.
+    if (e.component === 'AskUserQuestion') return { type: 'engine', ref: 0 } as const
     const { Box } = $.ui.resolve(e)
     return <Box key="engine" />
   })
-  on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
+  on('ui.selection', () => ({
+    value: s.selected === null ? undefined : { text: s.selected, ...(s.selectedRow === null ? {} : { requestId: s.selectedRow }) },
+  }))
   on('ui.open', (_$, e) => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
     s.rows[e.id] = e.rows
+    const isNew = !s.panes.includes(e.id)
+    if (isNew) s.panes.push(e.id)
+    if (isNew || s.reopenShows) s.shown = e.id
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {
     s.closed.push(e.id)
+    s.panes = s.panes.filter(id => id !== e.id)
+    if (s.shown === e.id) s.shown = s.panes.at(-1) ?? null
     return { value: undefined }
   })
+  on('ui.panes', () => ({
+    value: s.panes.map(id => ({ id, title: id, isShown: id === s.shown, isFocused: false, isPlaced: true })),
+  }))
   on('settings.read', () => {
     s.settingsReads++
     if (s.settingsDeny !== null) return { deny: s.settingsDeny }
@@ -247,3 +361,35 @@ export async function reselect(s: Stage, clock: Clock) {
 /** A definition's prompt; undefined for a local action, which has none, or for no definition. */
 export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
   def === undefined || def.kind === 'local' ? undefined : def.prompt
+
+/** The hint line's kind buttons are keyed by this and the kind: never an action's ID. */
+export const KIND_KEY = '_kind-'
+
+export type HintKindName = 'selection' | 'context' | 'standalone'
+
+/** What the helpers below need of a mounted hint line. */
+type Band = {
+  findAll: (query: { type?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown>; text: string }[]>
+  press: (target: { key: string }) => Promise<unknown>
+}
+
+/** The labels of the hint line's buttons, the kind buttons left out: its icons, ✕ and ⋯. */
+export const hintIcons = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).filter(b => !String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
+
+/** The hint line's kind buttons by their keys' kind, in the order drawn. */
+export const hintKinds = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).flatMap(b => (String(b.key).startsWith(KIND_KEY) ? [String(b.key).slice(KIND_KEY.length)] : []))
+
+/** Switches the hint line to the actions of `kind`, as a press on its kind button does. */
+export const showKind = (band: Band, kind: HintKindName) => band.press({ key: `${KIND_KEY}${kind}` })
+
+/**
+ * The hint line's kind buttons as drawn: each one's kind, its accessible name
+ * (the label, which a desktop's native button and assistive tech read) and
+ * what it draws (its mark, the name inside it unless the line is narrow).
+ */
+export const kindButtons = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).flatMap(b =>
+    String(b.key).startsWith(KIND_KEY) ? [{ kind: String(b.key).slice(KIND_KEY.length), label: String(b.props.label), drawn: b.text }] : [],
+  )

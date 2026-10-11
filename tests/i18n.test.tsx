@@ -1,9 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, takesArg } from '../hooks/actions'
+import { ACTIONS, actionsFor, isContext, isStandalone, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -242,6 +242,8 @@ for (const language of ['en', 'ja'] as const) {
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       for (const a of ACTIONS) {
         await reselect(s, clock)
+        // One kind at a time on the line (SELM-00050): the action's own first.
+        await showKind(band, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection')
         await band.press({ key: a.id })
         // One that takes an argument asks for it first: Enter with the field empty, its default.
         if (takesArg(a)) await submitArg($)

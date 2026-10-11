@@ -4,7 +4,7 @@ import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, TARGETS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, promptOf, reselect, runCommand, stage, start, submitArg } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, hintIcons, promptOf, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 
 // The person's own actions, from the `customActions` setting: read, checked,
 // shown on the hint line and run like the built-ins.
@@ -261,7 +261,8 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
       await clock.advance(400)
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      expect((await band.findAll({ type: 'Button' })).map(b => b.props.label).slice(0, 2)).toEqual(['{💭}', '{🛰}'])
+      await showKind(band, 'standalone')
+      expect((await hintIcons(band)).slice(0, 2)).toEqual(['{💭}', '{🛰}'])
       await band.press({ key: 'ideas' })
       await band.unmount()
       // Its free text is asked for first: Enter with the field empty runs it with none.
@@ -443,7 +444,7 @@ for (const surface of SURFACES) {
       await clock.advance(400)
 
       const band = await $.ui.mount({ ...BAND, surface })
-      const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
+      const icons = (await hintIcons(band))
       // Five pinned, then the first of the rest (translate-ja), six in all.
       expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
@@ -586,7 +587,7 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     // The valid custom one and explain pinned; the invalid ones nowhere.
-    expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯'])
+    expect((await hintIcons(band))).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])
@@ -666,7 +667,7 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await band.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+  expect((await hintIcons(band))).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
   await band.unmount()
 
   const r = await runCommand($, '')

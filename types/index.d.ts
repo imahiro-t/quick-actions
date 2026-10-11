@@ -29,6 +29,24 @@ export type Result = {
   timed?: true
   status: 'running' | 'done' | 'failed'
   text: string
+  /**
+   * Where the selection it ran on lies: set on an action on the selection
+   * alone, and only when the engine named the transcript row it lies in (a
+   * selection within one row). Left out otherwise (several rows, a pane, the
+   * prompt; a context or standalone action; an entry from before it existed).
+   */
+  origin?: ResultOrigin
+}
+
+/**
+ * The transcript row a selection action's entry ran on, and whether that row
+ * still shows it highlighted.
+ */
+export type ResultOrigin = {
+  /** The row, by the id its `ui.render` hook reads as `e.requestId` and `$.ui.scroll` takes. */
+  requestId: string
+  /** True until the entry's "Clear highlight" is pressed. */
+  highlighted: boolean
 }
 
 /**
@@ -40,10 +58,11 @@ export type ArgInput = { action: ActionId; value: string; invalid?: string }
 
 /**
  * The hint line `/quick-actions hint` opened. `text` is what was selected as
- * the command ran (trimmed), or null with nothing selected; `armed` turns true
+ * the command ran (trimmed), or null with nothing selected; `requestId`, the
+ * transcript row it lies in, when the engine named one; `armed` turns true
  * once a selection made after it opened is seen, whose going then closes it.
  */
-export type HintState = { text: string | null; armed: boolean }
+export type HintState = { text: string | null; requestId?: string; armed: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -52,16 +71,38 @@ declare module 'claude-code' {
       dismissed: string | null
       results: Result[]
       /**
-       * The ⋯ dialog: null while it is closed; open, the text it runs selection
-       * actions on (null: none, context and standalone actions only) and what
-       * its filter field holds (empty as it opens: every action listed).
-       * With `arg`, it shows the argument screen of that standalone action
+       * The transcript rows drawn highlighted now (by requestId, sorted, each
+       * once): what `results` says (an entry's origin, not cleared), kept
+       * apart so that the transcript rows read this alone while they draw,
+       * and are drawn again when it changes, not on every write of `results`
+       * (a run over time writes it every tick). Written only when it changes.
+       */
+      highlightedRows: string[]
+      /**
+       * The ⋯ dialog's tab ("Select an action"), open beside the result pane's
+       * whenever either is: null while they are closed; open, the text it runs
+       * selection actions on (null: none, context and standalone actions only)
+       * and what its filter field holds (empty as it opens: every action listed);
+       * `requestId`, the transcript row that text lies in, when there is one.
+       * With `arg`, the tab shows the argument screen of that standalone action
        * instead of the list: what its field holds, and why the last Enter did
        * not run it (an argument that does not parse); without, the list.
        */
-      picking: { text: string | null; filter: string; arg?: ArgInput } | null
+      picking: { text: string | null; requestId?: string; filter: string; arg?: ArgInput } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
+      /**
+       * The kind of actions the person switched the hint line to while it is
+       * up; null for the one it opens on (the selection's with text, else the
+       * conversation's). Back to null with a new selection, `/quick-actions
+       * hint`, ✕ or a run.
+       */
+      hintKind: 'selection' | 'context' | 'standalone' | null
+      /**
+       * How many AskUserQuestion dialogs are up now (0: none): the ⋯ dialog
+       * then lists its actions as buttons to click, since the dialog holds the keys.
+       */
+      asking: number
     }
   }
 }

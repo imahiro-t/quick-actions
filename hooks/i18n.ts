@@ -94,6 +94,19 @@ export type Messages = {
   hintOpened: string
   /** Stands in the pane heading for the quote of a context action, which has no selected text. */
   onConversation: string
+  /** The hint line's kind buttons, by kind: the name drawn inside the kind's mark (`[選択]`). */
+  hintKinds: { selection: string; context: string; standalone: string }
+  /** The hover labels of the kind buttons: which actions each shows. */
+  hintKindTips: { selection: string; context: string; standalone: string }
+  /**
+   * The accessible name of the kind button shown now: its hover label marked
+   * as the one shown, since bold and dim alone do not reach a name.
+   */
+  hintKindShown: (name: string) => string
+  /** Shown in the ⋯ dialog while an AskUserQuestion dialog holds the keys: the actions are buttons to click. */
+  pickerAsking: string
+  /** The button under an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
+  askOpen: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -123,6 +136,10 @@ export type Messages = {
   localTickerOnSelection: string
   /** The stop button of a running timer (or anything else that runs over time). */
   stop: string
+  /** The button of a result on a selection that scrolls the transcript back to where that selection lies. */
+  gotoSelection: string
+  /** The button of a result on a selection that takes that result's highlight off its transcript row. */
+  clearHighlight: string
   /** A run over time, stopped: after how long, or with no time when it is not known any more. */
   tickerStopped: (elapsed?: string) => string
   /** A run over time, done. */
@@ -182,7 +199,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     quote: text => `「${text}」`,
     close: '閉じる',
     allActions: 'すべてのアクション',
-    pickerTitle: 'アクションを選ぶ',
+    pickerTitle: 'アクションを選択',
     pickerLabel: 'アクション: ',
     pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
@@ -242,10 +259,17 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
     invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
     pickerLegend: hasSelection => (hasSelection ? '[ ] 選択  < > 会話  { } 単独' : '< > 会話  { } 単独'),
+    hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
+    hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
+    hintKindShown: name => `${name}（表示中）`,
+    pickerAsking: '質問ダイアログの表示中は、クリックでアクションを選べます。',
+    askOpen: '⚡ Quick Actions',
     truncated: '（以下省略）',
     localAsync: '結果をすぐに返しませんでした',
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
     stop: '停止',
+    gotoSelection: '選択箇所に戻る',
+    clearHighlight: 'ハイライトをクリア',
     tickerStopped: elapsed => (elapsed === undefined ? '停止しました' : `停止しました（経過 ${elapsed}）`),
     tickerDone: '終了',
     tickerLimit: limit => `同時に動かせるのは ${limit} 個までです。停止してから実行してください`,
@@ -277,7 +301,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     quote: text => `"${text}"`,
     close: 'Close',
     allActions: 'All actions',
-    pickerTitle: 'Pick an action',
+    pickerTitle: 'Select an action',
     pickerLabel: 'Action: ',
     pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
@@ -337,10 +361,17 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
     invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
     pickerLegend: hasSelection => (hasSelection ? '[ ] selection  < > context  { } standalone' : '< > context  { } standalone'),
+    hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
+    hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
+    hintKindShown: name => `${name} (shown)`,
+    pickerAsking: 'While a question dialog is up, click an action to run it.',
+    askOpen: '⚡ Quick Actions',
     truncated: '(truncated)',
     localAsync: 'the result did not come at once',
     localTickerOnSelection: 'an action on the selection cannot run over time',
     stop: 'Stop',
+    gotoSelection: 'Go to selection',
+    clearHighlight: 'Clear highlight',
     tickerStopped: elapsed => (elapsed === undefined ? 'Stopped' : `Stopped (after ${elapsed})`),
     tickerDone: 'Done',
     tickerLimit: limit => `Up to ${limit} can run at once. Stop one, then run this again`,

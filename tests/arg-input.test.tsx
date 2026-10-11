@@ -22,6 +22,7 @@ import {
   PICKER_SELECT,
   SURFACES,
   runCommand,
+  showKind,
   stage,
   start,
   storedUsage,
@@ -87,12 +88,15 @@ async function pickerNow($: Engine, surface: (typeof SURFACES)[number] = 'termin
   return { texts, field, filter, select, buttons }
 }
 
-/** Nothing ran: no model, no fork, no subagent, no result pane, no use counted. */
+/**
+ * Nothing ran: no model, no fork, no subagent, the results' tab not brought to
+ * the front (it opens behind the ⋯ dialog's whenever that opens), no use counted.
+ */
 const ranNothing = (s: Stage) => {
   expect(s.models).toEqual([])
   expect(s.forks).toEqual([])
   expect(s.spawned).toEqual([])
-  expect(s.opened.filter(o => o.id === PANE.requestId)).toEqual([])
+  expect(s.shown).not.toBe(PANE.requestId)
   expect(storedUsage(s)).toBeUndefined()
 }
 
@@ -196,7 +200,9 @@ for (const surface of SURFACES) {
     await picker.input({ key: PICKER_ARG, text: '' })
     await picker.unmount()
 
-    expect(s.closed).toEqual([PICKER])
+    // A run keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     const texts = await paneTexts($, surface)
     expect(texts).toContain('⏳ 25:00 left')
     expect(texts.join('\n')).toContain(MESSAGES.en.standalone)
@@ -220,7 +226,9 @@ for (const [options, t] of LANGS) {
     expect(s.closed).toEqual([])
     await picker.input({ key: PICKER_ARG, text: ' 5m ' })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // A run keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     const texts = await paneTexts($)
     expect(texts).toContain(t.timerLeft('05:00'))
     expect(texts.join('\n')).toContain(t.quote('5m'))
@@ -335,7 +343,9 @@ test('an action that takes no argument still runs as it is picked', { options: E
   await picker.input({ key: PICKER_FILTER, text: 'stopwatch', kind: 'change' })
   await picker.select({ key: PICKER_SELECT, value: 'stopwatch' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A run keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   expect((await paneTexts($)).some(x => x.startsWith('🏃'))).toBe(true)
 })
 
@@ -365,9 +375,11 @@ for (const surface of SURFACES) {
     await start($)
     await select(s, clock, SECRET)
     const band = await $.ui.mount({ ...BAND, surface })
+    await showKind(band, 'standalone')
     await band.press({ key: 'timer' })
-    expect(s.opened.map(o => o.id)).toEqual([PICKER])
-    expect(s.opened[0]).toMatchObject({ focus: true, closeOnEscape: true })
+    // Both tabs open, the ⋯ dialog's in front, on the argument screen.
+    expect(s.opened.at(-1)).toMatchObject({ id: PICKER, focus: true, closeOnEscape: true })
+    expect(s.shown).toBe(PICKER)
     const now = await pickerNow($, surface)
     expect(now.field?.props.value).toBe('')
     expect(now.texts).toContain(MESSAGES.en.argDefault('25m'))
@@ -387,6 +399,7 @@ test('the hint line /quick-actions hint opened: Enter on the argument screen run
   await runCommand($, 'hint')
   await select(s, clock, null)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await showKind(band, 'standalone')
   await band.press({ key: 'timer' })
   // Open still: only the run puts it away.
   expect((await band.findAll({ type: 'Button' })).length).toBeGreaterThan(0)
@@ -410,6 +423,7 @@ for (const [options, t] of LANGS) {
     await start($)
     await select(s, clock, SECRET)
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await showKind(band, 'standalone')
     await band.press({ key: 'ideas' })
     await band.unmount()
     const now = await pickerNow($)
@@ -440,16 +454,20 @@ test('[mobile] the hint line, the ⋯ dialog and the result pane: the default at
   await start($)
   await select(s, clock, SECRET)
   const band = await $.ui.mount({ ...BAND, surface: 'mobile' })
+  await showKind(band, 'standalone')
   await band.press({ key: 'timer' })
   await band.unmount()
-  expect(s.opened.map(o => o.id)).toEqual([PANE.requestId])
+  // Run at once: the results' tab shown, never the argument screen.
+  expect(s.shown).toBe(PANE.requestId)
   expect(await paneTexts($, 'mobile')).toContain('⏳ 25:00 left')
 
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
   await picker.press({ key: 'timer' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A run keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   expect(await paneButtons($, 'mobile')).toEqual([STOP(2), STOP(1)])
 
   await pressInPane($, STOP(2), 'mobile')

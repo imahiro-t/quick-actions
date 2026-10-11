@@ -51,6 +51,16 @@ export const PANE_COLORS = {
   inline: { heading: undefined, body: undefined, failed: 'red' },
 } as const
 
+// The background of a transcript row that holds a selection a result ran on
+// (until that result's "Clear highlight"). The transcript is drawn in Claude
+// Code's theme, never in `paneTheme`'s palette, so this is a theme key, which
+// core draws in the theme's own colour for light and dark alike. `subtle` is
+// the theme's neutral grey (the colour of its faint rules and borders): the
+// theme's text reads on it in either theme, and it means nothing else, where
+// the theme has no key for a selection or a search match, and the diff keys
+// (diffAddedDimmed, ...) would read as a line added or removed.
+export const HIGHLIGHT = 'subtle' as const
+
 /**
  * How the pane and the ⋯ dialog are drawn. `background` undefined: the plugin
  * paints none (core's, or the terminal's, shows). `muted` undefined: the

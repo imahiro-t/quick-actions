@@ -27,6 +27,7 @@ import {
   USER_ROW,
   reselect,
   runCommand,
+  showKind,
   stage,
   start,
 } from './stage'
@@ -330,6 +331,10 @@ test('a run over time ticking, and other writes of the results, draw no transcri
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const frame = async () => (await pane.findAll({ type: 'Text' })).map(x => x.text).join('|')
   const first = await frame()
+  // The docked pane's first drawing measures the dock and asks every drawing
+  // again, once (noteDock): the counts are taken from there.
+  before.lit = s.drawn[LIT]
+  before.plain = s.drawn[PLAIN]
   await clock.advance(5000)
   expect(await frame()).not.toBe(first)
   // Another action on the row already highlighted: its rows are as they were.
@@ -411,7 +416,10 @@ test('a context or standalone action run while a selection in a row is there hig
   await start($)
   await select(s, clock, 'exit 137', ASSISTANT_ROW.requestId)
   // From the hint line (a context action), and by the command (a standalone one).
-  await pressIcon($, 'recap')
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await showKind(band, 'context')
+  await band.press({ key: 'recap' })
+  await band.unmount()
   await reselect(s, clock)
   await runCommand($, 'timer 10s')
   expect(await isHighlighted($, ASSISTANT_ROW)).toBe(false)

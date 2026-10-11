@@ -61,14 +61,27 @@ declare module 'claude-code' {
        */
       highlightedRows: string[]
       /**
-       * The ⋯ dialog: null while it is closed; open, the text it runs selection
-       * actions on (null: none, context and standalone actions only) and what
-       * its filter field holds (empty as it opens: every action listed);
+       * The ⋯ dialog's tab ("Select an action"), open beside the result pane's
+       * whenever either is: null while they are closed; open, the text it runs
+       * selection actions on (null: none, context and standalone actions only)
+       * and what its filter field holds (empty as it opens: every action listed);
        * `requestId`, the transcript row that text lies in, when there is one.
        */
       picking: { text: string | null; requestId?: string; filter: string } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
+      /**
+       * The kind of actions the person switched the hint line to while it is
+       * up; null for the one it opens on (the selection's with text, else the
+       * conversation's). Back to null with a new selection, `/quick-actions
+       * hint`, ✕ or a run.
+       */
+      hintKind: 'selection' | 'context' | 'standalone' | null
+      /**
+       * How many AskUserQuestion dialogs are up now (0: none): the ⋯ dialog
+       * then lists its actions as buttons to click, since the dialog holds the keys.
+       */
+      asking: number
     }
   }
 }

@@ -3,14 +3,18 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon } from '../hooks/actions'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start } from './stage'
-import type { Clock, Stage } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, hintKinds, runCommand, showKind, stage, start } from './stage'
+import type { Clock, HintKindName, Stage } from './stage'
 
 // Context actions: on the conversation itself, with no selected text, a fork
 // of the session. They share the hint line, the ⋯ dialog and the order with
 // the actions on the selection, told apart by < > around the icon ([ ] for
 // those on the selection); `/quick-actions hint` opens the hint line without
 // a selection (the context actions alone) or with one (both kinds).
+//
+// The hint line shows one kind at a time (since SELM-00050), switched by its
+// kind buttons: with a selection it opens on the actions on it, without one on
+// the context actions.
 //
 // The engine stops answering a selection once a command has run; the stub
 // does not, so every test that runs `/quick-actions hint` then clears
@@ -125,9 +129,11 @@ const CONTEXT = [
   { id: 'links', icon: '🔗', ja: '登場した URL・資料' },
 ]
 
-const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
+/** The hint line's icons, ✕ and ⋯ (the kind buttons left out), switched to `kind` first when one is given. */
+const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal', kind?: HintKindName) => {
   const band = await $.ui.mount({ ...BAND, surface })
-  const labels = (await band.findAll({ type: 'Button' })).map(b => String(b.props.label))
+  if (kind !== undefined) await showKind(band, kind)
+  const labels = (await hintIcons(band)).map(String)
   await band.unmount()
   return labels
 }
@@ -188,8 +194,13 @@ for (const surface of SURFACES) {
     const r = await openHint($, s, clock)
     expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
     const labels = await labelsOf($, surface)
-    // The default set's context and standalone actions first, then the rest in the order of definition; six in all.
-    expect(labels).toEqual(['<🧭>', '<✅>', '{⏳}', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
+    // The context actions: the default set's first, then the rest in the order of definition; six in all.
+    expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+    // With no text to run on, no kind button for the selection's actions; the standalone ones a press away.
+    const kinds = await $.ui.mount({ ...BAND, surface })
+    expect(await hintKinds(kinds)).toEqual(['context', 'standalone'])
+    await kinds.unmount()
+    expect((await labelsOf($, surface, 'standalone')).slice(0, 1)).toEqual(['{⏳}'])
 
     const band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'close' })
@@ -200,7 +211,7 @@ for (const surface of SURFACES) {
   })
 }
 
-test('with text selected, /quick-actions hint keeps both kinds though the command took the selection away', async ($, on) => {
+test('with text selected, /quick-actions hint keeps every kind though the command took the selection away', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -209,7 +220,10 @@ test('with text selected, /quick-actions hint keeps both kinds though the comman
 
   await openHint($, s, clock)
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+  // It opens on the actions on the text it held; the other kinds a press away.
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect((await labelsOf($, 'terminal', 'context')).slice(0, 2)).toEqual(['<🧭>', '<✅>'])
+  await labelsOf($, 'terminal', 'selection')
 
   // An action on the selection runs on the text held as the command ran, and the line closes.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -230,7 +244,7 @@ test('a selection made after /quick-actions hint arms it: that selection going c
 
   s.selected = 'exit 137'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)
@@ -252,7 +266,7 @@ test('the selection held as the command ran, seen late by the poll, does not arm
   s.selected = null
   await clock.advance(400)
   // Its going closes nothing: the line stays, on the text it held.
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'summarize' })
   await band.unmount()
@@ -298,6 +312,7 @@ test('on a hint line drawn by a selection alone, a context action puts its icons
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await showKind(band, 'context')
   await band.press({ key: 'decisions' })
   await band.unmount()
   expect(s.forks).toHaveLength(1)
@@ -317,6 +332,7 @@ test('opened by /quick-actions hint with a selection there now, a context action
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await showKind(band, 'context')
   await band.press({ key: 'recap' })
   await band.unmount()
   await clock.advance(400)
@@ -349,6 +365,8 @@ test('the usage scores order the kinds as one; with a selection, the actions on 
   s.selected = 'some text'
   await clock.advance(400)
   expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '[💃]', '✕', '⋯'])
+  // Its context actions by the same scores, a press away.
+  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
 
   // With nothing selected, the same order with the context actions alone.
   s.selected = null
@@ -363,7 +381,9 @@ test('`actions` pins either kind', { options: { actions: 'recap,explain,handoff'
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['<🧭>', '[💡]', '<📝>', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
+  // Each kind's pins lead it.
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯'])
+  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<📝>', '<✅>', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
 
   s.selected = null
   await clock.advance(400)
@@ -454,5 +474,6 @@ test('a custom context action runs with no selection, marked < >; one with no ta
   // With a selection, the one with no target is an action on it.
   s.selected = 'segfault'
   await clock.advance(400)
-  expect((await labelsOf($)).slice(0, 2)).toEqual(['<📣>', '[🦜]'])
+  expect((await labelsOf($)).slice(0, 1)).toEqual(['[🦜]'])
+  expect((await labelsOf($, 'terminal', 'context')).slice(0, 1)).toEqual(['<📣>'])
 })

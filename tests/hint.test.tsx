@@ -1,12 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { BAND, EN, JA, SURFACES, stage, start } from './stage'
+import { BAND, EN, JA, SURFACES, hintIcons, stage, start } from './stage'
 
-// Which icons the hint line shows, for the `actions` setting the test stores.
+// Which icons the hint line shows, for the `actions` setting the test stores:
+// those of the kind it shows, the kind buttons before them left out.
 const iconsFor = async ($: Engine, surface: (typeof SURFACES)[number]) => {
   const band = await $.ui.mount({ ...BAND, surface })
-  const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
+  const icons = await hintIcons(band)
   await band.unmount()
   return icons
 }
@@ -30,11 +31,11 @@ for (const surface of SURFACES) {
     await band.unmount()
   })
 
-  // No pins and no usage yet: the default set leads, its actions on the
-  // selection ([ ]) before its others (< > on the conversation; the standalone
-  // timer { } after them), the rest following, the first six shown, then ✕ and ⋯.
-  // (Before SELM-00025 the default set's kinds were drawn mixed, [💡] <🧭> [🌐] …:
-  // with a selection, the actions on it now come first.)
+  // No pins and no usage yet: the default set leads, the rest following, the
+  // first six shown, then ✕ and ⋯. With a selection the line shows the actions
+  // on it ([ ]) alone; the other kinds are a press of a kind button away.
+  // (Before SELM-00025 the default set's kinds were drawn mixed, [💡] <🧭> [🌐] …;
+  // before SELM-00050 its context actions <🧭> <✅> followed on the same line.)
   test(`[${surface}] unset: the default set first, then the rest, six in all, then ✕ and ⋯`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -42,7 +43,7 @@ for (const surface of SURFACES) {
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+    expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
   })
 
   test(
@@ -83,7 +84,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '<🧭>', '<✅>', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
     },
   )
 

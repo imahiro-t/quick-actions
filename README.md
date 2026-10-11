@@ -2,11 +2,11 @@
 
 English | [日本語](README.ja.md)
 
-A Claude Code plugin of icon actions for the text you select in the conversation (the transcript), for the conversation itself, and for small jobs that need neither. Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate, explain, summarize, proofread, read code, find the evidence, convert data and more), on the conversation (recap it, list the decisions, the next steps, restate the last answer, draft a commit message and more), or on neither (a timer, a calendar, a calculator, a password, a template, a repository overview and more), and read the result in a pane. There are 311 built-in actions of three kinds. With nothing selected, `/quick-actions hint` brings up the hint line, and `/quick-actions <id> [argument]` runs an action by its ID (e.g. `/quick-actions timer 5m`). The actions you use most come first, and you can pin your own to the front in settings; every action, shown on the hint line or not, can be picked from the ⋯ at its end, and its dialog finds one by its ID or name as you type. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
+A Claude Code plugin of icon actions for the text you select in the conversation (the transcript), for the conversation itself, and for small jobs that need neither. Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate, explain, summarize, proofread, read code, find the evidence, convert data and more), on the conversation (recap it, list the decisions, the next steps, restate the last answer, draft a commit message and more), or on neither (a timer, a calendar, a calculator, a password, a template, a repository overview and more), and read the result in a pane. There are 311 built-in actions of three kinds; the hint line shows one kind at a time, switched by the buttons at its start. With nothing selected, `/quick-actions hint` brings up the hint line, and `/quick-actions <id> [argument]` runs an action by its ID (e.g. `/quick-actions timer 5m`). The actions you use most come first, and you can pin your own to the front in settings; every action, shown on the hint line or not, can be picked from the ⋯ at its end, and its dialog finds one by its ID or name as you type. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
 
 ## How it works
 
-There are three kinds of action, mixed in one row:
+There are three kinds of action, and the hint line shows one kind at a time (switch with the [kind buttons](#switching-the-kind-shown)):
 
 - **Actions on the selection**, shown as `[icon]`: they run on the text you selected ([the list](#actions-on-the-selection))
 - **Context actions**, shown as `<icon>`: they run on the current conversation itself, with no selected text, in a branch (fork) of it ([the list](#context-actions))
@@ -15,30 +15,53 @@ There are three kinds of action, mixed in one row:
 The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `{🧸}`, for one); the `[ ]`, `< >` or `{ }` tells them apart.
 
 1. Select text in the transcript with the mouse (or, with nothing selected, run [`/quick-actions hint`](#opening-the-hint-line-without-a-selection-quick-actions-hint))
-2. Icons appear on the hint line under the prompt. Hover over an icon to see its label
-   - The first six are shown (change it with [`hintCount`](#hintcount)), then ✕ and ⋯
-   - The order: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them, all three kinds in one order. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
-   - **With a selection**, the pins (of any kind) lead, and of the rest the actions on the selection come before the context and standalone actions. **With none** (a hint line `/quick-actions hint` opened, or the ⋯ dialog), the actions on the selection are left out: the context and standalone actions alone
-   - The first time (no pins and no use yet) the [default set](#actions) leads: with a selection `[💡] [🌐] [📝] [🔎] <🧭> <✅> ✕ ⋯`, with none `<🧭> <✅> {⏳} <📋> <❓> <🧸> ✕ ⋯`
+2. The hint line appears under the prompt: the kind buttons `[selection] <context> {standalone}` first, then the icons of the kind shown, then ✕ and ⋯. Hover over an icon to see its label
+   - With a selection it opens on the actions on the selection; with none, on the context actions (see [Switching the kind shown](#switching-the-kind-shown))
+   - How many icons are shown follows the line's width: six on an 80-column line by default, more on a wider one, fewer on a narrower one (see [`hintCount`](#hintcount))
+   - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
+   - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
    - Pressing an action's icon (of any kind) or ✕ hides the icons for that selection (selecting other text brings them back)
-   - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run). Clicking away without pressing an icon therefore leaves the icons in place: press ✕ to close them
+   - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run), and it tells the plugin nothing when the highlight goes. Clicking away without pressing an icon therefore leaves the icons of the selection in place: press ✕ to close them, or switch to `<context>` or `{standalone}` to use the other kinds
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds. This is for a hint line shown by a selection alone; one opened with `/quick-actions hint` closes as [described below](#opening-the-hint-line-without-a-selection-quick-actions-hint)
-3. Press an icon and the result is added at the top of the "Quick Actions" pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
+3. Press an icon and the result is added at the top of the "Quick Actions" tab of the right pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
    - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command ("standalone" when there was none)
    - For an action on a selection inside one transcript row, the row stays highlighted, and the result has "Go to selection" and "Clear highlight" buttons (see [Finding the selection again](#finding-the-selection-again-highlight-and-the-two-buttons))
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
+   - The pane always has two tabs, "Quick Actions" (the results) and "Select an action" (the ⋯ dialog), and one Esc closes both (see [The right pane's two tabs](#the-right-panes-two-tabs))
    - A standalone action pressed on the hint line or in the ⋯ dialog runs with no argument (on its default). To hand it an argument, use `/quick-actions <id> <argument>` (see [Command](#command))
-4. An action not on the hint line is under the ⋯ at its end: it opens a dialog (so does `/quick-actions` without an ID), where typing in the filter finds it (see [The ⋯ dialog and its filter](#the--dialog-and-its-filter))
+4. An action not on the hint line is under the ⋯ at its end: it opens the pane on its "Select an action" tab (so does `/quick-actions` without an ID), where typing in the filter finds it (see [The ⋯ dialog and its filter](#the--dialog-and-its-filter))
 
 The selected text itself is not shown on the hint line (so a multi-line selection does not make the line two rows tall).
+
+### Switching the kind shown
+
+The hint line starts with a button per kind: `[selection]`, `<context>` and `{standalone}` (`[選択]`, `<会話>` and `{単独}` in Japanese). Press one and the line shows the icons of that kind; the kind shown is drawn bold, the others dim. Hover over a button to see which actions it shows.
+
+- **Where it opens**: on the actions on the selection when there is text to run on (a selection, or the text `/quick-actions hint` took in), on the context actions otherwise. With no text there is no `[selection]` button
+- **How long a switch holds**: while the line is up. It opens on its starting kind again after a new selection (other text than before), `/quick-actions hint`, ✕, or running an action. Selecting exactly the same text again does not count as a new selection, so the kind you switched to stays
+- **Why the buttons**: Claude Code keeps answering the last selection after its highlight is gone and does not tell the plugin when it goes, so the line cannot tell a selection you can see from one you clicked away. When the actions on the selection are still shown after you clicked away, switch to `<context>` or `{standalone}`
+- **On a narrow line**: below 60 columns the buttons are drawn as their marks alone (`[ ]`, `< >`, `{ }`; hover for which). On a line too narrow for even those beside ✕ and ⋯, they are left out and the kind shown stays as it is
+- **Their names**: screen readers and the desktop app's native buttons read each button by what it shows, the one shown saying so, such as "Actions on the selection (shown)" ("選択範囲へのアクション（表示中）" in Japanese), whatever the button draws
+
+### The right pane's two tabs
+
+The right pane (above the prompt on a narrow terminal) always opens with two tabs: **"Quick Actions"**, the results, and **"Select an action"**, the [⋯ dialog](#the--dialog-and-its-filter).
+
+- **Which tab is in front**: pressing an icon on the hint line shows "Quick Actions". The ⋯ on the hint line, `/quick-actions` without an ID, and the [⚡ Quick Actions button over a question](#while-claude-asks-you-a-question-askuserquestion) show "Select an action", with the keyboard in its filter (when Claude Code lets it have the keyboard)
+- **Picking an action** in "Select an action" brings "Quick Actions" to the front with the result; "Select an action" stays open behind it, its filter emptied, ready for the next pick
+- **Closing**: one action closes the whole pane, both tabs at once: Esc, the close mark on either tab (ctrl+x x), or the Close button in "Select an action"
+  - Esc closes the pane while you type in the filter too, rather than emptying the filter: use the Clear button beside the field (or delete the text) to empty it
+  - Esc pressed at an idle, empty prompt closes the pane too (with both tabs), though the keyboard is at the prompt
+  - Closing stops every [action that runs over time](#actions-that-run-over-time). A model call or subagent under way goes on, and its answer lands in "Quick Actions", shown the next time the pane opens
+- On a Claude Code that does not bring a reopened tab to the front, the plugin closes that tab and opens it again to show it, so a tab may close and reopen for a moment
 
 ### Opening the hint line without a selection (`/quick-actions hint`)
 
 Run `/quick-actions hint` to bring up the hint line whether or not text is selected:
 
-- **Nothing selected**: the context and standalone actions, in the same order (`<🧭> <✅> {⏳} <📋> <❓> <🧸> ✕ ⋯` the first time)
-- **Text selected**: every kind, as when the selection shows them. Running the command makes Claude Code stop reporting that selection, so the plugin takes the selected text in as the command runs: the actions on the selection run on that text, even after its highlight is gone
+- **Nothing selected**: the context and standalone actions, in the same order. It opens on the context actions (`<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯` the first time), and `{standalone}` switches to the standalone ones; there is no `[selection]` button
+- **Text selected**: every kind, as when the selection shows them, opening on the actions on the selection. Running the command makes Claude Code stop reporting that selection, so the plugin takes the selected text in as the command runs: the actions on the selection run on that text, even after its highlight is gone
 
 `hint` takes no argument (`/quick-actions hint foo` answers `hint takes no argument: foo` and does nothing).
 
@@ -51,13 +74,14 @@ The selection taken in when the command ran is not one of these: its going (whic
 
 ### The ⋯ dialog and its filter
 
-Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID, to open a dialog of every action.
+Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID, to open a dialog of every action. It is the "Select an action" tab of the right pane, shown in front of the "Quick Actions" tab (see [The right pane's two tabs](#the-right-panes-two-tabs)).
 
 - The actions are listed in the hint line's order, as `[icon] label`, `<icon> label` or `{icon} label`, under a legend of the marks (`[ ] selection  < > context  { } standalone`)
 - Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and the legend reads `< > context  { } standalone`
+- The list fills the pane's height, and is laid out again when the terminal is resized (shrunk and grown back, it fills the height again)
 - The list shows the first 64 of the order. When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
-- An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation; a standalone action runs with no argument (on its default). The result shows in the "Quick Actions" pane
-- ↑ / ↓ move, Enter runs, Esc closes it running nothing. A click picks too, and the Close button closes it
+- An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation; a standalone action runs with no argument (on its default). The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
+- ↑ / ↓ move, Enter runs. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app): click your pick, or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
 **The filter**: above the list is a field, "Filter (ID, name, kind)", which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
@@ -71,6 +95,21 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Move the keyboard from the field to the list (with Tab, for one) and ↑ / ↓ and Enter pick from it
 - **In the mobile app** there is no filter field: every action is listed as a button, with no limit, to tap
 - With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter stays, and the list is a row of buttons instead of a selection list, every action on it with no limit
+- **While Claude asks a question** (AskUserQuestion), there is no filter field: every action is listed as a button to click (see below)
+
+### While Claude asks you a question (AskUserQuestion)
+
+While Claude's question dialog (AskUserQuestion) is up, it holds the keyboard and the prompt is gone, so `/quick-actions` cannot be typed and the pane's keys do not work. Quick Actions stays usable with clicks, so you can look something up before you answer:
+
+- **A ⚡ Quick Actions button over the question**: press it to open the right pane on its "Select an action" tab (an action on the selection runs on the text selected at that moment). It sits above the question, since Claude Code draws nothing below it
+- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, no selection list, which need the keyboard). Click one to run it; its result shows in "Quick Actions"
+- **A pane already open when the question comes up** works the same way: the action buttons in "Select an action" and the Stop button of a run in "Quick Actions" answer clicks
+- **After you answer or cancel the question**, the usual list and filter come back, and the keys (scrolling, typing in the filter, Esc to close) work again
+
+The limits, set by Claude Code:
+
+- While the question is up, Claude Code gives the pane no keyboard focus, and Esc goes to the question (it does not close the pane). Whether clicking in the pane or ctrl+x tab moves the keyboard to it during a question is not documented and not confirmed; use clicks
+- Should Claude Code refuse the button drawn over the question, the question is drawn alone, without the button. A pane opened before the question can still be clicked
 
 ### Finding the selection again (highlight and the two buttons)
 
@@ -95,7 +134,7 @@ Highlighting and the buttons happen inside Claude Code and send nothing.
 `timer`, `stopwatch`, `pomodoro`, `countdown-to`, `breathing` and `eye-rest` do not answer at once: their result in the pane changes as time goes by (see [Timers](#timers)).
 
 - The time left or gone by shows in the result, with a Stop button under it. Pressing it stops the run there and then, showing `Stopped (after mm:ss)`
-- Closing the "Quick Actions" pane stops every run (each shows "Stopped (after …)"). A run also stops when its result is pushed out of the pane's 20, and when the plugin reloads (after a change of settings, say)
+- Closing the right pane (Esc, the close mark on either tab, or the Close button: each closes both tabs) stops every run (each shows "Stopped (after …)"). A run also stops when its result is pushed out of the pane's 20, and when the plugin reloads (after a change of settings, say)
 - Up to 5 can run at once. A sixth fails with `Up to 5 can run at once. Stop one, then run this again`
 - A run goes on for 24 hours at most, then stops (`stopwatch` never ends by itself, so it runs until you stop it or for 24 hours)
 - A run that comes to its end says so in a toast (e.g. `⏳ Timer 25:00 is done`). No toast is shown when you stop it, close the pane, or it stops at 24 hours
@@ -133,7 +172,7 @@ At the prompt of a Claude Code terminal session, run the following (replace `<ow
 
 1. Answer `y` to `Add marketplace?`
 2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
-3. On the settings screen, set `actions` (the actions to pin to the front; leave it empty for the order of use), `hintCount` (how many the hint line shows; default 6), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
+3. On the settings screen, set `actions` (the actions to pin to the front; leave it empty for the order of use), `hintCount` (how many the hint line shows on an 80-column line; default 6), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
 4. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
 
 ## Settings (userConfig)
@@ -166,18 +205,27 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
 }
 ```
 
-- **Unset or empty**: nothing is pinned; every action is in the order of use. The first time, with no use yet, the default set `explain,recap,translate-ja,decisions,summarize,code,timer` leads, and the rest follow in definition order (the [actions on the selection](#actions-on-the-selection), then the [context actions](#context-actions), then the [standalone actions](#standalone-actions)). With a selection, the default set's actions on the selection come first: `[💡] [🌐] [📝] [🔎] <🧭> <✅>` (`{⏳}` seventh); with none, `<🧭> <✅> {⏳}` lead
-  - Actions used equally, or not yet, keep the definition order. So once you use any action, the default set no longer leads: what you used comes first, then the rest in definition order (with a selection, the actions on it first: `[🌐] [🔤] [🀄] …`). To keep the default set in front, write it in `actions`
-- **Any kind**: the IDs of context actions (`recap`, `handoff`, …) and standalone actions (`timer`, `calc`, …) can be pinned like those of the actions on the selection, mixed in any order. With nothing selected, the hint line skips the actions on the selection and shows the pinned context and standalone actions first
+- **Unset or empty**: nothing is pinned; every action is in the order of use. The first time, with no use yet, the default set `explain,recap,translate-ja,decisions,summarize,code,timer` leads, and the rest follow in definition order (the [actions on the selection](#actions-on-the-selection), then the [context actions](#context-actions), then the [standalone actions](#standalone-actions)). Each kind shown on the hint line starts with the default set's actions of that kind: `[💡] [🌐] [📝] [🔎]` for the actions on the selection, `<🧭> <✅>` for the context actions, `{⏳}` for the standalone actions
+  - Actions used equally, or not yet, keep the definition order. So once you use any action, the default set no longer leads: what you used comes first, then the rest in definition order (after a context action, for one, the actions on the selection read `[🌐] [🔤] [🀄] …`). To keep the default set in front, write it in `actions`
+- **Any kind**: the IDs of context actions (`recap`, `handoff`, …) and standalone actions (`timer`, `calc`, …) can be pinned like those of the actions on the selection, mixed in any order. Each kind's pins lead that kind on the hint line (`explain,recap` puts `[💡]` first among the actions on the selection and `<🧭>` first among the context actions), and they lead the ⋯ dialog's list in the order written
 - **Unknown IDs**: ignored (no error). If no valid ID is left, nothing is pinned (as when empty)
 - **Your own actions**: the IDs of the valid definitions in [`customActions`](#customactions) can be written here like the built-ins'
 - **Changed and removed IDs**: see [Changed IDs](#changed-ids). An old ID left in the setting is ignored like an unknown one
 - Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
-- When more are pinned than [`hintCount`](#hintcount), the hint line shows the first `hintCount` of them; the rest are under ⋯
+- When more of one kind are pinned than the hint line shows (see [`hintCount`](#hintcount)), it shows the first of them; the rest are under ⋯
 
 ### `hintCount`
 
-How many actions the hint line shows (default `6`); the rest are under the ⋯ at its end. Write a whole number of 1 or more: empty, `0`, a negative number, a fraction or anything not a number counts as the default 6. Keep it to what fits the hint line on one row.
+How many actions the hint line shows on an 80-column line (default `6`); the rest are under the ⋯ at its end. Write a whole number of 1 or more: empty, `0`, a negative number, a fraction or anything not a number counts as the default 6.
+
+The number shown follows the width of the hint line:
+
+- **In proportion to the width**: `hintCount × columns ÷ 80`, rounded down, at least 1. With the default 6: up to 9 at 120 columns, 12 at 160
+- **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕ and ⋯, so the line never runs over. When not even one fits, none is shown; ✕ and ⋯ always stay, and every action can be picked from ⋯
+- **Below 80 columns, fewer than `hintCount`**: the default shows fewer than six there (at most 5 at 70 columns and 4 at 60, fewer still where they do not fit), where it used to show six whatever the width
+- **Beside the docked pane**: while this plugin's pane docks on the right, the hint line takes the transcript's width, the pane's taken off. A docked pane of another plugin is not taken off
+- Each icon is given one column to spare, since terminals draw emoji at slightly different widths
+- Where the width is not known, `hintCount` icons are shown as before
 
 ```sh
 echo '{"hintCount":"8"}' | claude plugin configure quick-actions@quick-actions --values-stdin
@@ -210,7 +258,7 @@ The language of the hint line's labels, the pane, the ⋯ dialog, the command's 
 - Unknown or empty values count as `auto`
 - The translation actions keep their target language: `translate-ja` always translates into Japanese, `translate-en` always into English, `translate-zh` and the others into their own language, and `easy-japanese` always rewrites into Easy Japanese. Only their labels follow the display language ("To Japanese", "To English" and so on in English). The target of `translate-last`, `translate-last-en` and `translate-last-ja`, which translate the last answer, also comes before `language`
 - The ⋯ dialog's filter finds actions by their English and Japanese labels alike, whatever the display language
-- The pane's title, "Quick Actions", is the product name and stays the same in both languages
+- The results tab's title, "Quick Actions", is the product name and stays the same in both languages; the ⋯ dialog's tab, "Select an action", reads "アクションを選択" in Japanese
 
 From the command line or in settings.json:
 
@@ -308,7 +356,7 @@ It is read again whenever the plugin reloads, like `actions` and `language`: a c
   - A free-text argument takes up to 500 characters
   - **An argument to an action that takes none** (an action on the selection, a context action, a standalone action with no argument, or `hint`): nothing runs, and it answers `<id> takes no argument: <argument>`
   - **An argument written wrong** (`/quick-actions timer 99h`, say): nothing runs, and it answers `Invalid argument for <id>: <argument> (<how to write it>)`. A mistake the action finds only when it reads the argument (dice with too many sides for `dice`, say) shows in the pane as a failure, `Invalid argument: …`
-- **`/quick-actions`** (no ID): opens the same dialog as the hint line's ⋯, and the action picked there runs on the text that was selected when the command ran (with nothing selected, the dialog lists the context and standalone actions alone)
+- **`/quick-actions`** (no ID): opens the same dialog as the hint line's ⋯ (the right pane, on its "Select an action" tab), and the action picked there runs on the text that was selected when the command ran (with nothing selected, the dialog lists the context and standalone actions alone)
 - **`/quick-actions hint`**: opens the hint line, with nothing selected too (see [above](#opening-the-hint-line-without-a-selection-quick-actions-hint))
 - **An unknown ID**: nothing runs, and it answers `Unknown action ID: <id> (candidates: …). Run /quick-actions (no ID) to search the list`. The candidates are up to ten actions that the ID matches in the ⋯ dialog's filter, in the order (none are listed when nothing matches)
 - The ID of a `customActions` definition that was ignored runs nothing and says why

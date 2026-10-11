@@ -189,16 +189,18 @@ What goes out depends on the kind of action and how it runs.
 
 ## Install
 
-At the prompt of a Claude Code terminal session, run the following (replace `<owner>/<repo>` with the GitHub `owner/repository` that publishes this repository).
+Quick Actions is published in the [imahiro-plugins](https://github.com/imahiro-t/claude-plugins) marketplace, which also carries GraphOps (`graph-ops`), so one marketplace gives you both. At the prompt of a Claude Code terminal session, run the following.
 
 ```
-/plugin install quick-actions --marketplace <owner>/<repo>
+/plugin marketplace add imahiro-t/claude-plugins
+/plugin install quick-actions@imahiro-plugins
 ```
 
-1. Answer `y` to `Add marketplace?`
-2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
-3. On the settings screen, set `pinActions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
-4. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
+1. When the plugin's details show, choose a scope (the user scope enables it in every later session)
+2. On the settings screen, set `pinActions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
+3. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
+
+The imahiro-plugins marketplace is the main route. This repository still carries its own marketplace (`.claude-plugin/marketplace.json`, named `quick-actions`), so `/plugin marketplace add imahiro-t/quick-actions` followed by `/plugin install quick-actions@quick-actions` installs it directly too; installed that way, the settings key in the examples below is `quick-actions@quick-actions` instead of `quick-actions@imahiro-plugins`.
 
 ## Settings (userConfig)
 
@@ -215,7 +217,7 @@ explain,translate-ja,summarize,timer
 From the command line:
 
 ```sh
-echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
@@ -223,7 +225,7 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer" }
     }
   }
@@ -259,13 +261,13 @@ The language of the hint line's labels, the pane, the ⋯ dialog, the command's 
 From the command line or in settings.json:
 
 ```sh
-echo '{"language":"en"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"language":"en"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer", "language": "en" }
     }
   }
@@ -295,7 +297,7 @@ The colours of the docked result pane (on the right) and the ⋯ dialog.
 From the command line:
 
 ```sh
-echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 Like the other settings, a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code.
@@ -313,7 +315,7 @@ In `/config`, under `quick-actions`, enter the array on one line in `customActio
 From the command line (the value is a string, so the quotes inside it are escaped):
 
 ```sh
-claude plugin configure quick-actions@quick-actions --values-stdin <<'EOF'
+claude plugin configure quick-actions@imahiro-plugins --values-stdin <<'EOF'
 {"pinActions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
 EOF
 ```
@@ -323,7 +325,7 @@ Directly in `settings.json`, escaped the same way:
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": {
         "pinActions": "explain,pirate",
         "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
@@ -990,6 +992,16 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 - When adding or changing a built-in action in `ACTIONS`, give it a `category` (the ID of one of `CATEGORIES` in `hooks/catalog.ts`, of the same kind as the action) and a `summary` (its one-line description, `{ ja, en }`, as in the tables above)
 - Then regenerate the data with `node scripts/gen-catalog.mjs` at the root of the repository and commit `docs/actions-data.js`. The script needs Node 24 or later (it imports the TypeScript sources as they are); with asdf, for one: `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - `tests/catalog.test.ts` (run by `claude plugin test .`) fails when the data was not regenerated, and when a built-in has no category or summary, or one of another kind
+
+## Releasing
+
+1. Raise `version` in `.claude-plugin/plugin.json` and merge the change into `main`
+2. Tag that commit of `main` with `vX.Y.Z` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
+3. In [imahiro-t/claude-plugins](https://github.com/imahiro-t/claude-plugins), set the `ref` of the `quick-actions` entry in `.claude-plugin/marketplace.json` to the new tag
+4. Run `claude plugin validate .` at the root of claude-plugins, and once it passes, get the change into its `main`
+5. (Optional) Try the install with a temporary configuration directory: `CLAUDE_CONFIG_DIR=$(mktemp -d)` with `claude plugin marketplace add imahiro-t/claude-plugins` and then `claude plugin install quick-actions@imahiro-plugins`
+
+Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exists, installing from the marketplace fails, and `claude plugin validate .` does not catch that.
 
 ## Roadmap
 

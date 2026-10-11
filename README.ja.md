@@ -189,16 +189,18 @@ Claude の質問ダイアログ（AskUserQuestion）が出ている間は、ダ�
 
 ## インストール
 
-Claude Code のターミナルセッションのプロンプトで次を実行します（`<owner>/<repo>` はこのリポジトリを公開した GitHub の `オーナー/リポジトリ名` に置き換えてください）。
+Quick Actions はマーケットプレイス [imahiro-plugins](https://github.com/imahiro-t/claude-plugins) で配布しています。同じマーケットプレイスに GraphOps（`graph-ops`）も載っているので、1 回追加すれば両方を入れられます。Claude Code のターミナルセッションのプロンプトで次を実行します。
 
 ```
-/plugin install quick-actions --marketplace <owner>/<repo>
+/plugin marketplace add imahiro-t/claude-plugins
+/plugin install quick-actions@imahiro-plugins
 ```
 
-1. `Add marketplace?` と聞かれたら `y`
-2. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
-3. 設定画面で `pinActions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
-4. `Installed quick-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
+1. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
+2. 設定画面で `pinActions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
+3. `Installed quick-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
+
+主な経路は imahiro-plugins マーケットプレイスです。このリポジトリ自身のマーケットプレイス（`.claude-plugin/marketplace.json`。名前は `quick-actions`）も残しているので、`/plugin marketplace add imahiro-t/quick-actions` → `/plugin install quick-actions@quick-actions` で直接入れることもできます。その場合、以下の例の設定キーは `quick-actions@imahiro-plugins` ではなく `quick-actions@quick-actions` になります。
 
 ## 設定（userConfig）
 
@@ -215,7 +217,7 @@ explain,translate-ja,summarize,timer
 コマンドラインから設定する場合:
 
 ```sh
-echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 `settings.json` に直接書く場合（キーは `<プラグイン名>@<マーケットプレイス名>`）:
@@ -223,7 +225,7 @@ echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin con
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer" }
     }
   }
@@ -259,13 +261,13 @@ echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin con
 コマンドラインや settings.json で設定する場合:
 
 ```sh
-echo '{"language":"ja"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"language":"ja"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer", "language": "ja" }
     }
   }
@@ -295,7 +297,7 @@ echo '{"language":"ja"}' | claude plugin configure quick-actions@quick-actions -
 コマンドラインからは次のように設定します。
 
 ```sh
-echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
 ```
 
 他の設定と同じく、`/config` から変えるとすぐ反映されます（`claude plugin configure` や settings.json で変えた場合は Claude Code を再起動してください）。
@@ -313,7 +315,7 @@ echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-action
 コマンドラインから設定する場合（値は文字列なので、中の引用符をエスケープします）:
 
 ```sh
-claude plugin configure quick-actions@quick-actions --values-stdin <<'EOF'
+claude plugin configure quick-actions@imahiro-plugins --values-stdin <<'EOF'
 {"pinActions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
 EOF
 ```
@@ -323,7 +325,7 @@ EOF
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@quick-actions": {
+    "quick-actions@imahiro-plugins": {
       "options": {
         "pinActions": "explain,pirate",
         "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
@@ -990,6 +992,16 @@ subagent（既定の読み取り専用ツールを明示した例。`tools` に 
 - `ACTIONS` の組み込みアクションを追加・変更したら、`category`（`hooks/catalog.ts` の `CATEGORIES` のいずれかの ID。アクションと同じ種類のもの）と `summary`（上の表と同じ 1 行説明。`{ ja, en }`）を書きます
 - そのうえでリポジトリのルートで `node scripts/gen-catalog.mjs` を実行してデータを再生成し、`docs/actions-data.js` をコミットします。スクリプトには Node 24 以上が必要です（TypeScript のソースをそのまま読み込むため）。asdf なら例えば `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - 再生成を忘れると、`tests/catalog.test.ts`（`claude plugin test .` で実行）が落ちます。カテゴリや説明のない組み込みアクションや、種類の違うカテゴリに入れたアクションがあっても落ちます
+
+## リリース手順
+
+1. `.claude-plugin/plugin.json` の `version` を上げ、`main` にマージする
+2. `main` のそのコミットに `vX.Y.Z` のタグを打って push する（`git tag vX.Y.Z && git push origin vX.Y.Z`）
+3. [imahiro-t/claude-plugins](https://github.com/imahiro-t/claude-plugins) の `.claude-plugin/marketplace.json` で、`quick-actions` エントリの `ref` を新しいタグに更新する
+4. claude-plugins のルートで `claude plugin validate .` を実行し、通ったらその変更を claude-plugins の `main` に反映する
+5. （任意）一時的な設定ディレクトリでインストールを試す（`CLAUDE_CONFIG_DIR=$(mktemp -d)` で `claude plugin marketplace add imahiro-t/claude-plugins` → `claude plugin install quick-actions@imahiro-plugins`）
+
+タグの push は、`ref` を claude-plugins の `main` に反映するより先に済ませます。タグが無いあいだはマーケットプレイスからのインストールが失敗し、`claude plugin validate .` ではそれを検出できません。
 
 ## 今後の予定
 

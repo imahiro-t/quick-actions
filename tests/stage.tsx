@@ -155,13 +155,15 @@ export const PICKER = `${PLUGIN}-picker`
 export const PICKER_CLOSE = '_picker-close'
 /** The Box the dialog's list is drawn in is keyed by this and how many it lists. */
 export const PICKER_LIST = '_picker-list-'
+/** Each row of the list is a Box (kept whole: flexShrink 0) keyed by this and its action's ID, its Button inside. */
+export const PICKER_ROW = '_picker-row-'
 /** The dialog's filter field and the button that empties it. */
 export const PICKER_FILTER = '_filter'
 export const PICKER_FILTER_CLEAR = '_filter-clear'
 
 /** What the helpers below need of a mounted ⋯ dialog. */
 type PickerView = {
-  findAll: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined; children: unknown[] }[]>
+  findAll: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown>; children: unknown[] }[]>
   find: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined } | undefined>
   press: (target: { key: string }) => Promise<unknown>
   // Absent where the surface draws no Input (mobile).
@@ -180,23 +182,23 @@ const keyOf = (child: unknown): string | undefined => {
 export const listBox = async (picker: PickerView) =>
   (await picker.findAll({ type: 'Box' })).find(b => String(b.key).startsWith(PICKER_LIST))
 
+/** The ⋯ dialog's list rows (each a Box round its Button), in the order drawn; none when it lists none. */
+export const listRows = async (picker: PickerView) =>
+  (await listBox(picker)) === undefined ? [] : (await picker.findAll({ type: 'Box' })).filter(b => String(b.key).startsWith(PICKER_ROW))
+
+/** The list's buttons as drawn: each row's one child. */
+const listButtons = async (picker: PickerView) => (await listRows(picker)).flatMap(row => row.children)
+
 /** The IDs of the actions the ⋯ dialog lists (its list's buttons' keys), in the order drawn. */
-export const listedActions = async (picker: PickerView): Promise<string[]> => {
-  const box = await listBox(picker)
-  return box === undefined ? [] : box.children.flatMap(c => keyOf(c) ?? [])
-}
+export const listedActions = async (picker: PickerView): Promise<string[]> => (await listButtons(picker)).flatMap(c => keyOf(c) ?? [])
 
 /** The ⋯ dialog's list as `{ value: ID, label: what its button says }`, in the order drawn. */
-export const listedOptions = async (picker: PickerView): Promise<{ value: string; label: string }[]> => {
-  const box = await listBox(picker)
-  return box === undefined
-    ? []
-    : box.children.flatMap(c => {
-        const value = keyOf(c)
-        const label = (c as { props?: { label?: unknown } }).props?.label
-        return value === undefined ? [] : [{ value, label: String(label) }]
-      })
-}
+export const listedOptions = async (picker: PickerView): Promise<{ value: string; label: string }[]> =>
+  (await listButtons(picker)).flatMap(c => {
+    const value = keyOf(c)
+    const label = (c as { props?: { label?: unknown } }).props?.label
+    return value === undefined ? [] : [{ value, label: String(label) }]
+  })
 
 /** How many actions the ⋯ dialog lists, as the key of the Box it lists them in says; undefined when it lists none. */
 export const listedCount = async (picker: PickerView) => {

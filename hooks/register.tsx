@@ -32,7 +32,7 @@ import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { pickerShownCount } from './picker-rows'
-import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
+import { buttonWidth, dockWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
 import { HIGHLIGHT, paneStyle, parsePaneTheme } from './palette'
@@ -66,6 +66,8 @@ const MORE_KEY = '_more'
 const PICKER_CLOSE_KEY = '_picker-close'
 // The Box the list is drawn in, keyed by how many it lists as well (see the dialog).
 const PICKER_LIST_KEY = '_picker-list'
+/** Each row of the ⋯ dialog's list is a Box keyed by this and the action's ID. */
+const PICKER_ROW_KEY = '_picker-row'
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
 const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
@@ -756,6 +758,41 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Pick
 // one measures.
 const measuredDock = new Map<RenderSurface, number>()
 
+// The mode labels the engine draws at the left of the hint line's row
+// (SessionMode's `modes`), as last drawn on each surface; absent before the
+// first drawing there, or when its props could not be read. Kept in the
+// module for the same reason as measuredDock: a render hook measures it.
+const sessionModes = new Map<RenderSurface, readonly string[]>()
+
+/**
+ * Notes the mode labels drawn on `surface` (SessionMode's props). On a change
+ * the plugin's drawings are asked again, so the hint line there takes their
+ * width off; unchanged, nothing is asked. Never throws: props it cannot read
+ * forget the surface's labels, and the line takes LEAD_RESERVE off again.
+ */
+function noteModes($: EngineInterface, surface: RenderSurface, props: unknown) {
+  let modes: readonly string[] | undefined
+  try {
+    const value = (props as { modes?: unknown } | null | undefined)?.modes
+    if (Array.isArray(value) && value.every(m => typeof m === 'string')) modes = [...(value as string[])]
+  } catch {
+    modes = undefined
+  }
+  const before = sessionModes.get(surface)
+  if (modes === undefined) {
+    sessionModes.delete(surface)
+    if (before === undefined) return
+  } else {
+    if (before !== undefined && before.length === modes.length && before.every((m, i) => m === modes[i])) return
+    sessionModes.set(surface, modes)
+  }
+  try {
+    $.ui.invalidate('ui.render')
+  } catch {
+    // The hint line takes the width at its next drawing.
+  }
+}
+
 /**
  * The ⋯ dialog's state while its tabs are up, by the engine's record
  * ($.ui.panes()), not the state's alone: a pane the engine unloads (its
@@ -1123,7 +1160,20 @@ export const register: Register = (on, options) => {
   //
   // How many icons: the `hintCount` setting is the count on an 80-column line;
   // the line's width (the terminal's, less this plugin's dock beside it) moves
-  // it in proportion, never past what fits (./hint-width).
+  // it in proportion, never past what fits beside the mode the engine draws at
+  // the row's left (./hint-width).
+  //
+  // The mode is watched, not drawn: SessionMode passes on as the engine hands
+  // it, its labels noted for the hint line on the same surface.
+  on('ui.render', { component: 'SessionMode' }, ($, e, next) => {
+    try {
+      noteModes($, e.surface, e.props)
+    } catch {
+      // Watching never stands in the mode's way.
+    }
+    return next(e)
+  })
+
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
     const selected = await read($, selection)
@@ -1145,6 +1195,9 @@ export const register: Register = (on, options) => {
     // before it is drawn, as every open asks for it while the tabs are open on
     // a terminal wide enough to dock them.
     const viewport = e.viewport
+    // `width`: the terminal's less the dock, what hintCount is in proportion
+    // to; `columns`: that less the mode at the row's left, what the buttons have.
+    let width: number | undefined
     let columns: number | undefined
     if (viewport !== undefined) {
       // Open by the engine's record: a tab unloaded unheard takes nothing off.
@@ -1153,26 +1206,34 @@ export const register: Register = (on, options) => {
       // says nothing of the terminal's docked one).
       const measured = isOpen ? measuredDock.get(e.surface) : undefined
       const docked = isOpen && viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS
-      columns = hintLineColumns(viewport.columns, measured ?? (docked ? ASSUMED_DOCK : 0))
+      const dock = measured ?? (docked ? ASSUMED_DOCK : 0)
+      width = hintLineColumns(viewport.columns, dock)
+      columns = hintLineColumns(viewport.columns, dock, leadFor(e.surface, sessionModes.get(e.surface)))
     }
-    // Narrow, the kind buttons are drawn as their marks alone; their hover
-    // labels say which.
-    const compact = columns !== undefined && columns < COMPACT_BELOW
-    const kindLabel = (k: HintKind) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
+    const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
     // What each kind button is named, whatever it draws (a desktop's native
     // button and assistive tech read the label, not the drawing): which actions
     // it shows, and, for the one shown now, that it is.
     const kindName = (k: HintKind) => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])
-    // ✕ and ⋯ always; the kind buttons while they fit beside them (on a line
-    // too narrow even for their marks, the kind shown stays as it is).
+    // ✕ and ⋯ always; the kind buttons with their names while enough actions
+    // still fit beside them, else as their marks alone (their hover labels say
+    // which), else, too narrow even for those, left out (the kind shown stays
+    // as it is). Then as many actions as fit (./hint-width hintLayout).
     const ends = buttonWidth('✕') + buttonWidth('⋯')
-    const kindsWidth = kinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0)
-    const shownKinds = columns === undefined || ends + kindsWidth <= columns ? kinds : []
-    const reserved = ends + (shownKinds.length > 0 ? kindsWidth : 0)
+    const kindsWidth = (compact: boolean) => kinds.reduce((sum, k) => sum + buttonWidth(kindMark(k, compact)), 0)
     // Widths measured for as many as the line could take at most, not every candidate.
-    const most = columns === undefined ? hintCount : hintTarget(columns, hintCount)
-    const count = hintCountFor(columns, hintCount, reserved, candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))))
-    const enabled = candidates.slice(0, count)
+    const most = width === undefined ? hintCount : hintTarget(width, hintCount)
+    const layout = hintLayout({
+      line: columns,
+      target: most,
+      kindsLabeled: kindsWidth(false),
+      kindsMarks: kindsWidth(true),
+      ends,
+      widths: candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))),
+    })
+    const shownKinds = layout.kinds === 'none' ? [] : kinds
+    const kindLabel = (k: HintKind) => kindMark(k, layout.kinds === 'marks')
+    const enabled = candidates.slice(0, layout.count)
     const hintElements = $.ui.resolve(e)
     const { Box, Button, Text } = hintElements
     // Not while an AskUserQuestion dialog holds the keys: the ⋯ dialog then draws no field.
@@ -1222,10 +1283,13 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
+    // Each button is kept whole (flexShrink 0): squeezed, its `]` would fall
+    // onto a second row. Should the line still run past the row, its end is
+    // cut rather than wrapped.
     return (
-      <Box flexDirection="row">
+      <Box flexDirection="row" overflow="hidden">
         {shownKinds.map(k => (
-          <Box key={`act-${kindKey(k)}`} hover={{ scope: `tip-kind-${k}` }}>
+          <Box key={`act-${kindKey(k)}`} flexShrink={0} hover={{ scope: `tip-kind-${k}` }}>
             {k === kind ? (
               <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
                 <Text bold color="cyan">{kindLabel(k)}</Text>
@@ -1238,7 +1302,7 @@ export const register: Register = (on, options) => {
           </Box>
         ))}
         {enabled.map(a => (
-          <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
+          <Box key={`act-${a.id}`} flexShrink={0} hover={{ scope: `tip-action-${a.id}` }}>
             <Button
               key={a.id}
               label={markedIcon(a)}
@@ -1246,7 +1310,7 @@ export const register: Register = (on, options) => {
             />
           </Box>
         ))}
-        <Box key="act-close" hover={{ scope: 'tip-close' }}>
+        <Box key="act-close" flexShrink={0} hover={{ scope: 'tip-close' }}>
           <Button
             key="close"
             label="✕"
@@ -1255,7 +1319,7 @@ export const register: Register = (on, options) => {
             onPress={close}
           />
         </Box>
-        <Box key={`act-${MORE_KEY}`} hover={{ scope: 'tip-more' }}>
+        <Box key={`act-${MORE_KEY}`} flexShrink={0} hover={{ scope: 'tip-more' }}>
           <Button
             key={MORE_KEY}
             label="⋯"
@@ -1458,12 +1522,19 @@ export const register: Register = (on, options) => {
               // With a palette the label is a child Text in its colour, and,
               // with no filter field to take it, the first takes the focus ring
               // as the dialog takes the keys; otherwise the button is its label.
-              return fixed ? (
-                <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
-                  <Text color={style.body}>{label}</Text>
-                </Button>
-              ) : (
-                <Button key={a.id} {...button} />
+              // Either way the same text, in a row kept whole (flexShrink 0):
+              // a column short of height would squeeze a wrapped label onto
+              // fewer rows than it takes, its rows drawn over one another.
+              return (
+                <Box key={`${PICKER_ROW_KEY}-${a.id}`} flexShrink={0}>
+                  {fixed ? (
+                    <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
+                      <Text color={style.body}>{label}</Text>
+                    </Button>
+                  ) : (
+                    <Button key={a.id} {...button} />
+                  )}
+                </Box>
               )
             })}
           </Box>

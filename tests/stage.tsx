@@ -117,6 +117,12 @@ export type Stage = {
   closed: string[]
   // The rows the last open of each pane asked for, by id (undefined: none asked).
   rows: Record<string, number | undefined>
+  // The panes open now, in open order, and the one shown, as $.ui.panes() answers them.
+  panes: string[]
+  shown: string | null
+  // Whether an open of a pane already open shows it (true), or only retitles
+  // it, leaving it behind the shown one (false), the two ways a host may go.
+  reopenShows: boolean
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
 }
@@ -131,7 +137,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
+  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, reopenShows: true, stored: { ...options.store } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -146,6 +152,9 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
+    // The question dialog is the engine's own drawing (one engine node, which
+    // a plugin's tree must hold exactly once); the rest a Box standing for it.
+    if (e.component === 'AskUserQuestion') return { type: 'engine', ref: 0 } as const
     const { Box } = $.ui.resolve(e)
     return <Box key="engine" />
   })
@@ -153,12 +162,20 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('ui.open', (_$, e) => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
     s.rows[e.id] = e.rows
+    const isNew = !s.panes.includes(e.id)
+    if (isNew) s.panes.push(e.id)
+    if (isNew || s.reopenShows) s.shown = e.id
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {
     s.closed.push(e.id)
+    s.panes = s.panes.filter(id => id !== e.id)
+    if (s.shown === e.id) s.shown = s.panes.at(-1) ?? null
     return { value: undefined }
   })
+  on('ui.panes', () => ({
+    value: s.panes.map(id => ({ id, title: id, isShown: id === s.shown, isFocused: false, isPlaced: true })),
+  }))
   on('settings.read', () => {
     s.settingsReads++
     if (s.settingsDeny !== null) return { deny: s.settingsDeny }
@@ -232,3 +249,25 @@ export async function reselect(s: Stage, clock: Clock) {
 /** A definition's prompt; undefined for a local action, which has none, or for no definition. */
 export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
   def === undefined || def.kind === 'local' ? undefined : def.prompt
+
+/** The hint line's kind buttons are keyed by this and the kind: never an action's ID. */
+export const KIND_KEY = '_kind-'
+
+export type HintKindName = 'selection' | 'context' | 'standalone'
+
+/** What the helpers below need of a mounted hint line. */
+type Band = {
+  findAll: (query: { type?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown> }[]>
+  press: (target: { key: string }) => Promise<unknown>
+}
+
+/** The labels of the hint line's buttons, the kind buttons left out: its icons, ✕ and ⋯. */
+export const hintIcons = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).filter(b => !String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
+
+/** The hint line's kind buttons by their keys' kind, in the order drawn. */
+export const hintKinds = async (band: Band) =>
+  (await band.findAll({ type: 'Button' })).flatMap(b => (String(b.key).startsWith(KIND_KEY) ? [String(b.key).slice(KIND_KEY.length)] : []))
+
+/** Switches the hint line to the actions of `kind`, as a press on its kind button does. */
+export const showKind = (band: Band, kind: HintKindName) => band.press({ key: `${KIND_KEY}${kind}` })

@@ -6,7 +6,7 @@ import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
 import { SELECT_MAX_OPTIONS } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, in the hint line's order, picked with the
@@ -15,6 +15,14 @@ import type { Clock, Stage } from './stage'
 // and by /quick-actions without an ID.
 
 const MORE = '_more'
+
+// Both tabs, as ⋯ and /quick-actions open them (SELM-00050): the results'
+// behind, then the dialog's, shown and asking for the keys; both closing on
+// Escape, at the result pane's width.
+const pickerOpens = (t: { pickerTitle: string }) => [
+  { id: PANE.requestId, title: 'Quick Actions', closeOnEscape: true, columns: 56 },
+  { id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true, columns: 56 },
+]
 
 // A custom action, so the dialog is seen to list those too.
 const CUSTOM = {
@@ -39,7 +47,8 @@ for (const surface of SURFACES) {
     const band = await openByMore($, s, clock, surface)
     await band.unmount()
 
-    expect(s.opened).toEqual([{ id: PICKER, title: MESSAGES.en.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
+    expect(s.opened).toEqual(pickerOpens(MESSAGES.en))
+    expect(s.shown).toBe(PICKER)
     // Opening runs nothing.
     expect(s.models).toEqual([])
   })
@@ -67,7 +76,7 @@ for (const surface of SURFACES) {
     const s = stage(on)
     await start($)
     const band = await openByMore($, s, clock, surface)
-    const hint = (await band.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== 'close' && k !== MORE)
+    const hint = (await band.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== 'close' && k !== MORE && !k.startsWith(KIND_KEY))
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
@@ -79,8 +88,9 @@ for (const surface of SURFACES) {
     expect(total).toBeGreaterThan(SELECT_MAX_OPTIONS)
     expect(options).toHaveLength(SELECT_MAX_OPTIONS)
     expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - SELECT_MAX_OPTIONS) })).toBeDefined()
-    // The hint line is the dialog's first few.
-    expect(options.slice(0, hint.length).map(o => o.value)).toEqual(hint)
+    // The hint line is the dialog's first few of the kind it shows (on the selection).
+    const onSelection = options.map(o => o.value).filter(v => needsSelection(defs.find(d => d.id === v) ?? {}))
+    expect(onSelection.slice(0, hint.length)).toEqual(hint)
     for (const o of options) {
       const def = defs.find(d => d.id === o.value)
       if (def !== undefined) expect(o.label).toBe(`${markedIcon(def)} ${def.label}`)
@@ -98,7 +108,7 @@ for (const surface of SURFACES) {
     await picker.unmount()
   })
 
-  test(`[${surface}] a pick runs on the selected text, closes the dialog and shows the result`, async ($, on) => {
+  test(`[${surface}] a pick runs on the selected text, keeps the dialog's tab and shows the result`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -109,10 +119,13 @@ for (const surface of SURFACES) {
     await picker.select({ key: PICKER_SELECT, value: 'tldr' })
     await picker.unmount()
 
-    expect(s.closed).toEqual([PICKER])
+    // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     expect(s.models).toHaveLength(1)
     expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
-    expect(s.opened.map(o => o.id)).toEqual([PICKER, PANE.requestId])
+    // Both tabs opened again with the results' last, so it is the one shown.
+    expect(s.opened.map(o => o.id)).toEqual([PANE.requestId, PICKER, PICKER, PANE.requestId])
     const pane = await $.ui.mount({ ...PANE, surface })
     expect(await pane.find({ text: /answer from/ })).toBeDefined()
     await pane.unmount()
@@ -155,11 +168,12 @@ test('the close button runs nothing and leaves no text behind', async ($, on) =>
   await start($)
   const band = await openByMore($, s, clock)
   await band.unmount()
-  expect(s.opened[0]?.closeOnEscape).toBe(true)
+  expect(s.opened.every(o => o.closeOnEscape === true)).toBe(true)
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   await picker.press({ key: PICKER_CLOSE })
-  expect(s.closed).toEqual([PICKER])
+  // The close button closes the whole pane, both tabs (SELM-00050).
+  expect(s.closed).toEqual([PICKER, PANE.requestId])
   expect(s.models).toEqual([])
   expect(s.forks).toEqual([])
   expect(s.spawned).toEqual([])
@@ -191,7 +205,8 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     await unfocused.press({ key: PICKER_CLOSE })
     await unfocused.unmount()
 
-    expect(s.closed).toEqual([PICKER])
+    // The close button closes the whole pane, both tabs (SELM-00050).
+    expect(s.closed).toEqual([PICKER, PANE.requestId])
     expect(s.models).toEqual([])
   })
 
@@ -240,7 +255,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(await band.find({ key: MORE })).toBeDefined()
     expect(await band.find({ text: new RegExp(t.allActions) })).toBeDefined()
     await band.unmount()
-    expect(s.opened[0]?.title).toBe(t.pickerTitle)
+    expect(s.opened.find(o => o.id === PICKER)?.title).toBe(t.pickerTitle)
   })
 }
 
@@ -255,7 +270,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
     const r = await runCommand($, '  ')
     expect(JSON.stringify(r)).toContain(t.pickerOpened)
-    expect(s.opened).toEqual([{ id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
+    expect(s.opened).toEqual(pickerOpens(t))
     expect(s.models).toEqual([])
     expect(s.toasts).toEqual([])
   })
@@ -267,7 +282,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     const r = await runCommand($, '')
     expect(s.toasts).toEqual([])
     expect(JSON.stringify(r)).toContain(t.pickerOpened)
-    expect(s.opened).toEqual([{ id: PICKER, title: t.pickerTitle, focus: true, closeOnEscape: true, columns: 56 }])
+    expect(s.opened).toEqual(pickerOpens(t))
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     const listed = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
@@ -287,7 +302,9 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     // Picked, a context action runs on the conversation: a fork with no selection in it.
     await picker.select({ key: PICKER_SELECT, value: 'recap' })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     expect(s.forks).toHaveLength(1)
     expect(s.forks[0]).not.toContain('<selected>')
     expect(s.models).toEqual([])
@@ -308,7 +325,9 @@ test('a pick after /quick-actions runs on the text selected when the command ran
   await picker.select({ key: PICKER_SELECT, value: 'translate-ja' })
   expect(s.models.map(m => m.model)).toEqual(['haiku'])
   expect(s.models[0]?.prompt).toContain('Bonjour')
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
 })
 
 // ---------------------------------------------------------------------------
@@ -334,7 +353,9 @@ test('[mobile] the dialog lists every action as a button, and a press runs it', 
 
   await picker.press({ key: 'tldr' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   expect(s.models).toHaveLength(1)
   expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
 })
@@ -368,14 +389,14 @@ for (const surface of [...SURFACES, 'mobile'] as const) {
     const boxKeys = (await band.findAll({ type: 'Box' })).map(b => b.key).filter(k => k !== null && k !== undefined)
     expect(boxKeys).toContain('act-more')
     expect(unique(boxKeys)).toBe(true)
-    const buttonKeys = (await band.findAll({ type: 'Button' })).map(b => b.key)
-    // The three pinned first, then the rest; ✕ and ⋯ last.
+    const buttonKeys = (await band.findAll({ type: 'Button' })).map(b => b.key).filter(k => !String(k).startsWith(KIND_KEY))
+    // Past the kind buttons, the three pinned first, then the rest; ✕ and ⋯ last.
     expect(buttonKeys.slice(0, 3)).toEqual(['more', 'picker', 'picker-close'])
     expect(buttonKeys.slice(-2)).toEqual(['close', MORE])
     expect(unique(buttonKeys)).toBe(true)
     await band.unmount()
-    // ⋯ opened the dialog; nothing ran.
-    expect(s.opened.map(o => o.id)).toEqual([PICKER])
+    // ⋯ opened the dialog's tab, shown; nothing ran.
+    expect(s.opened.map(o => o.id)).toEqual([PANE.requestId, PICKER])
     expect(s.models).toEqual([])
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
@@ -384,7 +405,8 @@ for (const surface of [...SURFACES, 'mobile'] as const) {
     // The close button closes, running nothing.
     await picker.press({ key: PICKER_CLOSE })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // The close button closes the whole pane, both tabs (SELM-00050).
+    expect(s.closed).toEqual([PICKER, PANE.requestId])
     expect(s.models).toEqual([])
   })
 }
@@ -399,7 +421,9 @@ test('[mobile] a custom action with the ID picker-close runs from the dialog', {
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
   await picker.press({ key: 'picker-close' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   expect(s.models.map(m => m.system)).toEqual([expect.stringContaining('Answer as picker-close.')])
 })
 
@@ -559,7 +583,9 @@ for (const surface of SURFACES) {
     // Typed and Enter at once: the text Enter carries is the one matched.
     await picker.input({ key: PICKER_FILTER, text: 'tldr' })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     expect(s.models).toHaveLength(1)
     expect(s.models[0]?.system).toBe(promptOf(actionsFor('en').find(d => d.id === 'tldr')))
     expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
@@ -644,7 +670,9 @@ test('with nothing selected, the filter narrows the context and standalone actio
   expect(await picker.find({ text: MESSAGES.en.pickerNoMatch })).toBeDefined()
   await picker.input({ key: PICKER_FILTER, text: 'timer' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   expect(s.toasts).toEqual([])
   expect(s.models).toEqual([])
 })
@@ -696,7 +724,9 @@ for (const surface of SURFACES) {
 
     await picker.input({ key: PICKER_FILTER, text: '要約' })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+    expect(s.closed).toEqual([])
+    expect(s.shown).toBe(PANE.requestId)
     expect(s.models).toHaveLength(1)
     expect(s.models[0]?.system).toBe(promptOf(actionsFor('ja').find(d => d.id === narrowed[0])))
   })

@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
-import { BAND, EN, JA, PANE, PICKER, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage } from './stage'
 import type { Clock, Stage } from './stage'
 
 // Standalone actions ({icon}): on neither the selection nor the conversation.
@@ -35,7 +35,7 @@ async function paneButtons($: Engine): Promise<string[]> {
 
 const labelsOf = async ($: Engine) => {
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const labels = (await band.findAll({ type: 'Button' })).map(b => String(b.props.label))
+  const labels = (await hintIcons(band)).map(String)
   await band.unmount()
   return labels
 }
@@ -62,8 +62,10 @@ for (const surface of SURFACES) {
     await start($)
     await select(s, clock, SECRET)
 
+    // Pinned, it leads the standalone actions, a press of their kind button away.
     const band = await $.ui.mount({ ...BAND, surface })
-    expect((await band.findAll({ type: 'Button' }))[0]?.props.label).toBe('{⏳}')
+    await showKind(band, 'standalone')
+    expect((await hintIcons(band))[0]).toBe('{⏳}')
     await band.press({ key: 'timer' })
     await band.unmount()
 
@@ -87,9 +89,12 @@ test('the hint line /quick-actions hint opened with no selection: timer runs, an
   await start($)
   await runCommand($, 'hint')
   await select(s, clock, null)
-  expect((await labelsOf($)).slice(0, 3)).toEqual(['<🧭>', '<✅>', '{⏳}'])
+  // It opens on the context actions; the standalone ones (the default set's first) a press away.
+  expect((await labelsOf($)).slice(0, 2)).toEqual(['<🧭>', '<✅>'])
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await showKind(band, 'standalone')
+  expect((await hintIcons(band))[0]).toBe('{⏳}')
   await band.press({ key: 'timer' })
   await band.unmount()
   sentNothing(s)
@@ -134,7 +139,9 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   await picker.select({ key: PICKER_SELECT, value: 'timer' })
   await picker.unmount()
 
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   sentNothing(s)
   expect(s.toasts).toEqual([])
   const texts = await paneTexts($)
@@ -153,7 +160,9 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   expect(await picker.find({ text: MESSAGES.ja.pickerLegend(false) })).toBeDefined()
   await picker.select({ key: PICKER_SELECT, value: 'timer' })
   await picker.unmount()
-  expect(s.closed).toEqual([PICKER])
+  // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
   sentNothing(s)
   expect(s.toasts).toEqual([])
   expect(await paneTexts($)).toContain('⏳ 25:00 残り')

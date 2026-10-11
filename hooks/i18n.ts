@@ -93,6 +93,14 @@ export type Messages = {
   hintOpened: string
   /** Stands in the pane heading for the quote of a context action, which has no selected text. */
   onConversation: string
+  /** The hint line's kind buttons, by kind: the name drawn inside the kind's mark (`[選択]`). */
+  hintKinds: { selection: string; context: string; standalone: string }
+  /** The hover labels of the kind buttons: which actions each shows. */
+  hintKindTips: { selection: string; context: string; standalone: string }
+  /** Shown in the ⋯ dialog while an AskUserQuestion dialog holds the keys: the actions are buttons to click. */
+  pickerAsking: string
+  /** The button under an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
+  askOpen: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -155,7 +163,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     quote: text => `「${text}」`,
     close: '閉じる',
     allActions: 'すべてのアクション',
-    pickerTitle: 'アクションを選ぶ',
+    pickerTitle: 'アクションを選択',
     pickerLabel: 'アクション: ',
     pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
@@ -215,6 +223,10 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
     invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
     pickerLegend: hasSelection => (hasSelection ? '[ ] 選択  < > 会話  { } 単独' : '< > 会話  { } 単独'),
+    hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
+    hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
+    pickerAsking: '質問ダイアログの表示中は、クリックでアクションを選べます。',
+    askOpen: '⚡ Quick Actions',
     truncated: '（以下省略）',
     localAsync: '結果をすぐに返しませんでした',
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
@@ -243,7 +255,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     quote: text => `"${text}"`,
     close: 'Close',
     allActions: 'All actions',
-    pickerTitle: 'Pick an action',
+    pickerTitle: 'Select an action',
     pickerLabel: 'Action: ',
     pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
@@ -303,6 +315,10 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
     invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
     pickerLegend: hasSelection => (hasSelection ? '[ ] selection  < > context  { } standalone' : '< > context  { } standalone'),
+    hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
+    hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
+    pickerAsking: 'While a question dialog is up, click an action to run it.',
+    askOpen: '⚡ Quick Actions',
     truncated: '(truncated)',
     localAsync: 'the result did not come at once',
     localTickerOnSelection: 'an action on the selection cannot run over time',

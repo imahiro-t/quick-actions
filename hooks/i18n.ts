@@ -105,7 +105,7 @@ export type Messages = {
   hintKindShown: (name: string) => string
   /** Shown in the ⋯ dialog while an AskUserQuestion dialog holds the keys: the actions are buttons to click. */
   pickerAsking: string
-  /** The button under an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
+  /** The button above an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
   askOpen: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string

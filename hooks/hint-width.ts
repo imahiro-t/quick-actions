@@ -56,13 +56,14 @@ export const MIN_LABELED_ACTIONS = 2
 
 /**
  * The cells kept clear after ⋯ for the hover label (its leading space and
- * the label): enough for `選択範囲へのアクション` (22) and most action labels
- * whole, a longer one cut with an ellipsis. Without it a full line left the
+ * the label): enough for a short label whole (`日本語訳`, `To English`), a longer
+ * one cut with an ellipsis (`選択範囲へ…`). Half what it was (24), which left
+ * too few icons (7 at 160 columns, 10 without). Without it a full line left the
  * label a cell or none (`要…`). Kept as long as it leaves the kind buttons
  * drawn as they would be and MIN_LABELED_ACTIONS actions beside them; else as
  * much of it as does (see hintLayout).
  */
-export const TIP_RESERVE = 24
+export const TIP_RESERVE = 12
 
 /**
  * The cells of the hint line's row that are not the buttons': the footer's two

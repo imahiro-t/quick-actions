@@ -474,7 +474,9 @@ type GivenArg = { raw: string; value: ArgValue | undefined }
  * runs with once more), parsed by `spec` for the action `id`: blank (or none)
  * gives no argument, which runStandalone takes as its default; one that does
  * not parse gives the error the person reads, in the same words wherever it
- * was typed. Never rejects.
+ * was typed (see invalidArgText), and what was typed, trimmed, which the
+ * argument screen keeps to word the error anew in the language of the moment.
+ * Never rejects.
  */
 async function parseInputArg(
   $: EngineInterface,
@@ -482,14 +484,18 @@ async function parseInputArg(
   id: string,
   spec: ArgSpec,
   raw: string | undefined,
-): Promise<{ ok: true; given: GivenArg | undefined } | { ok: false; error: string }> {
+): Promise<{ ok: true; given: GivenArg | undefined } | { ok: false; typed: string; error: string }> {
   const typed = raw?.trim()
   if (typed === undefined || typed === '') return { ok: true, given: undefined }
   const now = (await readQuietly($.clock.now())) ?? 0
   const parsed = parseArg(spec, typed, { now, utcOffsetMinutes })
-  if (!parsed.ok) return { ok: false, error: MESSAGES[lang].invalidArg(id, typed, spec.hint) }
+  if (!parsed.ok) return { ok: false, typed, error: invalidArgText(lang, id, typed, spec) }
   return { ok: true, given: { raw: typed, value: parsed.value } }
 }
+
+/** The error of an argument `typed` (trimmed) that `spec` does not parse, for the action `id`, in `lang`. */
+const invalidArgText = (lang: Lang, id: string, typed: string, spec: ArgSpec): string =>
+  MESSAGES[lang].invalidArg(id, typed, spec.hint)
 
 /**
  * A standalone action: on neither the selection nor the conversation, so it
@@ -1051,7 +1057,9 @@ export const register: Register = (on, options) => {
         const parsed = await parseInputArg($, l, argDef.id, argSpec, value)
         if (!parsed.ok) {
           // Nothing runs and no use is counted: the field keeps what was typed.
-          await update($, picking, p => (p === null || p.arg === undefined ? p : { ...p, arg: { ...p.arg, value, error: parsed.error } }))
+          // What did not parse is kept, not its error: that is worded as it is
+          // drawn, so a change of language rewords it at once.
+          await update($, picking, p => (p === null || p.arg === undefined ? p : { ...p, arg: { ...p.arg, value, invalid: parsed.typed } }))
           return
         }
         await closePicker($)
@@ -1081,7 +1089,9 @@ export const register: Register = (on, options) => {
               void submitArg(value)
             }}
           />
-          {argState.error !== undefined && <Text color={style.failed}>{argState.error}</Text>}
+          {argState.invalid !== undefined && (
+            <Text color={style.failed}>{invalidArgText(l, argDef.id, argState.invalid, argSpec)}</Text>
+          )}
           <Box flexDirection="row">
             {mutedButton(elements, style, PICKER_ARG_BACK_KEY, back)}
             {closeButton}

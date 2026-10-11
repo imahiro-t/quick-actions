@@ -31,8 +31,12 @@ export type Result = {
   text: string
 }
 
-/** The ⋯ dialog's argument screen: the action, what its field holds, the error of the last Enter. */
-export type ArgInput = { action: ActionId; value: string; error?: string }
+/**
+ * The ⋯ dialog's argument screen: the action, what its field holds, and what
+ * the last Enter could not parse (trimmed), which ran nothing. Not its error:
+ * that is worded as the screen is drawn, in the language of the moment.
+ */
+export type ArgInput = { action: ActionId; value: string; invalid?: string }
 
 /**
  * The hint line `/quick-actions hint` opened. `text` is what was selected as

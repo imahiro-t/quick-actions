@@ -256,6 +256,44 @@ for (const [options, t] of LANGS) {
     expect(await paneTexts($)).toContain(t.timerLeft('01:30'))
   })
 
+  test(`[${l}] the error is worded in the language of the moment: reloaded in another one, it follows at once`, { options }, async ($, on) => {
+    // The screen as left with an error that showed in the other language: what
+    // the state holds is what was typed, not the words, so nothing is stale.
+    const other = l === 'ja' ? 'en' : 'ja'
+    const PICKING = { text: null, filter: '', arg: { action: 'timer', value: '99h', invalid: '99h' } }
+    on('state.get', (_$, e, next) => (e.key === 'picking' ? { value: { value: PICKING, version: 1 } } : next(e)))
+    mock.clock(on)
+    const s = stage(on)
+    await start($)
+
+    const now = await pickerNow($)
+    expect(now.texts).toContain(t.invalidArg('timer', '99h', hintOf('timer', l)))
+    expect(now.texts).not.toContain(MESSAGES[other].invalidArg('timer', '99h', hintOf('timer', other)))
+    expect(now.texts.join('\n')).not.toContain(hintOf('timer', other))
+    expect(now.field?.props.value).toBe('99h')
+    expect(s.closed).toEqual([])
+    ranNothing(s)
+  })
+
+  test(`[${l}] an argument that does not parse is kept as typed, not as words in a language`, { options }, async ($, on) => {
+    const written: unknown[] = []
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'picking') written.push(e.value)
+      return next(e)
+    })
+    mock.clock(on)
+    stage(on)
+    await start($)
+    await runCommand($, '')
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await picker.input({ key: PICKER_ARG, text: ' 99h ' })
+    await picker.unmount()
+
+    expect(written.at(-1)).toEqual({ text: null, filter: '', arg: { action: 'timer', value: ' 99h ', invalid: '99h' } })
+    expect(JSON.stringify(written)).not.toContain(t.invalidArg('timer', '99h', hintOf('timer', l)))
+  })
+
   test(`[${l}] Back: the list again, with its filter, and nothing ran`, { options }, async ($, on) => {
     mock.clock(on)
     const s = stage(on)

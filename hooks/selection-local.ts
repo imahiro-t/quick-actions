@@ -58,6 +58,18 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // the emoji into one, which can disguise nothing, and escaping it would break
 // the emoji.
 //
+// Tag characters (U+E0000 to U+E007F) show as nothing at all, yet each stands
+// for an ASCII character: a whole sentence can ride hidden after a word
+// ("ASCII smuggling"), read by a model though no one sees it. They are hidden
+// characters too, escaped as their UTF-16 surrogate pair (`\udb40\udc41` for
+// U+E0041), which is the same value in a JSON string. The one exception is a
+// flag emoji's tag sequence (`inFlag`): a black flag U+1F3F4, three to seven
+// tags of a lowercase letter or digit (a CLDR subdivision ID, such as gbeng
+// for England), and CANCEL TAG U+E007F. There the tags only pick the flag
+// shown, and escaping them would break it; anything longer, of other tags, or
+// not so closed is escaped whole (the flag's own U+1F3F4 is no hidden
+// character and stays).
+//
 // Two ways to show them, by what the output is:
 // - JSON (format-json, minify-json, decode-jwt, a JSON error's token):
 //   `escapeHidden`, the hidden characters alone escaped, as `\u202e`. Inside
@@ -76,10 +88,11 @@ const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 /** Whether the text holds a control character the pane must not show raw. */
 export const hasControls = (s: string) => s.search(CONTROLS) >= 0
 
-// The hidden characters: the controls above, the bidirectional controls and
-// the zero-width and invisible format characters (U+200D among them: whether
-// a ZWJ is kept is `joinsEmoji`'s to say).
-const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}]/gu
+// The hidden characters: the controls above, the bidirectional controls, the
+// zero-width and invisible format characters (U+200D among them: whether a ZWJ
+// is kept is `joinsEmoji`'s to say) and the tag characters (whether a tag is
+// kept is `inFlag`'s to say).
+const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}\u{e0000}-\u{e007f}]/gu
 
 // The same, or a backslash: what `showHidden` writes anew, in one pass.
 const SHOWN = new RegExp(`\\\\|${HIDDEN.source}`, 'gu')
@@ -105,20 +118,53 @@ function joinsEmoji(s: string, at: number): boolean {
   return before !== undefined && PICTOGRAPHIC.test(before.char)
 }
 
-/** Whether the hidden character `c` at `at` in `s` is to be escaped: all but a ZWJ joining emoji. */
-const escapes = (s: string, c: string, at: number) => c !== '\u{200d}' || !joinsEmoji(s, at)
+/**
+ * A flag emoji's tag sequence: a black flag, three to seven tags of a
+ * lowercase letter or digit (a CLDR subdivision ID: a region of two letters or
+ * three digits and one to four more), CANCEL TAG. Kept that short so a flag
+ * can carry no hidden sentence.
+ */
+const FLAG = /\u{1f3f4}(?:[\u{e0030}-\u{e0039}\u{e0061}-\u{e007a}]){3,7}\u{e007f}/gu
 
-/** One hidden character (all in the BMP) as `\u202e`. */
-const escapeOne = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`
+/** Where `s`'s flag emoji are, as [start, end) in UTF-16 units: none without a black flag. */
+const flagsIn = (s: string): [number, number][] =>
+  s.includes('\u{1f3f4}') ? Array.from(s.matchAll(FLAG), m => [m.index!, m.index! + m[0].length] as [number, number]) : []
+
+/** Whether the tag character at `at` belongs to one of `flags`. */
+const inFlag = (flags: readonly [number, number][], at: number) => flags.some(([start, end]) => at > start && at < end)
+
+const isTag = (c: string) => (c.codePointAt(0) ?? 0) >= 0xe0000
+
+/**
+ * Whether the hidden character `c` at `at` in `s` is to be escaped: all but a
+ * ZWJ joining emoji and a tag inside a flag emoji (`flags`, from flagsIn).
+ */
+const escapes = (s: string, c: string, at: number, flags: readonly [number, number][]) =>
+  c === '\u{200d}' ? !joinsEmoji(s, at) : !isTag(c) || !inFlag(flags, at)
+
+/**
+ * One hidden character as `\u202e`; one past the BMP (a tag character) as its
+ * UTF-16 surrogate pair, `\udb40\udc41`, which a JSON string reads as the
+ * same character.
+ */
+const escapeOne = (c: string) => {
+  let out = ''
+  for (let i = 0; i < c.length; i++) out += `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`
+  return out
+}
 
 /** Whether the text holds a hidden character the pane must not show raw. */
 export function hasHidden(s: string): boolean {
-  for (const m of s.matchAll(HIDDEN)) if (escapes(s, m[0], m.index!)) return true
+  const flags = flagsIn(s)
+  for (const m of s.matchAll(HIDDEN)) if (escapes(s, m[0], m.index!, flags)) return true
   return false
 }
 
 /** The text with each hidden character written as `\u202e`, backslashes left alone: the same in a JSON string. For JSON. */
-export const escapeHidden = (s: string) => s.replace(HIDDEN, (c: string, at: number) => (escapes(s, c, at) ? escapeOne(c) : c))
+export function escapeHidden(s: string): string {
+  const flags = flagsIn(s)
+  return s.replace(HIDDEN, (c: string, at: number) => (escapes(s, c, at, flags) ? escapeOne(c) : c))
+}
 
 /**
  * For what is not JSON: the text as it is when nothing in it is hidden;
@@ -128,13 +174,14 @@ export const escapeHidden = (s: string) => s.replace(HIDDEN, (c: string, at: num
  */
 export function showHidden(s: string): { shown: string; escaped: boolean } {
   if (!hasHidden(s)) return { shown: s, escaped: false }
-  const shown = s.replace(SHOWN, (c: string, at: number) => (c === '\\' ? '\\\\' : escapes(s, c, at) ? escapeOne(c) : c))
+  const flags = flagsIn(s)
+  const shown = s.replace(SHOWN, (c: string, at: number) => (c === '\\' ? '\\\\' : escapes(s, c, at, flags) ? escapeOne(c) : c))
   return { shown, escaped: true }
 }
 
 const HIDDEN_NOTE: Texts = {
-  ja: '（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）',
-  en: '(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)',
+  ja: '（制御文字・双方向制御文字・ゼロ幅文字・タグ文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）',
+  en: '(Control, bidirectional, zero-width and tag characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)',
 }
 
 /** The decoded text with its hidden characters (and then its backslashes) escaped, and a note saying so when there were any. */

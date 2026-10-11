@@ -9,6 +9,7 @@ import { LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, nee
 import type { LocalAction, LocalInput, TickerFrame } from './actions'
 import type { ArgValue } from './args'
 import { MESSAGES } from './i18n'
+import { RandomUnavailableError } from './random'
 import type { Lang } from './i18n'
 
 /** What register.tsx gathers for one run: the text or the argument, and the environment's values. */
@@ -88,7 +89,9 @@ export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, o
   try {
     return outcomeOf(def.compute(input), opts.selection, opts.lang)
   } catch (err) {
-    return { kind: 'settle', ok: false, text: t.failed(messageOf(err)) }
+    // No secure random numbers: said in the user's language, not as the error's own English.
+    const reason = err instanceof RandomUnavailableError ? t.randomUnavailable : messageOf(err)
+    return { kind: 'settle', ok: false, text: t.failed(reason) }
   }
 }
 
@@ -135,7 +138,8 @@ export function tickerStep(
   try {
     return stepOf(frame(at.now), at)
   } catch (err) {
-    return { kind: 'failed', reason: messageOf(err) }
+    const reason = err instanceof RandomUnavailableError ? MESSAGES[at.lang].randomUnavailable : messageOf(err)
+    return { kind: 'failed', reason }
   }
 }
 

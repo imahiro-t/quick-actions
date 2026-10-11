@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { random, randomBytes, randomBytesWith, unitFrom } from '../hooks/random'
+import { RandomUnavailableError, random, randomBytes, randomBytesWith, unitFrom } from '../hooks/random'
 
 // The randomness every local run is handed (LocalInput.random / randomBytes),
 // checked as register.tsx passes it: these are the functions themselves, not
@@ -56,11 +56,47 @@ test('randomBytesWith: filled a chunk of at most 65,536 bytes at a time', () => 
   expect(bytes.every(b => b === 7)).toBe(true)
 })
 
-test('randomBytesWith: where the fill throws (no crypto), bytes from Math.random instead', () => {
-  const bytes = randomBytesWith(256, () => {
+// Where crypto throws, nothing is made: a value from Math.random would look as
+// good as a real one. The test kit freezes Math.random, so it cannot be swapped
+// for one that fails here; a throw is what shows no byte came back at all.
+test('randomBytesWith: where the fill throws (no crypto), RandomUnavailableError and no bytes', () => {
+  const cause = new Error('no crypto')
+  let thrown: unknown
+  let returned: Uint8Array | undefined
+  try {
+    returned = randomBytesWith(256, () => {
+      throw cause
+    })
+  } catch (err) {
+    thrown = err
+  }
+  expect(returned).toBe(undefined)
+  expect(thrown instanceof RandomUnavailableError).toBe(true)
+  expect((thrown as Error).name).toBe('RandomUnavailableError')
+  expect((thrown as Error).cause).toBe(cause)
+})
+
+test('randomBytesWith: a fill that throws on a later chunk gives none of the bytes filled before it', () => {
+  let calls = 0
+  let returned: Uint8Array | undefined
+  let thrown: unknown
+  try {
+    returned = randomBytesWith(140_000, chunk => {
+      calls++
+      if (calls === 2) throw new Error('no more crypto')
+      chunk.fill(7)
+    })
+  } catch (err) {
+    thrown = err
+  }
+  expect(calls).toBe(2)
+  expect(returned).toBe(undefined)
+  expect(thrown instanceof RandomUnavailableError).toBe(true)
+})
+
+test('randomBytesWith: no count asks nothing of the fill, so even a throwing one gives empty bytes', () => {
+  const bytes = randomBytesWith(0, () => {
     throw new Error('no crypto')
   })
-  expect(bytes.length).toBe(256)
-  expect(bytes.every(b => Number.isInteger(b) && b >= 0 && b <= 255)).toBe(true)
-  expect(bytes.some(b => b !== 0)).toBe(true)
+  expect(bytes.length).toBe(0)
 })

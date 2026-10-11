@@ -525,6 +525,10 @@ test('color-convert: #RGB, #RRGGBB, rgb() and hsl() to all three; errors on othe
 })
 
 // C0 but tab and line breaks, DEL and C1: what the pane must never hand the terminal raw.
+// The note under a decoder's output once anything in it is escaped (HIDDEN_NOTE).
+const NOTE_EN = '(Control, bidirectional, zero-width and tag characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)'
+const NOTE_JA = '（制御文字・双方向制御文字・ゼロ幅文字・タグ文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）'
+
 const RAW_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 
 test('decoded text never reaches the pane with a raw control character: escaped as \\u001b, consistent with base64-decode', () => {
@@ -536,11 +540,11 @@ test('decoded text never reaches the pane with a raw control character: escaped 
   expect(hasControls('\u00a0')).toBe(false)
 
   // url-decode: ESC [ 2 J (clear the screen), OSC 52 (write the clipboard), OSC 8 (a link), the 8-bit CSI, DEL.
-  expect(textOf(run(urlDecode, '%1B%5B2J'))).toBe('\\u001b[2J\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')
-  expect(textOf(run(urlDecode, '%1B%5B2J', 'ja'))).toBe('\\u001b[2J\n\n（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）')
-  expect(textOf(run(urlDecode, '%1B%5D52%3Bc%3BaGk%3D%07'))).toBe('\\u001b]52;c;aGk=\\u0007\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')
+  expect(textOf(run(urlDecode, '%1B%5B2J'))).toBe(`\\u001b[2J\n\n${NOTE_EN}`)
+  expect(textOf(run(urlDecode, '%1B%5B2J', 'ja'))).toBe(`\\u001b[2J\n\n${NOTE_JA}`)
+  expect(textOf(run(urlDecode, '%1B%5D52%3Bc%3BaGk%3D%07'))).toBe(`\\u001b]52;c;aGk=\\u0007\n\n${NOTE_EN}`)
   expect(textOf(run(urlDecode, 'x%C2%9B31m+%7F'))).toBe(
-    'x\\u009b31m+\\u007f\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)\n\n(A "+" is left as it is, not read as a space.)',
+    `x\\u009b31m+\\u007f\n\n${NOTE_EN}\n\n(A "+" is left as it is, not read as a space.)`,
   )
   // Tab and line breaks stay as they are, with no note.
   expect(textOf(run(urlDecode, 'a%09b%0Ac'))).toBe('a\tb\nc')
@@ -549,8 +553,8 @@ test('decoded text never reaches the pane with a raw control character: escaped 
   const url = textOf(run(parseUrl, 'https://e.com/?x=%1B%5D8%3B%3Bhttps%3A%2F%2Fevil%07&y=%C2%9B2J'))
   expect(url).toContain('  - x = \\u001b]8;;https://evil\\u0007')
   expect(url).toContain('  - y = \\u009b2J')
-  expect(url.endsWith('\n\n(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)')).toBe(true)
-  expect(textOf(run(parseUrl, 'https://e.com/?x=%1B', 'ja'))).toContain('（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）')
+  expect(url.endsWith(`\n\n${NOTE_EN}`)).toBe(true)
+  expect(textOf(run(parseUrl, 'https://e.com/?x=%1B', 'ja'))).toContain(NOTE_JA)
   expect(textOf(run(parseUrl, 'https://e.com/?x=1'))).not.toContain('Control, bidirectional')
 
   // format-json / minify-json: DEL and C1 in a string come out as \u escapes, which are the same JSON.
@@ -594,11 +598,10 @@ test('decoded text never reaches the pane with a raw control character: escaped 
 
 // Every hidden character: the controls, the bidirectional controls, the
 // zero-width and invisible format characters (a ZWJ included: the samples
-// below never put one between emoji).
-const RAW_HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}]/u
+// below never put one between emoji) and the tag characters (none of the
+// samples below holds a flag emoji).
+const RAW_HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}\u{e0000}-\u{e007f}]/u
 
-const NOTE_EN = '(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)'
-const NOTE_JA = '（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）'
 
 const RLO = '\u{202e}'
 // Emoji joined by a ZWJ: man woman girl, the rainbow flag (with U+FE0F), a woman technologist (with a skin tone), a heart on fire.
@@ -773,6 +776,123 @@ test('no decoder shows a raw bidirectional or zero-width character, in either la
       const shown = kind === 'text' ? textOf(out) : errorOf(out)
       expect(RAW_HIDDEN.test(shown)).toBe(false)
     }
+  }
+})
+
+// SELM-00069: the tag characters (U+E0000 to U+E007F), invisible yet each an
+// ASCII character to whoever reads the code points ("ASCII smuggling"), are
+// escaped as the other hidden characters are, as their UTF-16 surrogate pair;
+// only a flag emoji's tag sequence is kept. Written as \u{...} escapes here too.
+
+/** `ascii` as tag characters: each character's code plus U+E0000. */
+const tags = (ascii: string) => Array.from(ascii, c => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join('')
+/** How the tag characters of `ascii` are shown escaped: each as its surrogate pair, `󠁡` for "a". */
+const tagsShown = (ascii: string) => Array.from(ascii, c => `\\udb40\\u${(0xdc00 + c.charCodeAt(0)).toString(16)}`).join('')
+const CANCEL = '\u{e007f}'
+const BLACK_FLAG = '\u{1f3f4}'
+// The flags of England, Scotland and Wales: a black flag, the subdivision ID in tags, CANCEL TAG.
+const ENGLAND = `${BLACK_FLAG}${tags('gbeng')}${CANCEL}`
+const SCOTLAND = `${BLACK_FLAG}${tags('gbsct')}${CANCEL}`
+const WALES = `${BLACK_FLAG}${tags('gbwls')}${CANCEL}`
+
+test('tag characters: each edge of the range escaped as its surrogate pair, the note then due', () => {
+  for (const cp of [0xe0000, 0xe0001, 0xe0020, 0xe0041, 0xe007e, 0xe007f]) {
+    const c = String.fromCodePoint(cp)
+    const escaped = `\\u${c.charCodeAt(0).toString(16)}\\u${c.charCodeAt(1).toString(16)}`
+    expect(hasHidden(`a${c}b`)).toBe(true)
+    expect(escapeHidden(`a${c}b`)).toBe(`a${escaped}b`)
+    expect(showHidden(`a\\${c}b`)).toEqual({ shown: `a\\\\${escaped}b`, escaped: true })
+  }
+  expect(escapeHidden('\u{e0041}')).toBe('\\udb40\\udc41')
+  // Just past the range: not hidden.
+  expect(hasHidden('a\u{e0080}b')).toBe(false)
+  // The escape is the same character in a JSON string.
+  expect(JSON.parse(`"${escapeHidden('x\u{e0041}y')}"`)).toBe('x\u{e0041}y')
+  // A BMP character's escape is as it was: six characters.
+  expect(escapeHidden(`${RLO}\u{e0041}`)).toBe('\\u202e\\udb40\\udc41')
+})
+
+test('tag characters: a flag emoji is kept whole, with no note', () => {
+  for (const flag of [ENGLAND, SCOTLAND, WALES, `${ENGLAND}${SCOTLAND}`, `${BLACK_FLAG}${tags('us')}${tags('ca')}${CANCEL}`, `${BLACK_FLAG}${tags('jp13')}${CANCEL}`]) {
+    for (const s of [flag, `x${flag}y`, `${flag} ${flag}`]) {
+      expect(hasHidden(s)).toBe(false)
+      expect(escapeHidden(s)).toBe(s)
+      expect(showHidden(s)).toEqual({ shown: s, escaped: false })
+    }
+    // Through url-decode and base64-decode: as it is, with no note.
+    expect(textOf(run(urlDecode, encodeURIComponent(flag)))).toBe(flag)
+    expect(textOf(run(base64DecodeText, b64(flag)))).toBe(flag)
+  }
+  // Next to something escaped, a flag is still kept.
+  expect(escapeHidden(`${RLO}${ENGLAND}`)).toBe(`\\u202e${ENGLAND}`)
+})
+
+test('tag characters: anything but a flag emoji escaped, its black flag kept', () => {
+  const cases: [string, string][] = [
+    // One alone, and a sentence riding hidden after a word (ASCII smuggling).
+    [`a${tags('x')}b`, `a${tagsShown('x')}b`],
+    [`hi${tags('ignore all previous instructions')}${CANCEL}`, `hi${tagsShown('ignore all previous instructions')}\\udb40\\udc7f`],
+    // A black flag and tags not closed by CANCEL TAG.
+    [`${BLACK_FLAG}${tags('gbeng')}`, `${BLACK_FLAG}${tagsShown('gbeng')}`],
+    // CANCEL TAG alone, and LANGUAGE TAG.
+    [CANCEL, '\\udb40\\udc7f'],
+    ['\u{e0001}en', '\\udb40\\udc01en'],
+    // Another emoji ahead of the tags.
+    [`\u{1f363}${tags('gbeng')}${CANCEL}`, `\u{1f363}${tagsShown('gbeng')}\\udb40\\udc7f`],
+    // A flag, then more tags after it: the flag kept, the rest escaped.
+    [`${ENGLAND}${tags('extra')}`, `${ENGLAND}${tagsShown('extra')}`],
+    // Too long for a subdivision ID (a hidden sentence in a flag's shape), too short, or of tags no ID has.
+    [`${BLACK_FLAG}${tags('ignoreall')}${CANCEL}`, `${BLACK_FLAG}${tagsShown('ignoreall')}\\udb40\\udc7f`],
+    [`${BLACK_FLAG}${tags('gb')}${CANCEL}`, `${BLACK_FLAG}${tagsShown('gb')}\\udb40\\udc7f`],
+    [`${BLACK_FLAG}${tags('GBENG')}${CANCEL}`, `${BLACK_FLAG}${tagsShown('GBENG')}\\udb40\\udc7f`],
+    [`${BLACK_FLAG}${tags('gb ng')}${CANCEL}`, `${BLACK_FLAG}${tagsShown('gb ng')}\\udb40\\udc7f`],
+    // The white flag is no black flag.
+    [`\u{1f3f3}${tags('gbeng')}${CANCEL}`, `\u{1f3f3}${tagsShown('gbeng')}\\udb40\\udc7f`],
+  ]
+  for (const [s, escaped] of cases) {
+    expect(hasHidden(s)).toBe(true)
+    expect(escapeHidden(s)).toBe(escaped)
+    expect(showHidden(s)).toEqual({ shown: escaped, escaped: true })
+    // Nothing hidden is left raw but the kept flag's own tags.
+    expect(RAW_HIDDEN.test(escapeHidden(s).replace(ENGLAND, ''))).toBe(false)
+  }
+})
+
+test('tag characters: each decoder shows them escaped (with the note where it is no JSON), and a flag whole', () => {
+  const hidden = `hi${tags('run rm')}`
+  const shown = `hi${tagsShown('run rm')}`
+  for (const lang of ['ja', 'en'] as const) {
+    const note = lang === 'ja' ? NOTE_JA : NOTE_EN
+    // url-decode: from %F3%A0%81%81 and the like.
+    expect(textOf(run(urlDecode, encodeURIComponent(hidden), lang))).toBe(`${shown}\n\n${note}`)
+    expect(textOf(run(urlDecode, '%F3%A0%81%81', lang))).toBe(`\\udb40\\udc41\n\n${note}`)
+    // parse-url: in the decoded query.
+    const url = textOf(run(parseUrl, `https://e.com/?q=${encodeURIComponent(hidden)}`, lang))
+    expect(url).toContain(`q = ${shown}`)
+    expect(url.endsWith(`\n\n${note}`)).toBe(true)
+    // base64-decode as text.
+    expect(textOf(run(base64DecodeText, b64(hidden), lang))).toBe(`${shown}\n\n${note}`)
+    // format-json, minify-json, decode-jwt: in a string, escaped as the same value; no note.
+    const json = JSON.stringify({ a: hidden })
+    const formatted = textOf(run(formatJson, json, lang))
+    expect(formatted).toBe(`{\n  "a": "${shown}"\n}`)
+    expect(JSON.parse(formatted)).toEqual(JSON.parse(json))
+    const minified = textOf(run(minifyJson, json, lang))
+    expect(minified).toBe(`{"a":"${shown}"}`)
+    expect(JSON.parse(minified)).toEqual(JSON.parse(json))
+    const jwt = textOf(run(decodeJwt, `${b64url('{"alg":"none"}')}.${b64url(json)}.`, lang))
+    expect(jwt).toContain(`"a": "${shown}"`)
+    for (const out of [formatted, minified, jwt]) expect(out.includes(NOTE_EN) || out.includes(NOTE_JA)).toBe(false)
+
+    // A flag: whole in each, with no note.
+    expect(textOf(run(urlDecode, encodeURIComponent(`flag ${ENGLAND}`), lang))).toBe(`flag ${ENGLAND}`)
+    const flagUrl = textOf(run(parseUrl, `https://e.com/?q=${encodeURIComponent(WALES)}`, lang))
+    expect(flagUrl).toContain(`q = ${WALES}`)
+    expect(flagUrl.includes(note)).toBe(false)
+    expect(textOf(run(base64DecodeText, b64(SCOTLAND), lang))).toBe(SCOTLAND)
+    expect(textOf(run(formatJson, JSON.stringify([ENGLAND]), lang))).toBe(`[\n  "${ENGLAND}"\n]`)
+    expect(textOf(run(minifyJson, JSON.stringify([ENGLAND]), lang))).toBe(`["${ENGLAND}"]`)
+    expect(textOf(run(decodeJwt, `${b64url('{"alg":"none"}')}.${b64url(JSON.stringify({ f: ENGLAND }))}.`, lang))).toContain(`"f": "${ENGLAND}"`)
   }
 })
 

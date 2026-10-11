@@ -75,7 +75,7 @@ const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
 const CANDIDATES = 10
 // The ⋯ dialog's rows at most: past them, the pane scrolls.
 const PICKER_MAX_ROWS = 30
-// The hint line's kind buttons, one per kind (./order), and the button under
+// The hint line's kind buttons, one per kind (./order), and the button above
 // an AskUserQuestion dialog that opens the panes.
 const kindKey = (kind: HintKind) => `_kind-${kind}`
 const ASK_OPEN_KEY = '_ask-open'

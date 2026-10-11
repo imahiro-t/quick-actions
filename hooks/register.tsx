@@ -1262,8 +1262,9 @@ export const register: Register = (on, options) => {
   // ID, labels in both languages, kind names, kind marks), and Enter in it runs
   // the first action left; Clear beside it, or deleting its text, lists them
   // all again. The field takes the focus as the dialog opens; the focus ring
-  // moves on to the list's buttons (Enter runs the one it is on). Escape closes the whole pane through closeOnEscape (both tabs; the
-  // filter too, rather than emptying it), as the close button does.
+  // moves on to the list's buttons (Enter runs the one it is on). Escape
+  // closes the whole pane through closeOnEscape (both tabs; the filter too,
+  // rather than emptying it), as the close button does.
   // Focus is a request the engine refuses while the composer holds text: then
   // a line says how to get the keys, and the list and the close button still
   // answer a click. The mobile app draws no field and gets no such line: its
@@ -1275,8 +1276,9 @@ export const register: Register = (on, options) => {
   //
   // The list is a column of buttons, there from the start (no drop-down to
   // open). With the filter field it fills the pane's height: as many actions
-  // as fit (./picker-rows: each button's rows from its label's width, less the
-  // rest of the dialog), then a line saying how many more the filter reaches.
+  // as fit (./picker-rows: each button's rows as its label wraps at its words,
+  // less the rest of the dialog), then a line saying how many more the filter
+  // reaches.
   // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
   // again lists as many as the new height holds. Without the field (mobile, a
   // question dialog up) nothing would reach the rest: every action is listed,
@@ -1311,11 +1313,9 @@ export const register: Register = (on, options) => {
         : pickerShownCount({
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
-            chrome: [
-              ...(keyboardNotice ? [t.pickerNoFocus] : []),
-              ...(askingNotice ? [t.pickerAsking] : []),
-              t.pickerLegend(hasSelection),
-            ],
+            // A question dialog's line is never among them: it is up only
+            // with no field, when every action is listed and none counted.
+            chrome: [...(keyboardNotice ? [t.pickerNoFocus] : []), t.pickerLegend(hasSelection)],
             labels: shown.map(labelOf),
             more: t.pickerMore,
           })

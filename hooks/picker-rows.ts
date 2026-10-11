@@ -2,12 +2,20 @@
 // over plain numbers and strings, nothing here reaches `$`.
 //
 // The list is a column of buttons, one per action, drawn `[ <icon> label ]`.
-// A pane is about 34 columns wide when docked, so a long label (an English
-// name, a Japanese one in full-width characters) wraps onto a second row:
-// each button's rows are estimated from its label's width, and so are those of
-// the lines around the list (the notice, the legend, the "n more" line). The
-// estimates round up, so that the list comes out a row short rather than a row
-// over and the pane never scrolls for it.
+// A pane's body is a few dozen columns wide (56 when docked, fewer inline on a
+// narrow terminal), so a long label (an English name, a Japanese one in
+// full-width characters) can wrap onto a second row:
+// each button's rows are counted from its label, and so are those of the
+// lines around the list (the notice, the legend, the "n more" line).
+//
+// The terminal wraps a line at its spaces, not at its last cell: a word that
+// does not fit on the row goes whole onto the next, and only a word wider than
+// the row is broken inside (Japanese with no spaces, one character at a time).
+// So the rows are counted the same way, word by word (wrappedRows), never as
+// the width over the columns, which comes out a row short when a word is sent
+// on with cells to spare. A button is counted a cell narrower than the pane,
+// in case a terminal draws an emoji a cell wider than counted: a row over
+// rather than a row short, so that the pane never scrolls for the list.
 //
 // The rest of the dialog is the filter row and the close button, a row each,
 // and the lines handed in as `chrome`. Every action fits: all of them, no
@@ -16,11 +24,11 @@
 
 import { textWidth } from './hint-width'
 
-/**
- * The cells a button takes beyond its label: `[ ` and ` ]`, and one more,
- * since a terminal may draw an emoji a cell wider than counted.
- */
-export const BUTTON_CHROME = 5
+/** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
+export const BUTTON_FRAME = 4
+
+/** The cells a button is counted narrower than the pane, for an emoji drawn wider than counted. */
+export const EMOJI_SLACK = 1
 
 /** The rows of the dialog that are neither the list nor `chrome`: the filter row and the close button. */
 export const FIXED_ROWS = 2
@@ -28,14 +36,72 @@ export const FIXED_ROWS = 2
 /** The fewest actions listed, however short the pane. */
 export const MIN_SHOWN = 3
 
-/** The rows `text` takes wrapped at `columns` (one at least; columns below 1 taken as 1). */
-export function linesOf(text: string, columns: number): number {
-  return Math.max(1, Math.ceil(textWidth(text) / Math.max(1, columns)))
+/**
+ * The rows `text` takes wrapped at `columns` (columns below 1 taken as 1), as
+ * the terminal wraps it: at the spaces, a word that does not fit going whole
+ * onto the next row, a space kept at the end of the row it follows, and a
+ * word wider than the row broken where the row ends (begun on a row of its
+ * own when that saves a break), a wide character never split across rows.
+ * Each line of a text of several lines counts on its own; one row at least.
+ */
+export function wrappedRows(text: string, columns: number): number {
+  const cols = Math.max(1, Math.floor(columns))
+  return text.split('\n').reduce((sum, line) => sum + lineRows(line, cols), 0)
 }
 
-/** The rows the button labelled `label` takes at `columns`. */
+function lineRows(line: string, columns: number): number {
+  let rows = 1
+  let used = 0
+  line.split(' ').forEach((word, index) => {
+    const width = textWidth(word)
+    if (index > 0) {
+      // A full row starts another, and the space goes on (it is kept, not trimmed).
+      if (used >= columns) {
+        rows++
+        used = 0
+      }
+      used++
+    }
+    if (width > columns) {
+      // Too wide for any row: begun on the next row when that takes fewer breaks.
+      const thisRow = 1 + Math.floor((width - (columns - used) - 1) / columns)
+      const nextRow = Math.floor((width - 1) / columns)
+      if (nextRow < thisRow) {
+        rows++
+        used = 0
+      }
+      const chars = [...word]
+      chars.forEach((ch, i) => {
+        const w = textWidth(ch)
+        if (used + w > columns) {
+          rows++
+          used = 0
+        }
+        used += w
+        if (used === columns && i < chars.length - 1) {
+          rows++
+          used = 0
+        }
+      })
+      return
+    }
+    if (used > 0 && width > 0 && used + width > columns) {
+      rows++
+      used = 0
+    }
+    used += width
+  })
+  return rows
+}
+
+/** The rows `text` takes at `columns` (see wrappedRows). */
+export function linesOf(text: string, columns: number): number {
+  return wrappedRows(text, columns)
+}
+
+/** The rows the button labelled `label` takes at `columns`: `[ label ]`, wrapped a cell narrower. */
 export function buttonLines(label: string, columns: number): number {
-  return Math.max(1, Math.ceil((textWidth(label) + BUTTON_CHROME) / Math.max(1, columns)))
+  return wrappedRows(`[ ${label} ]`, Math.max(1, columns) - EMOJI_SLACK)
 }
 
 export type ShownCountInput = {

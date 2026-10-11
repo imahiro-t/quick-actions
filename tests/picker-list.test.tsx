@@ -126,6 +126,46 @@ for (const surface of SURFACES) {
     await picker.unmount()
   })
 
+  test(`[${surface}] [en] the notice without the keyboard is taken off as the rows its words wrap to: the list never spills (SELM-00059 QA)`, { options: EN }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await openByMore($, s, clock, surface)
+    const t = MESSAGES.en
+    const total = ACTIONS.length
+    // The notice's rows, counted by hand from its words: at 54 to 56 columns (a docked
+    // pane's body) "keyboard." does not fit on the second row, so three, not ceil(108 / n) = 2.
+    const noticeRows: Record<number, number> = { 22: 6, 27: 5, 28: 5, 36: 4, 54: 3, 55: 3, 56: 3 }
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30, 54, false) })
+    for (const [key, notice] of Object.entries(noticeRows)) {
+      const columns = Number(key)
+      await picker.redraw(at(30, columns, false))
+      const labels = (await listedOptions(picker)).map(o => o.label)
+      const n = labels.length
+      expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerNoFocus, t.pickerLegend(true), t.pickerMore(total - n)])
+      const used = (count: number) =>
+        FIXED_ROWS +
+        notice +
+        linesOf(t.pickerLegend(true), columns) +
+        linesOf(t.pickerMore(total - count), columns) +
+        labels.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
+      // Within the pane's 30 rows, and filling them: one more button would not fit.
+      expect([columns, used(n) <= 30]).toEqual([columns, true])
+      await picker.redraw(at(10_000, columns, false))
+      const next = (await listedOptions(picker)).at(n)?.label ?? ''
+      await picker.redraw(at(30, columns, false))
+      expect([columns, used(n) + buttonLines(next, columns) > 30]).toEqual([columns, true])
+      // Where every listed button is one row, the count is exact: 30 less the notice's hand-counted rows and the rest.
+      if (labels.every(l => buttonLines(l, columns) === 1)) {
+        expect([columns, n]).toEqual([columns, 30 - FIXED_ROWS - notice - linesOf(t.pickerLegend(true), columns) - linesOf(t.pickerMore(total - n), columns)])
+      }
+    }
+    // At 54 the built-in labels are one row each: 30 - 2 - 3 - 1 - 1 = 23.
+    await picker.redraw(at(30, 54, false))
+    expect((await listedActions(picker)).length).toBe(23)
+    await picker.unmount()
+  })
+
   test(`[${surface}] pickAction: an action not listed is reached through the filter; one whose ID others share a start with is the one pressed`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)

@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
+import { textWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
-import { BUTTON_CHROME, FIXED_ROWS, MIN_SHOWN, buttonLines, linesOf, pickerShownCount } from '../hooks/picker-rows'
+import { BUTTON_FRAME, EMOJI_SLACK, FIXED_ROWS, MIN_SHOWN, buttonLines, linesOf, pickerShownCount, wrappedRows } from '../hooks/picker-rows'
 
 // How many actions the ⋯ dialog lists (SELM-00059): as many buttons as the
 // pane's rows hold once the lines around the list are taken off, each button
@@ -14,25 +15,64 @@ test('a line takes the rows its width wraps to at the columns, one at least', ()
   expect(linesOf('', 34)).toBe(1)
   expect(linesOf('x'.repeat(34), 34)).toBe(1)
   expect(linesOf('x'.repeat(35), 34)).toBe(2)
-  // Full-width characters take two cells each.
+  // Full-width characters take two cells each, and are never split across rows.
   expect(linesOf('あ'.repeat(17), 34)).toBe(1)
   expect(linesOf('あ'.repeat(18), 34)).toBe(2)
+  expect(linesOf('x' + 'あ'.repeat(17), 34)).toBe(2)
   // The notice wraps onto several rows in a docked pane's 34 columns.
   expect(linesOf(MESSAGES.en.pickerNoFocus, 34)).toBeGreaterThanOrEqual(3)
   expect(linesOf(MESSAGES.ja.pickerNoFocus, 34)).toBeGreaterThanOrEqual(3)
   // Columns below 1 do not divide by zero.
   expect(linesOf('abc', 0)).toBe(3)
+  // Each line of several counts on its own.
+  expect(wrappedRows('ab\ncd', 34)).toBe(2)
 })
 
-test('a button takes its label and its frame, wrapped: a long English or full-width label two rows or more', () => {
-  expect(BUTTON_CHROME).toBe(5)
+test('lines wrap at their spaces: a word that does not fit goes whole onto the next row', () => {
+  // 'aaa bbb' at 5 columns: "aaa " and "bbb", where the width over the columns gives 2 too;
+  // 'aaaa bbbb' (9 cells) at 5: "aaaa " and "bbbb"; 'aaa bbb ccc' (11) at 6: three rows, not two.
+  expect(wrappedRows('aaa bbb', 5)).toBe(2)
+  expect(wrappedRows('aaaa bbbb', 5)).toBe(2)
+  expect(wrappedRows('aaa bbb ccc', 6)).toBe(3)
+  // A row filled to its last cell: the space starts the next row.
+  expect(wrappedRows('aaaaa bbb', 5)).toBe(2)
+  expect(wrappedRows('aaaaa bbbb', 5)).toBe(2)
+  expect(wrappedRows('aaaaa bbbbb', 5)).toBe(3)
+  // A word wider than any row is broken where the row ends, begun on a row of its own
+  // when that saves a break: 'ab' then 12 x's at 5 columns: "ab xx", "xxxxx", "xxxxx".
+  expect(wrappedRows('ab ' + 'x'.repeat(12), 5)).toBe(3)
+  expect(wrappedRows('ab ' + 'x'.repeat(10), 5)).toBe(3)
+  // Japanese with no spaces is one word, broken a character at a time.
+  expect(wrappedRows('あ'.repeat(40), 34)).toBe(3)
+})
+
+test('the English notice is counted as the words wrap, where the width over the columns comes out a row short (SELM-00059 QA)', () => {
+  const notice = MESSAGES.en.pickerNoFocus
+  // 108 cells: ceil(108 / 54) is 2, but "keyboard." does not fit on the second row.
+  expect(textWidth(notice)).toBe(108)
+  expect(Math.ceil(textWidth(notice) / 54)).toBe(2)
+  // Worked out by hand from the words, at each width QA found short.
+  const expected: Record<number, number> = { 22: 6, 27: 5, 28: 5, 36: 4, 54: 3, 55: 3, 56: 3, 57: 2 }
+  for (const [columns, rows] of Object.entries(expected)) expect([Number(columns), linesOf(notice, Number(columns))]).toEqual([Number(columns), rows])
+  // Never fewer than the width over the columns, at any width.
+  for (let columns = 10; columns <= 120; columns++) expect(linesOf(notice, columns)).toBeGreaterThanOrEqual(Math.ceil(textWidth(notice) / columns))
+})
+
+test('a button takes its label and its frame, wrapped a cell narrower: a long English or full-width label two rows or more', () => {
+  expect(BUTTON_FRAME).toBe(4)
+  expect(EMOJI_SLACK).toBe(1)
   expect(buttonLines('[💡] Explain', 34)).toBe(1)
-  // 29 cells of label and 5 of frame: one row exactly; one more cell wraps.
+  // "[ " + 29 cells + " ]" is 33, one row at 34 (a cell kept for an emoji); one more cell wraps.
   expect(buttonLines('x'.repeat(29), 34)).toBe(1)
   expect(buttonLines('x'.repeat(30), 34)).toBe(2)
   expect(buttonLines('[🌐] Translate into Traditional Chinese (Taiwan)', 34)).toBe(2)
   expect(buttonLines('[📝] 選択したテキストをやさしい日本語に書き換える', 34)).toBe(2)
   expect(buttonLines('x'.repeat(80), 34)).toBe(3)
+  // A word sent on whole: "[ " and 25 x's, then 20 y's and 15 z's, 66 cells, would be two rows of 33
+  // by width, but the y's and the z's each go onto a row of their own: three.
+  const sentOn = `${'x'.repeat(25)} ${'y'.repeat(20)} ${'z'.repeat(15)}`
+  expect(Math.ceil((textWidth(sentOn) + BUTTON_FRAME) / (34 - EMOJI_SLACK))).toBe(2)
+  expect(buttonLines(sentOn, 34)).toBe(3)
 })
 
 test('every action fits: all of them, with no "n more" line taken off', () => {

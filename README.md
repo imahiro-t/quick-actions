@@ -26,6 +26,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds. This is for a hint line shown by a selection alone; one opened with `/quick-actions hint` closes as [described below](#opening-the-hint-line-without-a-selection-quick-actions-hint)
 3. Press an icon and the result is added at the top of the "Quick Actions" tab of the right pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
    - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command ("standalone" when there was none)
+   - For an action on a selection inside one transcript row, the row stays highlighted, and the result has "Go to selection" and "Clear highlight" buttons (see [Finding the selection again](#finding-the-selection-again-highlight-and-the-two-buttons))
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
    - The pane always has two tabs, "Quick Actions" (the results) and "Select an action" (the ⋯ dialog), and one Esc closes both (see [The right pane's two tabs](#the-right-panes-two-tabs))
    - A standalone action pressed on the hint line or in the ⋯ dialog runs with no argument (on its default). To hand it an argument, use `/quick-actions <id> <argument>` (see [Command](#command))
@@ -109,6 +110,24 @@ The limits, set by Claude Code:
 
 - While the question is up, Claude Code gives the pane no keyboard focus, and Esc goes to the question (it does not close the pane). Whether clicking in the pane or ctrl+x tab moves the keyboard to it during a question is not documented and not confirmed; use clicks
 - Should Claude Code refuse the button drawn over the question, the question is drawn alone, without the button. A pane opened before the question can still be clicked
+
+### Finding the selection again (highlight and the two buttons)
+
+Once the pane opens, Claude Code no longer shows what was selected. So that you can tell which text a result is about, an action run on a selection inside one transcript row keeps that row highlighted, and its result gets two buttons:
+
+- **The highlight**: the whole row the selection was in gets a background (the theme's `subtle` color, so it follows the light or dark theme), not just the selected words. The row is drawn as usual inside it (Markdown and tool output are left as they are). The rows that can be highlighted are your messages, Claude's answers, tool calls and their results, groups of tool calls, tool progress, command output, notices, the turn duration line and question dialogs (`AskUserQuestion`)
+  - A tool call and its result are one unit: a selection in either highlights both, and the progress shown under the call too. A group of tool calls is highlighted whether the selection names the group or one of the calls in it
+- **Go to selection**: scrolls the transcript back to that row (to the middle of the view)
+- **Clear highlight**: takes that result's highlight away, and the Clear highlight button with it. Only that button goes: Go to selection stays, so you can still go back to the row after the highlight is gone. Other results' highlights stay, and a row stays highlighted while any result on it still holds one (two commands run on one selection give two results, each with its own pair of buttons)
+
+The highlight stays until you press Clear highlight: closing the pane, running other actions and a plugin reload keep it. It goes, too, when its result is pushed out of the pane's 20.
+
+No highlight and no buttons are shown, and the action runs as before, when:
+
+- the selection spans more than one row, or lies outside the transcript (in the pane, the prompt, the hint line or a dialog): Claude Code reports no row for it
+- the result is from a context action or a standalone action (they work on no selection)
+
+Highlighting and the buttons happen inside Claude Code and send nothing.
 
 ### Actions that run over time
 

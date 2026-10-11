@@ -446,7 +446,13 @@
     state.query = e.target.value
     if (data) apply(300)
   })
-  if (!data) { document.querySelector('.filters').hidden = true; $('method-help').hidden = true }
+  // With no data, hide what would stay empty: the filters, the folded run-method
+  // help, and the footer's run-method legend (an empty heading and list would
+  // still be announced by screen readers). setLang never fills them without data.
+  if (!data) {
+    document.querySelector('.filters').hidden = true
+    ;['method-help', 'legend-title', 'legend'].forEach(function (id) { $(id).hidden = true })
+  }
   setLang(state.lang, false)
 })()
 </script>

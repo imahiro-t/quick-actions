@@ -263,12 +263,16 @@ for (const theme of THEMES) {
       // A press runs that action on the text the dialog opened on, and closes it.
       await picker.press({ key: 'tldr' })
       await picker.unmount()
-      expect(s.closed).toEqual([PICKER])
+      // A pick keeps the dialog's tab and shows the results' (SELM-00050).
+      expect(s.closed).toEqual([])
+      expect(s.shown).toBe(PANE.requestId)
       expect(s.models).toHaveLength(1)
       expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
 
-      // Drawn again with no text held: the line saying so is muted too.
+      // Closed (the dialog's tab stays after a pick), then drawn with no text
+      // held: the line saying so is muted too.
       const again = await $.ui.mount({ ...PICKER_PANE, surface })
+      await again.press({ key: PICKER_CLOSE })
       expect((await texts(again, t.noSelection)).map(f => [f.props.color, f.props.dimColor])).toEqual([[p.muted, undefined]])
       await again.unmount()
     })
@@ -282,7 +286,8 @@ for (const theme of THEMES) {
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     await picker.press({ key: PICKER_CLOSE })
     await picker.unmount()
-    expect(s.closed).toEqual([PICKER])
+    // The close button closes the whole pane, both tabs (SELM-00050).
+    expect(s.closed).toEqual([PICKER, PANE.requestId])
     expect(s.models).toEqual([])
   })
 

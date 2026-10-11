@@ -179,3 +179,31 @@ export type OrderSlot = { pending?: Promise<readonly string[]> }
 export function settleIn(slot: OrderSlot, compute: () => Promise<readonly string[]>): Promise<readonly string[]> {
   return (slot.pending ??= compute())
 }
+
+/**
+ * Which actions the hint line shows: those on the selection, those on the
+ * conversation (context) or the standalone ones, switched by the buttons at
+ * its start.
+ */
+export type HintKind = 'selection' | 'context' | 'standalone'
+
+/** The hint line's kinds, in the order their buttons are drawn. */
+export const HINT_KINDS: readonly HintKind[] = ['selection', 'context', 'standalone']
+
+/** Whether an action of `def`'s target is of `kind`. */
+export const isOfKind = (def: { target?: Target }, kind: HintKind): boolean =>
+  kind === 'selection' ? needsSelection(def) : kind === 'context' ? def.target === 'context' : def.target === 'none'
+
+/** The actions of `kind` among `defs`, in their order. */
+export const ofKind = <D extends { target?: Target }>(defs: readonly D[], kind: HintKind): D[] => defs.filter(d => isOfKind(d, kind))
+
+/**
+ * The kind the hint line shows: the one the person switched to while it is
+ * up (`chosen`), else the selection's when there is text to run on and the
+ * conversation's when there is none. The selection's needs text: without it,
+ * the conversation's.
+ */
+export function hintKindFor(chosen: HintKind | null, hasText: boolean): HintKind {
+  const kind = chosen ?? (hasText ? 'selection' : 'context')
+  return kind === 'selection' && !hasText ? 'context' : kind
+}

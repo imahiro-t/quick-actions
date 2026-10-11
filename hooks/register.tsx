@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderSurface } from 'claude-code'
 
 import type { Result } from '../types'
 import {
@@ -29,8 +29,9 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
-import { USAGE_KEY, arrange, defaultsLead, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
-import type { OrderSlot } from './order'
+import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
+import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
+import type { HintKind, OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
@@ -62,6 +63,8 @@ const PICKER_SELECT_KEY = '_picker'
 /** The most options the engine takes in one Select. */
 export const SELECT_MAX_OPTIONS = 64
 const PICKER_CLOSE_KEY = '_picker-close'
+// The Box the list is drawn in, keyed by its rows as well (see the dialog).
+const PICKER_LIST_KEY = '_picker-list'
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
 const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
@@ -69,6 +72,20 @@ const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
 const CANDIDATES = 10
 // The ⋯ dialog's rows at most: past them, the pane scrolls.
 const PICKER_MAX_ROWS = 30
+// The hint line's kind buttons, one per kind (./order), and the button under
+// an AskUserQuestion dialog that opens the panes.
+const kindKey = (kind: HintKind) => `_kind-${kind}`
+const ASK_OPEN_KEY = '_ask-open'
+// The rows the ⋯ dialog's list leaves for the rest of the dialog at most: the
+// notice, the legend, the filter row, the "n more" row and the close button.
+const PICKER_CHROME_ROWS = 5
+// The fewest rows the list is sized to, however short the pane.
+const PICKER_MIN_LIST_ROWS = 3
+// What the dock is taken to be before this plugin's pane has been drawn
+// docked: the width every open asks for, and its frame.
+const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
+// The terminal docks a pane from this width, in fullscreen.
+const DOCK_FROM_COLUMNS = 110
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
 
@@ -91,6 +108,8 @@ const dismissed = atom({ plugin: 'quick-actions', key: 'dismissed' } as const, n
 const results = atom({ plugin: 'quick-actions', key: 'results' } as const, [])
 const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
 const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
+const hintKind = atom({ plugin: 'quick-actions', key: 'hintKind' } as const, null)
+const asking = atom({ plugin: 'quick-actions', key: 'asking' } as const, 0)
 
 const quoteOf = (text: string) => {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -357,14 +376,20 @@ type EntryHead = Pick<Result, 'target' | 'quote' | 'arg'>
 
 /**
  * What every run does first, whatever it runs on: one more use of the action,
- * the hint line `/quick-actions hint` opened closed, a new entry (running) at
- * the top of the pane, the pane open and brought back to its top. An entry
- * pushed out past KEEP stops its run over time, if it has one. The new entry's ID.
+ * the hint line `/quick-actions hint` opened closed (its kind with it), a new
+ * entry (running) at the top of the pane, both tabs open with the results
+ * shown and brought back to their top. An entry pushed out past KEEP stops its
+ * run over time, if it has one. The new entry's ID.
+ *
+ * `text` is the selected text a selection action runs on, which the ⋯
+ * dialog's tab then holds; left out (a context or standalone action), the
+ * tab keeps what it holds, or, closed, opens on the text selected now.
  */
-async function begin($: EngineInterface, def: ActionDef, head: EntryHead): Promise<number> {
+async function begin($: EngineInterface, def: ActionDef, lang: Lang, head: EntryHead, text?: string): Promise<number> {
   // Not awaited: the score must not hold up the answer.
   void recordUsage($, def.id)
   await update($, hint, () => null)
+  await update($, hintKind, () => null)
   const id = nextId++
   const result: Result = { id, action: def.id, ...head, status: 'running', text: '' }
   await update($, results, list => [result, ...list].slice(0, KEEP))
@@ -372,7 +397,10 @@ async function begin($: EngineInterface, def: ActionDef, head: EntryHead): Promi
     const kept = new Set((await read($, results)).map(r => r.id))
     for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
   }
-  await $.ui.open({ id: PANE, title: PANE_TITLE, columns: PANE_COLUMNS })
+  // The text the dialog's tab holds while it is up; a tab the engine unloaded
+  // unheard holds nothing (openPicking), so a stale text is never run on.
+  const held = text ?? (await openPicking($))?.text ?? (await selectionNow($))
+  await openPanes($, lang, 'results', held, false)
   // Back to the top, where this newest result is drawn (see ./scroll).
   await settleQuietly($.ui.scroll(toLatest(PANE)))
   return id
@@ -398,7 +426,7 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // standalone action runs through runStandalone instead, which takes no text.
 async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
   const context = isContext(def)
-  const id = await begin($, def, context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text) })
+  const id = await begin($, def, lang, context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text) }, context ? undefined : text)
 
   if (def.kind === 'local') {
     await runLocalAction($, def, lang, id, { text })
@@ -432,7 +460,7 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
  */
 async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: { raw: string; value: ArgValue | undefined }) {
   const t = MESSAGES[lang]
-  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw) }) })
+  const id = await begin($, def, lang, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw) }) })
 
   let value: ArgValue | undefined = given?.value
   if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
@@ -528,39 +556,146 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
   return settleIn(load.slot, () => computeOrder($, load))
 }
 
+// The rows both tabs ask for while seated inline above the prompt: tall
+// enough for every action in the ⋯ dialog, set by register for its load.
+let paneRows = PICKER_MAX_ROWS
+
+/** Which of the two tabs an open shows: the results ("Quick Actions") or the ⋯ dialog ("Select an action"). */
+type Shown = 'results' | 'picker'
+
 /**
- * Opens the ⋯ dialog on `text` (null: none), or, left out, on the text
- * selected now. The text is kept in `picking` as it opens, so a pick runs on
- * it however the selection changes meanwhile. With no text, the dialog lists
- * the context and standalone actions alone.
+ * Opens the right pane as two tabs, always both: the results ("Quick
+ * Actions") and the ⋯ dialog ("Select an action"), the one `show` names
+ * last, so it is the one shown. The dialog's tab holds `text` (null: none,
+ * the context and standalone actions alone), so a pick runs on it however the
+ * selection changes meanwhile; every open starts its filter empty.
+ *
+ * Each open sets `closeOnEscape` and `rows` anew (PaneOpenArgs), so both tabs
+ * are opened with the same options every time, whoever opens them: the title,
+ * the width (an open without `columns` resets the dock to its default share),
+ * Escape closing them, the inline rows. `focus` alone differs: asked for the
+ * tab shown, and only when `focus` says the person asked for it.
+ *
+ * Should the tab opened last stay behind the other (an open of an id already
+ * open retitles it, and need not show it), it is closed and opened afresh,
+ * which shows it.
  */
-async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
-  const picked = text === undefined ? await selectionNow($) : text
-  // Every open starts with the filter empty: every action listed.
-  await update($, picking, () => ({ text: picked, filter: '' }))
-  // The same width as the results: an open without `columns` resets the dock to
-  // its default share, which widens it for as long as the dialog is open.
-  await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
+async function openPanes($: EngineInterface, lang: Lang, show: Shown, text: string | null, focus: boolean) {
+  await update($, picking, () => ({ text, filter: '' }))
+  const options = { closeOnEscape: true as const, rows: paneRows, columns: PANE_COLUMNS }
+  const resultsTab = { id: PANE, title: PANE_TITLE, ...options }
+  const pickerTab = { id: PICKER, title: MESSAGES[lang].pickerTitle, ...options }
+  const [behind, front] = show === 'results' ? [pickerTab, resultsTab] : [resultsTab, pickerTab]
+  await $.ui.open(behind)
+  const last = focus ? { ...front, focus: true as const } : front
+  await $.ui.open(last)
+  const panes = await readQuietly($.ui.panes())
+  const frontPane = panes?.find(p => p.id === front.id)
+  if (frontPane !== undefined && frontPane.isPlaced && !frontPane.isShown) {
+    await readQuietly($.ui.close({ id: front.id }))
+    await $.ui.open(last)
+  }
+}
+
+// The cells this plugin's docked pane takes off the transcript's column (its
+// body and frame), as last drawn on each surface; 0 while it is drawn inline
+// there; absent while it is closed or not yet drawn there (a reload starts
+// with none). One entry per surface: a session may draw on several at once,
+// each seating the pane its own way (a terminal docked, a desktop inline), and
+// each hint line takes off its own surface's dock alone. Kept in the module,
+// not in the state: a render hook may not write the state, and this is what
+// one measures.
+const measuredDock = new Map<RenderSurface, number>()
+
+/**
+ * The ⋯ dialog's state while its tabs are up, by the engine's record
+ * ($.ui.panes()), not the state's alone: a pane the engine unloads (its
+ * drawing threw) is gone before any hook hears of it, so closeAll never runs
+ * and `picking` stays; here it then reads as closed. Should the record not
+ * answer, the state is taken at its word.
+ */
+async function openPicking($: EngineInterface) {
+  const state = await read($, picking)
+  if (state === null) return null
+  const panes = await readQuietly($.ui.panes())
+  if (panes === undefined) return state
+  return panes.some(p => p.id === PANE || p.id === PICKER) ? state : null
+}
+
+/** Ends every run over time, each entry done and saying how long it ran. Never rejects. */
+async function stopAllTickers($: EngineInterface) {
+  if (tickers.size === 0) return
+  // Every period is cancelled first, before anything is awaited, so none
+  // runs on whatever else fails; the entries are settled after.
+  const stopping = [...tickers.entries()]
+  for (const [id] of stopping) endTicker(id)
+  try {
+    const l = await ensureLanguage($)
+    await Promise.all(stopping.map(([id, ticker]) => settleStopped($, l, id, ticker.startedAt)))
+  } catch {
+    // The entries may stay running in the state; with no run behind them, the pane draws them stopped.
+  }
 }
 
 /**
- * Closes the ⋯ dialog from within (a pick, its close button) and lets go of
- * the text it held. The plugin's own close does not pass through its own
- * `ui.close` hook, which covers the person's (Escape, the close mark).
+ * Whether a close of one of the two tabs closes the whole pane: the person's
+ * (the close mark, ctrl+x x, Escape through closeOnEscape) does; the
+ * plugin's own (closeAll, a tab reopened to show it) and an unload do not, so
+ * no close the plugin makes comes back to close more.
  */
-async function closePicker($: EngineInterface) {
+export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) => origin.kind === 'person'
+
+/**
+ * Closes the whole right pane, both tabs, in one go: every run over time
+ * stops, the ⋯ dialog lets go of its text and the dock of its width. `closing`
+ * is a tab the person is closing already (its own `ui.close`), left to that.
+ *
+ * A model call or a subagent under way goes on: its answer lands in the
+ * results, shown the next time the pane opens. Never rejects.
+ */
+async function closeAll($: EngineInterface, closing?: string) {
+  await stopAllTickers($)
   await update($, picking, () => null)
-  await readQuietly($.ui.close({ id: PICKER }))
+  measuredDock.clear()
+  for (const id of [PICKER, PANE]) {
+    if (id !== closing) await readQuietly($.ui.close({ id }))
+  }
 }
 
 /**
- * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on, read
- * before the dialog closes and lets go of it; a context action, on the
- * conversation. Either way, that text's icons go, as after a press on them.
+ * Notes the width this plugin's pane takes off the transcript's column on
+ * `surface`, as the pane is drawn there: docked, its body and frame; inline,
+ * none. On a change the plugin's drawings are asked again, so that surface's
+ * hint line follows it (the pane's own redraw then finds it unchanged, and
+ * asks nothing more). Each surface writes its own entry alone, so two seating
+ * the pane differently never undo each other's: the redraws settle.
+ */
+function noteDock($: EngineInterface, surface: RenderSurface, isOpen: boolean, placement: 'dock' | 'inline', bodyColumns: number) {
+  // A drawing after closeAll (the state it cleared redraws the pane before it
+  // goes) measures nothing: the pane is on its way out.
+  if (!isOpen) {
+    measuredDock.delete(surface)
+    return
+  }
+  const width = placement === 'dock' ? dockWidth(bodyColumns) : 0
+  if (measuredDock.get(surface) === width) return
+  measuredDock.set(surface, width)
+  try {
+    $.ui.invalidate('ui.render')
+  } catch {
+    // The hint line takes the width at its next drawing.
+  }
+}
+
+/**
+ * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on; a
+ * context action, on the conversation. Either way, that text's icons go, as
+ * after a press on them. The dialog's tab stays, its filter emptied, its text
+ * kept; the run shows the results' tab (begin).
  */
 async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) {
   const text = (await read($, picking))?.text ?? null
-  await closePicker($)
+  await update($, picking, p => (p === null ? p : { ...p, filter: '' }))
   if (def === undefined) return
   // Standalone: run with no argument, the held text neither sent nor needed.
   if (isStandalone(def)) {
@@ -594,7 +729,9 @@ export const register: Register = (on, options) => {
   // Tall enough for every action in the ⋯ dialog, its notice, its legend, its
   // filter field and its button, up to PICKER_MAX_ROWS: with hundreds of
   // actions the pane scrolls rather than asks for more rows than there are.
+  // Both tabs ask for it (see openPanes), so the inline block keeps one height whichever is shown.
   const pickerRows = Math.min(allSpecs.length + 6, PICKER_MAX_ROWS)
+  paneRows = pickerRows
 
   // The specs by ID, for the filter: it searches a spec's labels in both
   // languages, which a definition resolved for one language no longer has.
@@ -638,6 +775,8 @@ export const register: Register = (on, options) => {
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
+  // The dock is measured afresh by this load's drawings.
+  measuredDock.clear()
 
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
@@ -670,6 +809,8 @@ export const register: Register = (on, options) => {
         const previous = await read($, selection)
         if (text !== previous) {
           await update($, selection, () => text)
+          // A new selection (or none) opens the hint line on its own kind again.
+          await update($, hintKind, () => null)
         }
         const opened = await read($, hint)
         if (opened !== null) {
@@ -727,7 +868,7 @@ export const register: Register = (on, options) => {
     const { id: wanted, arg } = splitCommandArgs(e.args)
     // Without an ID: the ⋯ dialog, on the text selected now (with none, the context and standalone actions).
     if (wanted === '') {
-      await openPicker($, l, pickerRows)
+      await openPanes($, l, 'picker', await selectionNow($), true)
       return { text: withProblems(t.pickerOpened, problems, l) }
     }
     // An argument nothing takes: told, and nothing runs (no pane, no use counted).
@@ -738,6 +879,7 @@ export const register: Register = (on, options) => {
       if (arg !== undefined) return refuse(wanted, arg)
       const held = await selectionNow($)
       await update($, hint, () => ({ text: held, armed: false }))
+      await update($, hintKind, () => null)
       await update($, dismissed, () => null)
       return { text: withProblems(t.hintOpened, problems, l) }
     }
@@ -781,9 +923,22 @@ export const register: Register = (on, options) => {
   // The icons take the hint line under the prompt, a row that is always there:
   // a band above the prompt would add a row mid-drag and shift the transcript.
   //
-  // Shown on the text selected now, every kind of action (those on it first,
-  // see arrange); else, while `/quick-actions hint` holds it open, on the text
-  // it held (every kind) or, with none, the context and standalone actions alone.
+  // Shown on the text selected now; else, while `/quick-actions hint` holds it
+  // open, on the text it held or, with none, without the selection's actions.
+  //
+  // The engine keeps answering a selection after its highlight goes (see the
+  // poll), and nothing tells the module the highlight went: the line cannot
+  // follow what the screen shows. So it shows one kind at a time, and three
+  // buttons at its start switch it: the selection's ([選択]), the
+  // conversation's (<会話>) and the standalone ones ({単独}). It opens on the
+  // selection's when there is text to run on (a new selection, or `hint` run
+  // over one), else on the conversation's; the selection's button is drawn
+  // only with text. A line left up after the highlight went is still of use:
+  // switched to the conversation's or the standalone ones.
+  //
+  // How many icons: the `hintCount` setting is the count on an 80-column line;
+  // the line's width (the terminal's, less this plugin's dock beside it) moves
+  // it in proportion, never past what fits (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
     const selected = await read($, selection)
@@ -795,9 +950,44 @@ export const register: Register = (on, options) => {
 
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
-    // The first hintCount in the order, of the kinds that apply; pins beyond it too wait under ⋯.
+    const kind = hintKindFor(await read($, hintKind), text !== null)
+    const kinds = HINT_KINDS.filter(k => k !== 'selection' || text !== null)
+    // The order of the kinds that apply, pins first, of the kind shown.
     const ordered = inOrder(await ensureOrder($, orderLoad), l)
-    const enabled = arrange(ordered, pins, text !== null, orderLoad.defaults).slice(0, hintCount)
+    const candidates = ofKind(arrange(ordered, pins, text !== null, orderLoad.defaults), kind)
+
+    // The line's width: the terminal's less this plugin's dock, as drawn, or,
+    // before it is drawn, as every open asks for it while the tabs are open on
+    // a terminal wide enough to dock them.
+    const viewport = e.viewport
+    let columns: number | undefined
+    if (viewport !== undefined) {
+      // Open by the engine's record: a tab unloaded unheard takes nothing off.
+      const isOpen = (await openPicking($)) !== null
+      // This surface's own dock, never another's (a desktop's inline pane
+      // says nothing of the terminal's docked one).
+      const measured = isOpen ? measuredDock.get(e.surface) : undefined
+      const docked = isOpen && viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS
+      columns = hintLineColumns(viewport.columns, measured ?? (docked ? ASSUMED_DOCK : 0))
+    }
+    // Narrow, the kind buttons are drawn as their marks alone; their hover
+    // labels say which.
+    const compact = columns !== undefined && columns < COMPACT_BELOW
+    const kindLabel = (k: HintKind) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
+    // What each kind button is named, whatever it draws (a desktop's native
+    // button and assistive tech read the label, not the drawing): which actions
+    // it shows, and, for the one shown now, that it is.
+    const kindName = (k: HintKind) => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])
+    // ✕ and ⋯ always; the kind buttons while they fit beside them (on a line
+    // too narrow even for their marks, the kind shown stays as it is).
+    const ends = buttonWidth('✕') + buttonWidth('⋯')
+    const kindsWidth = kinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0)
+    const shownKinds = columns === undefined || ends + kindsWidth <= columns ? kinds : []
+    const reserved = ends + (shownKinds.length > 0 ? kindsWidth : 0)
+    // Widths measured for as many as the line could take at most, not every candidate.
+    const most = columns === undefined ? hintCount : hintTarget(columns, hintCount)
+    const count = hintCountFor(columns, hintCount, reserved, candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))))
+    const enabled = candidates.slice(0, count)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     // A press puts this line away, whichever kind it runs: the selection's
@@ -819,10 +1009,30 @@ export const register: Register = (on, options) => {
     const close = async () => {
       if (current !== null) await update($, dismissed, () => current)
       await update($, hint, () => null)
+      await update($, hintKind, () => null)
     }
+    // The hover labels: cut where the row ends rather than wrapped onto another.
+    const tip = (scope: string, label: string) => (
+      <Box display="none" flexShrink={1} hover={{ scope, display: 'flex' }}>
+        <Text color="cyan" wrap="truncate"> {label}</Text>
+      </Box>
+    )
 
     return (
       <Box flexDirection="row">
+        {shownKinds.map(k => (
+          <Box key={`act-${kindKey(k)}`} hover={{ scope: `tip-kind-${k}` }}>
+            {k === kind ? (
+              <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
+                <Text bold color="cyan">{kindLabel(k)}</Text>
+              </Button>
+            ) : (
+              <Button key={kindKey(k)} label={kindName(k)} dimColor onPress={() => update($, hintKind, () => k)}>
+                {kindLabel(k)}
+              </Button>
+            )}
+          </Box>
+        ))}
         {enabled.map(a => (
           <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
             <Button
@@ -845,20 +1055,13 @@ export const register: Register = (on, options) => {
           <Button
             key={MORE_KEY}
             label="⋯"
-            onPress={() => openPicker($, l, pickerRows, text)}
+            onPress={() => openPanes($, l, 'picker', text, true)}
           />
         </Box>
-        {enabled.map(a => (
-          <Box display="none" hover={{ scope: `tip-action-${a.id}`, display: 'flex' }}>
-            <Text color="cyan"> {a.label}</Text>
-          </Box>
-        ))}
-        <Box display="none" hover={{ scope: 'tip-close', display: 'flex' }}>
-          <Text color="cyan"> {t.close}</Text>
-        </Box>
-        <Box display="none" hover={{ scope: 'tip-more', display: 'flex' }}>
-          <Text color="cyan"> {t.allActions}</Text>
-        </Box>
+        {shownKinds.map(k => tip(`tip-kind-${k}`, t.hintKindTips[k]))}
+        {enabled.map(a => tip(`tip-action-${a.id}`, a.label))}
+        {tip('tip-close', t.close)}
+        {tip('tip-more', t.allActions)}
       </Box>
     )
   })
@@ -871,15 +1074,27 @@ export const register: Register = (on, options) => {
   // the first action left; Clear beside it, or deleting its text, lists them
   // all again. The field takes the focus as the dialog opens; the focus ring
   // moves on to the list, where a Select takes the keys (arrows move, Enter
-  // runs). Escape closes the dialog through closeOnEscape, its filter with it.
+  // runs). Escape closes the whole pane through closeOnEscape (both tabs; the
+  // filter too, rather than emptying it), as the close button does.
   // Focus is a request the engine refuses while the composer holds text: then
   // a line says how to get the keys, and the list and the close button still
   // answer a click. The mobile app draws no field and gets no such line: its
   // actions are buttons to tap, every one of them, and no keys.
+  //
+  // While an AskUserQuestion dialog is up it holds the keys, and the engine
+  // refuses the pane any focus asked for: the list is buttons to click then
+  // (no field, no Select, which want the keys), under a line saying so.
+  //
+  // The list fills the pane's height: it is drawn in a Box keyed by the rows it
+  // has (scroll.bodyRows less the rest of the dialog), so a terminal shrunk and
+  // grown again draws the Select anew at the new height rather than keeping
+  // the rows it was first laid out in.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const state = await read($, picking)
+    noteDock($, e.surface, state !== null, e.props.placement, e.props.bodyColumns)
+    const isAsking = (await read($, asking)) > 0
     const all = inOrder(await ensureOrder($, orderLoad), l)
     const hasSelection = state !== null && state.text !== null
     const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
@@ -891,9 +1106,9 @@ export const register: Register = (on, options) => {
     // theme's) need not read on the palette's background.
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
-    const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
+    const Select = e.surface !== 'mobile' && !fixed && !isAsking && 'Select' in elements ? elements.Select : undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
-    const Input = e.surface !== 'mobile' && 'Input' in elements ? elements.Input : undefined
+    const Input = e.surface !== 'mobile' && !isAsking && 'Input' in elements ? elements.Input : undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
     // A Select takes 64 options at most: past that it lists the first 64 (in
@@ -903,9 +1118,12 @@ export const register: Register = (on, options) => {
     // completed to every name), so wherever a Select is drawn the filter field
     // is there to reach the rest; buttons (mobile, a palette) list them all.
     const listed = Select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
-    const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
-    // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
-    const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
+    const keyboardNotice = e.surface !== 'mobile' && !isAsking && !e.props.isFocused
+    // The rows the list has: the pane's, less the rest of the dialog.
+    const listRows = Math.max(PICKER_MIN_LIST_ROWS, e.props.scroll.bodyRows - PICKER_CHROME_ROWS)
+    // The close button's props; it is drawn dimColor as before, or in the
+    // palette's muted colour. It closes the whole pane, both tabs.
+    const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closeAll($) }
 
     const setFilter = (value: string) => update($, picking, p => (p === null ? p : { ...p, filter: value }))
     // Enter in the field: the first action its text leaves, worked out from
@@ -931,6 +1149,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
+        {isAsking && e.surface !== 'mobile' && <Text {...muted(style)}>{t.pickerAsking}</Text>}
         {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
         {state !== null && Input !== undefined && (
           <Box flexDirection="row">
@@ -963,7 +1182,7 @@ export const register: Register = (on, options) => {
           // A Select takes one option at least: with none, this line instead.
           <Text {...muted(style)}>{t.pickerNoMatch}</Text>
         ) : Select !== undefined ? (
-          <Box flexDirection="column">
+          <Box key={`${PICKER_LIST_KEY}-${listRows}`} flexDirection="column">
             <Select
               key={PICKER_SELECT_KEY}
               label={t.pickerLabel}
@@ -1002,38 +1221,24 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The person's close (Escape through closeOnEscape, the close mark): the
-  // text it held goes with it and nothing runs. Closes from within go
-  // through closePicker, which does the same.
-  on('ui.close', { id: PICKER }, async ($, e, next) => {
-    await update($, picking, () => null)
-    return next(e)
-  })
-
-  // The person closed the result pane: every run over time stops with it, its
-  // entry done and saying how long it ran. The plugin never closes this pane
-  // itself, so this is the only close to follow.
-  on('ui.close', { id: PANE }, async ($, e, next) => {
-    if (tickers.size > 0) {
-      // Every period is cancelled first, before anything is awaited, so none
-      // runs on whatever else fails; the entries are settled after.
-      const stopping = [...tickers.entries()]
-      for (const [id] of stopping) endTicker(id)
-      try {
-        const l = await ensureLanguage($)
-        await Promise.all(stopping.map(([id, ticker]) => settleStopped($, l, id, ticker.startedAt)))
-      } catch {
-        // The entries may stay running in the state; with no run behind them, the pane draws them stopped.
-      }
-    }
-    return next(e)
-  })
+  // The person's close of either tab (Escape through closeOnEscape, the close
+  // mark, ctrl+x x) closes the whole pane: the other tab with it, every run
+  // over time stopped (its entry done, saying how long it ran), the text the
+  // ⋯ dialog held let go; nothing runs. The plugin's own closes (closeAll, a
+  // tab reopened to show it) chain nothing, so no close comes back here.
+  for (const id of [PICKER, PANE]) {
+    on('ui.close', { id }, async ($, e, next) => {
+      if (closesWhole(e.origin)) await closeAll($, id)
+      return next(e)
+    })
+  }
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const defs = defsFor(l)
     const { Box, Button, Text } = $.ui.resolve(e)
+    noteDock($, e.surface, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
@@ -1095,6 +1300,40 @@ export const register: Register = (on, options) => {
             </Box>
           )
         })}
+      </Box>
+    )
+  })
+
+  // An AskUserQuestion dialog holds the keys while it is up (the composer is
+  // gone, so /quick-actions cannot be typed, and the engine refuses a pane any
+  // focus asked for). Counted while each is up, so the ⋯ dialog draws its
+  // actions as buttons to click meanwhile; down again however the call ends.
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    await update($, asking, n => n + 1)
+    try {
+      return await next(e)
+    } finally {
+      await update($, asking, n => Math.max(0, n - 1))
+    }
+  })
+
+  // Over the dialog, a button that opens the pane on the ⋯ dialog's tab, so
+  // the actions are there while the question is (to look something up before
+  // answering): the composer is gone meanwhile, so /quick-actions cannot be
+  // typed. Over it, since the engine refuses a tree that draws below its
+  // dialog, and around its own drawing (the one engine node a tree must hold).
+  // The dialog's props are untouched; should this tree be refused, the engine
+  // draws the dialog alone.
+  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
+    const drawn = await next(e)
+    const l = await ensureLanguage($)
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          <Button key={ASK_OPEN_KEY} label={MESSAGES[l].askOpen} onPress={async () => openPanes($, l, 'picker', await selectionNow($), true)} />
+        </Box>
+        {drawn}
       </Box>
     )
   })

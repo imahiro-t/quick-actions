@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { ACTIONS, isStandalone } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, JA, PANE, PICKER, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { BAND, JA, PANE, PICKER, PLUGIN, SURFACES, hintIcons, reselect, runCommand, stage, start } from './stage'
 
 // The default set has no fork: these name one (💬 ask) beside the complete and subagent defaults.
 const WITH_ASK = { ...JA, actions: 'explain,translate-ja,ask,code' }
@@ -95,7 +95,7 @@ for (const language of ['ja', 'en'] as const) {
       await clock.advance(400)
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      const icons = (await band.findAll({ type: 'Button' })).map(b => b.props.label)
+      const icons = (await hintIcons(band))
       expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
 
       await reselect(s, clock)
@@ -139,7 +139,9 @@ test('/quick-actions without an ID opens the ⋯ dialog and runs nothing', { opt
 
   const r = await runCommand($, '')
   expect(s.models).toEqual([])
-  expect(s.opened.map(o => o.id)).toEqual([PICKER])
+  // Both tabs, the dialog's opened last so it is the one shown (SELM-00050).
+  expect(s.opened.map(o => o.id)).toEqual([PANE.requestId, PICKER])
+  expect(s.shown).toBe(PICKER)
   expect(JSON.stringify(r)).toContain(MESSAGES.ja.pickerOpened)
 })
 

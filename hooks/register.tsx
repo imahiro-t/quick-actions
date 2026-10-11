@@ -645,6 +645,13 @@ async function pickedNow($: EngineInterface): Promise<Picked | null> {
   return text ? pickedOf(text, selected?.requestId) : null
 }
 
+/** The ⋯ dialog's state `p` holding `picked`: its text and row, a row it held before left out. */
+type Picking = { text: string | null; requestId?: string; filter: string; arg?: ArgInput }
+function holding(p: Picking, picked: Picked): Picking {
+  const { requestId: _held, ...rest } = p
+  return { ...rest, text: picked.text, ...(picked.requestId === undefined ? {} : { requestId: picked.requestId }) }
+}
+
 /** The text selected now, trimmed; null when there is none. No toast. */
 async function selectionNow($: EngineInterface): Promise<string | null> {
   return (await pickedNow($))?.text ?? null
@@ -683,8 +690,9 @@ type Shown = 'results' | 'picker'
  * Actions") and the ⋯ dialog ("Select an action"), the one `show` names
  * last, so it is the one shown. The dialog's tab holds `held`'s text (null:
  * none, the context and standalone actions alone) and the transcript row it
- * lies in, so a pick runs on it however the selection changes meanwhile; every
- * open starts its filter empty. With `arg` (the hint line, a result's button),
+ * lies in, so a pick runs on it once the selection goes (a new selection made
+ * meanwhile replaces it: see the poll in session.start); every open starts
+ * its filter empty. With `arg` (the hint line, a result's button),
  * the dialog's tab shows that standalone action's argument screen.
  *
  * Each open sets `closeOnEscape` and `rows` anew (PaneOpenArgs), so both tabs
@@ -975,15 +983,21 @@ export const register: Register = (on, options) => {
     // nothing. A selection made after it opened arms it (one whose text is the
     // held one does not: that may be the held selection itself, seen late),
     // and that selection going closes it, as a selection's going hides its icons.
+    //
+    // The ⋯ dialog's tab, while open, follows a new selection: one made with
+    // the pane open is what its selection actions run on. A selection's going
+    // (the highlight down, a command run) leaves it the text it holds.
     $.clock.every(POLL_MS, () => {
       void (async () => {
-        const text = await selectionNow($)
+        const picked = await pickedNow($)
+        const text = picked?.text ?? null
         // Read before the write below, so the change is seen.
         const previous = await read($, selection)
         if (text !== previous) {
           await update($, selection, () => text)
           // A new selection (or none) opens the hint line on its own kind again.
           await update($, hintKind, () => null)
+          if (picked !== null) await update($, picking, p => (p === null ? p : holding(p, picked)))
         }
         const opened = await read($, hint)
         if (opened !== null) {

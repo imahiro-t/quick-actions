@@ -127,45 +127,50 @@ for (const surface of SURFACES) {
     await picker.unmount()
   })
 
-  test(`[${surface}] [en] focused or not, the kind buttons' row is taken off as the rows it wraps to, and no notice: the list never spills (SELM-00059 QA, SELM-00068)`, { options: EN }, async ($, on) => {
-    const clock = mock.clock(on)
-    const s = stage(on)
-    await start($)
-    await openByMore($, s, clock, surface)
-    const t = MESSAGES.en
-    const total = ACTIONS.length
-    const kinds = pickerKindLabels(t, true)
-    // The kind buttons' row (17, 15 and 18 cells), wrapped button by button, counted a cell
-    // narrower: one row from 51 columns, two from 33, else a button a row.
-    const kindRows: Record<number, number> = { 22: 3, 27: 3, 28: 3, 36: 2, 54: 1, 55: 1, 56: 1 }
-    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30, 54) })
-    for (const focused of [true, false]) {
+  // Focused and not, each a test of its own: every width redraws the list, and the two
+  // together ran too close to the 5-second default on a loaded machine (SELM-00068).
+  for (const focused of [true, false]) {
+    test(`[${surface}] [en] ${focused ? 'focused' : 'not focused'}, the kind buttons' row is taken off as the rows it wraps to, and no notice: the list never spills (SELM-00059 QA, SELM-00068)`, { options: EN, timeoutMs: 30_000 }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      await openByMore($, s, clock, surface)
+      const t = MESSAGES.en
+      const total = ACTIONS.length
+      const kinds = pickerKindLabels(t, true)
+      // The kind buttons' row (17, 15 and 18 cells), wrapped button by button, counted a cell
+      // narrower: one row from 51 columns, two from 33, else a button a row.
+      const kindRows: Record<number, number> = { 22: 3, 27: 3, 28: 3, 36: 2, 54: 1, 55: 1, 56: 1 }
+      // The whole list, in its order, drawn once with room for all: the order is the usage's
+      // alone, the same at every width and focus, so each width's next button is read off it.
+      const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(10_000, 54, focused) })
+      const all = (await listedOptions(picker)).map(o => o.label)
+      expect(all).toHaveLength(total)
       for (const [key, rows] of Object.entries(kindRows)) {
         const columns = Number(key)
         expect([columns, kindRowLines(kinds, columns)]).toEqual([columns, rows])
         await picker.redraw(at(30, columns, focused))
         const labels = (await listedOptions(picker)).map(o => o.label)
         const n = labels.length
+        // The first n of the whole list, in its order.
+        expect([columns, labels]).toEqual([columns, all.slice(0, n)])
         expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerMore(total - n)])
         const used = (count: number) =>
-          FIXED_ROWS + rows + linesOf(t.pickerMore(total - count), columns) + labels.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
+          FIXED_ROWS + rows + linesOf(t.pickerMore(total - count), columns) + all.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
         // Within the pane's 30 rows, and filling them: one more button would not fit.
         expect([columns, used(n) <= 30]).toEqual([columns, true])
-        await picker.redraw(at(10_000, columns, focused))
-        const next = (await listedOptions(picker)).at(n)?.label ?? ''
-        await picker.redraw(at(30, columns, focused))
-        expect([columns, used(n) + buttonLines(next, columns) > 30]).toEqual([columns, true])
+        expect([columns, used(n) + buttonLines(all[n] ?? '', columns) > 30]).toEqual([columns, true])
         // Where every listed button is one row, the count is exact: 30 less the kind buttons' rows and the rest.
         if (labels.every(l => buttonLines(l, columns) === 1)) {
           expect([columns, n]).toEqual([columns, 30 - FIXED_ROWS - rows - linesOf(t.pickerMore(total - n), columns)])
         }
       }
-      // At 54 the built-in labels are one row each: 30 - 2 - 1 - 1 = 26, focused or not.
+      // At 54 the built-in labels are one row each: 30 - 2 - 1 - 1 = 26.
       await picker.redraw(at(30, 54, focused))
       expect((await listedActions(picker)).length).toBe(26)
-    }
-    await picker.unmount()
-  })
+      await picker.unmount()
+    })
+  }
 
   test(`[${surface}] pickAction: an action not listed is reached through the filter; one whose ID others share a start with is the one pressed`, { options: JA }, async ($, on) => {
     // Five others used, so translate-zh, early in the order of definition, is past the five listed.

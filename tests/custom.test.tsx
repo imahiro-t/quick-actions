@@ -498,13 +498,14 @@ for (const surface of SURFACES) {
     await reselect(s, clock)
     await band.press({ key: 'look' })
     expect(s.registered).toEqual([
-      { name: 'review-pr', model: 'opus', tools: ['Read', 'Grep', 'WebFetch'], description: 'コードをレビューします', prompt: 'You review code and answer in Japanese.' },
+      { name: 'review-pr', model: 'opus', tools: ['Read', 'Grep', 'WebFetch'], description: 'コードをレビューします', prompt: 'You review code and answer in Japanese.', omitClaudeMd: true },
       {
         name: 'look',
         model: 'sonnet',
         tools: ['Read', 'Grep', 'Glob'],
         description: MESSAGES.ja.agentDescription('Look around'),
         prompt: `${LOOK.prompt} ${answerStyle('ja')}`,
+        omitClaudeMd: true,
       },
     ])
     expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:review-pr`, `${PLUGIN}:look`])

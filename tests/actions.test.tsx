@@ -1648,7 +1648,7 @@ for (const language of ['ja', 'en'] as const) {
             expect(s.spawned.length).toBe(before.spawned + 1)
             expect(s.spawned.at(-1)?.subagentType).toBe(`${PLUGIN}:${a.id}`)
             expect(s.spawned.at(-1)?.prompt).toContain(a.task)
-            expect(s.registered.at(-1)).toMatchObject({ name: a.id, model: a.model })
+            expect(s.registered.at(-1)).toMatchObject({ name: a.id, model: a.model, omitClaudeMd: true })
           }
         }
         await band.unmount()

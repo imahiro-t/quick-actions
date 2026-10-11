@@ -103,6 +103,8 @@ for (const language of ['ja', 'en'] as const) {
       expect(s.registered.map(r => r.name)).toEqual(['web-check'])
       expect([...(s.registered[0]?.tools ?? [])]).toEqual(['WebFetch', 'WebSearch'])
       expect(s.registered[0]?.model).toBe('sonnet')
+      // No CLAUDE.md in its context, so none of it can be steered into a query or a URL.
+      expect(s.registered[0]?.omitClaudeMd).toBe(true)
       expect(s.registered[0]?.description).toBe(
         language === 'ja'
           ? '選択テキストの主張を Web の出典で確かめます（Quick Actions 専用）'

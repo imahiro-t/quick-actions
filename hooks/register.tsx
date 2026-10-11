@@ -202,6 +202,11 @@ async function settle($: EngineInterface, id: number, ok: boolean, text: string)
   await update($, results, list => list.map(r => (r.id === id ? { ...r, status, text } : r)))
 }
 
+// Every subagent is registered without the CLAUDE.md block (the person's, the
+// project's, the rules): its prompt and the selection or argument are all it
+// works from. With CLAUDE.md in its context, instructions hidden in the
+// selection could have a web subagent put what CLAUDE.md says (an address,
+// internal names) into a search query or a URL it fetches.
 async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
   if (registeredAgents.has(def.id)) return
   await $.agent.register({
@@ -210,6 +215,7 @@ async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
     prompt: def.prompt,
     tools: [...(def.tools ?? READ_ONLY_TOOLS)],
     model: def.model,
+    omitClaudeMd: true,
   })
   registeredAgents.add(def.id)
 }

@@ -265,7 +265,7 @@ export type Stage = {
   // "Go to selection" button assumed.
   selectedRow: string | null
   models: { model: string; system?: string; prompt: string }[]
-  registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string }[]
+  registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string; omitClaudeMd?: true }[]
   commands: { name: string; description: string }[]
   spawned: { subagentType: string; prompt: string }[]
   forks: string[]
@@ -392,7 +392,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('agent.register', async (_$, e) => {
     if (s.hold !== null) await s.hold
     if (s.refuse !== null) return { deny: s.refuse }
-    s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description, prompt: e.prompt })
+    s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description, prompt: e.prompt, ...(e.omitClaudeMd === undefined ? {} : { omitClaudeMd: e.omitClaudeMd }) })
     return { value: { agent: `${PLUGIN}:${e.name}` } }
   })
   // A fresh id per spawn, so several subagents in one test never share one.

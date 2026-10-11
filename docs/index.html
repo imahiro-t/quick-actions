@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Actions catalog</title>
+<meta name="description" content="Every built-in action of Quick Actions for Claude Code, by category, searchable, in English and Japanese.">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --text: #1c1c1a;
+    --muted: #55524d;
+    --border: #d9d7d2;
+    --tag-bg: #efeeeb;
+    --tag-text: #3d3a36;
+    --code-bg: #efeeeb;
+    --pressed-bg: #1c1c1a;
+    --pressed-text: #ffffff;
+    --focus: #1d4ed8;
+    --selection: #1d4ed8;
+    --context: #7e22ce;
+    --standalone: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #141413;
+      --surface: #1f1f1d;
+      --text: #ecebe8;
+      --muted: #b0aca5;
+      --border: #3a3936;
+      --tag-bg: #2c2b29;
+      --tag-text: #dcdad5;
+      --code-bg: #2c2b29;
+      --pressed-bg: #ecebe8;
+      --pressed-text: #141413;
+      --focus: #93c5fd;
+      --selection: #93c5fd;
+      --context: #d8b4fe;
+      --standalone: #86efac;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    overflow-wrap: anywhere;
+  }
+  .wrap { max-width: 72rem; margin: 0 auto; padding: 0 16px; }
+  header { padding: 24px 0 8px; }
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  h1 { margin: 0; font-size: 1.6rem; line-height: 1.25; }
+  .lead { margin: 6px 0 0; color: var(--muted); }
+  .links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  a { color: var(--focus); }
+  .lang { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .lang button { border: 0; background: var(--surface); color: var(--text); padding: 4px 12px; }
+  .lang button[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); }
+  .controls { position: sticky; top: 0; z-index: 1; background: var(--bg); padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .search label { display: block; font-weight: 600; margin-bottom: 4px; }
+  .search input {
+    width: 100%; font: inherit; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 10px; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+  .group-name { color: var(--muted); font-size: 0.85rem; margin-right: 2px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 2px 12px; font-size: 0.9rem;
+  }
+  .chip[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); border-color: var(--pressed-bg); }
+  .chip .mark { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-right: 4px; }
+  .status { margin: 10px 0 0; color: var(--muted); font-size: 0.9rem; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  main { padding: 8px 0 48px; }
+  .kind-section { margin-top: 24px; }
+  .kind-section > h2 { font-size: 1.3rem; margin: 0 0 4px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .kind-section > h2 .mark { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .selection { --accent: var(--selection); }
+  .context { --accent: var(--context); }
+  .standalone { --accent: var(--standalone); }
+  .kind-section > h2 .mark { color: var(--accent); }
+  .count { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
+  .category h3 { font-size: 1.05rem; margin: 20px 0 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+  .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); }
+  .card {
+    min-width: 0; background: var(--surface); border: 1px solid var(--border);
+    border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .card-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .icon { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; flex: none; }
+  .icon .b { color: var(--accent); font-weight: 700; }
+  .label { font-weight: 600; min-width: 0; }
+  .id { font-size: 0.85rem; align-self: flex-start; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg); border-radius: 4px; padding: 0 4px; font-size: 0.9em; }
+  .summary { margin: 0; }
+  .arg { margin: 0; color: var(--muted); font-size: 0.85rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .tag { background: var(--tag-bg); color: var(--tag-text); border-radius: 4px; padding: 0 6px; font-size: 0.8rem; }
+  .tag.method { border: 1px solid var(--border); }
+  .empty, .error { margin: 24px 0; padding: 16px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
+  [hidden] { display: none !important; }
+  footer { color: var(--muted); font-size: 0.85rem; padding: 0 0 32px; }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <div class="top">
+    <h1 id="title">Quick Actions</h1>
+    <div class="links">
+      <div class="lang" role="group" id="lang-group" aria-label="Language">
+        <button type="button" data-lang="ja" aria-pressed="false" lang="ja">日本語</button>
+        <button type="button" data-lang="en" aria-pressed="false" lang="en">English</button>
+      </div>
+      <a id="repo-link" href="https://github.com/imahiro-t/quick-actions">GitHub</a>
+    </div>
+  </div>
+  <p class="lead" id="lead"></p>
+</header>
+
+<div class="controls">
+  <div class="wrap">
+    <div class="search">
+      <label for="q" id="q-label">Search</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="filters">
+      <div class="group" role="group" id="kind-group" aria-labelledby="kind-name"><span class="group-name" id="kind-name"></span></div>
+      <div class="group" role="group" id="method-group" aria-labelledby="method-name"><span class="group-name" id="method-name"></span></div>
+    </div>
+    <p class="status" id="status" aria-live="polite" role="status"></p>
+  </div>
+</div>
+
+<main class="wrap" id="main"></main>
+<footer class="wrap" id="footer"></footer>
+
+<script src="actions-data.js"></script>
+<script>
+(function () {
+  'use strict'
+
+  // The page's own words; the actions' labels and summaries, the categories and
+  // the kinds' names come from the data (hooks/actions.ts, hooks/i18n.ts) as they are.
+  var UI = {
+    ja: {
+      title: 'Quick Actions アクション一覧',
+      lead: function (n) { return 'Claude Code 用プラグイン Quick Actions の組み込みアクション全 ' + n + ' 件。用途・カテゴリ別に、検索と絞り込みができます。' },
+      search: 'キーワード検索（ID・ラベル・説明）',
+      placeholder: '例: 翻訳, recap, タイマー',
+      kind: '種類',
+      method: '実行方式',
+      shown: function (n, total) { return total + ' 件中 ' + n + ' 件を表示' },
+      empty: '条件に合うアクションはありません。検索語や絞り込みを変えてみてください。',
+      noData: 'アクションのデータ（actions-data.js）を読み込めませんでした。リポジトリのルートで node scripts/gen-catalog.mjs を実行して生成してください。',
+      arg: '引数',
+      model: 'モデル',
+      language: '言語',
+      footer: 'このページは hooks/actions.ts の定義から scripts/gen-catalog.mjs で生成したデータを表示しています。',
+      methods: {
+        complete: 'complete: モデルを 1 回呼び出す（会話は使わない）',
+        fork: 'fork: 今の会話の分岐で答える（会話のモデル）',
+        subagent: 'subagent: 専用のサブエージェントが調べて答える',
+        local: 'local: モデルを使わずプラグイン内で計算する'
+      }
+    },
+    en: {
+      title: 'Quick Actions catalog',
+      lead: function (n) { return 'All ' + n + ' built-in actions of Quick Actions, a plugin for Claude Code, by purpose and category. Search and filter them below.' },
+      search: 'Search (ID, label, description)',
+      placeholder: 'e.g. translate, recap, timer',
+      kind: 'Kind',
+      method: 'Runs as',
+      shown: function (n, total) { return 'Showing ' + n + ' of ' + total },
+      empty: 'No action matches. Try other words or filters.',
+      noData: 'The action data (actions-data.js) could not be loaded. Run node scripts/gen-catalog.mjs at the root of the repository to generate it.',
+      arg: 'Argument',
+      model: 'Model',
+      language: 'Language',
+      footer: 'This page shows the data scripts/gen-catalog.mjs generates from the definitions in hooks/actions.ts.',
+      methods: {
+        complete: 'complete: one model call (the conversation is not used)',
+        fork: "fork: answered in a branch of the current conversation (the conversation's model)",
+        subagent: 'subagent: a subagent of its own looks things up and answers',
+        local: 'local: no model; worked out inside the plugin'
+      }
+    }
+  }
+  var MARKS = { selection: ['[', ']'], context: ['<', '>'], standalone: ['{', '}'] }
+  var STORE_KEY = 'quick-actions-catalog-lang'
+
+  var data = globalThis.QUICK_ACTIONS_CATALOG
+  var $ = function (id) { return document.getElementById(id) }
+  var el = function (tag, attrs, children) {
+    var node = document.createElement(tag)
+    if (attrs) for (var k in attrs) {
+      if (k === 'class') node.className = attrs[k]
+      else if (k === 'text') node.textContent = attrs[k]
+      else node.setAttribute(k, attrs[k])
+    }
+    ;(children || []).forEach(function (c) { if (c != null) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c) })
+    return node
+  }
+
+  function readStored() {
+    try { return window.localStorage.getItem(STORE_KEY) } catch (e) { return null }
+  }
+  function store(lang) {
+    try { window.localStorage.setItem(STORE_KEY, lang) } catch (e) { /* not kept: fine */ }
+  }
+  function initialLang() {
+    var q = null
+    try { q = new URLSearchParams(window.location.search).get('lang') } catch (e) { q = null }
+    if (q === 'ja' || q === 'en') return q
+    var s = readStored()
+    if (s === 'ja' || s === 'en') return s
+    var langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''])
+    return String(langs[0] || '').toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en'
+  }
+
+  var state = { lang: initialLang(), query: '', kinds: {}, methods: {} }
+
+  // A summary as text, with `code` spans set as code.
+  function richText(text) {
+    var frag = document.createDocumentFragment()
+    String(text).split('`').forEach(function (part, i) {
+      if (part === '') return
+      frag.appendChild(i % 2 === 1 ? el('code', { text: part }) : document.createTextNode(part))
+    })
+    return frag
+  }
+  function markedIcon(kind, icon) {
+    var m = MARKS[kind]
+    return el('span', { class: 'icon', 'aria-hidden': 'true' }, [el('span', { class: 'b', text: m[0] }), icon, el('span', { class: 'b', text: m[1] })])
+  }
+
+  var byId = {}
+  var cards = {}          // id -> card element
+  var categoryNodes = []  // { node, countNode, ids }
+  var kindNodes = {}      // kind -> { node, countNode }
+
+  function build() {
+    var t = UI[state.lang]
+    var main = $('main')
+    main.textContent = ''
+    cards = {}
+    categoryNodes = []
+    kindNodes = {}
+    data.actions.forEach(function (a) { byId[a.id] = a })
+    var kindName = {}
+    data.kinds.forEach(function (k) { kindName[k.id] = k })
+
+    data.kinds.forEach(function (k) {
+      var count = el('span', { class: 'count' })
+      var section = el('section', { class: 'kind-section ' + k.id, 'aria-labelledby': 'kind-' + k.id }, [
+        el('h2', { id: 'kind-' + k.id }, [
+          el('span', { class: 'mark', 'aria-hidden': 'true', text: MARKS[k.id][0] + ' ' + MARKS[k.id][1] }),
+          el('span', { text: k.tip[state.lang] }),
+          count
+        ])
+      ])
+      kindNodes[k.id] = { node: section, countNode: count }
+      data.categories.filter(function (c) { return c.kind === k.id }).forEach(function (c) {
+        var cCount = el('span', { class: 'count' })
+        var list = el('ul', { class: 'cards' })
+        var block = el('div', { class: 'category' }, [el('h3', null, [el('span', { text: c.label[state.lang] }), cCount]), list])
+        c.ids.forEach(function (id) {
+          var a = byId[id]
+          var tags = el('div', { class: 'tags' }, [
+            el('span', { class: 'tag method', title: t.methods[a.method], text: a.method }),
+            a.model ? el('span', { class: 'tag model', title: t.model, text: t.model + ': ' + a.model }) : null
+          ])
+          var card = el('li', { class: 'card', 'data-id': a.id }, [
+            el('div', { class: 'card-head' }, [markedIcon(a.kind, a.icon), el('span', { class: 'label', text: a.label[state.lang] })]),
+            el('code', { class: 'id', text: a.id }),
+            el('p', { class: 'summary' }, [richText(a.summary[state.lang])]),
+            a.arg ? el('p', { class: 'arg', text: t.arg + ': ' + a.arg[state.lang] }) : null,
+            tags
+          ])
+          cards[id] = card
+          list.appendChild(card)
+        })
+        categoryNodes.push({ node: block, countNode: cCount, ids: c.ids })
+        section.appendChild(block)
+      })
+      main.appendChild(section)
+    })
+    main.appendChild(el('p', { class: 'empty', id: 'empty', hidden: '', text: t.empty }))
+  }
+
+  function chip(group, value, labelNodes, title) {
+    var b = el('button', { type: 'button', class: 'chip', 'aria-pressed': state[group][value] ? 'true' : 'false', 'data-value': value }, labelNodes)
+    if (title) b.title = title
+    b.addEventListener('click', function () {
+      state[group][value] = !state[group][value]
+      b.setAttribute('aria-pressed', state[group][value] ? 'true' : 'false')
+      apply()
+    })
+    return b
+  }
+
+  function buildControls() {
+    var t = UI[state.lang]
+    var kg = $('kind-group'), mg = $('method-group')
+    while (kg.childNodes.length > 1) kg.removeChild(kg.lastChild)
+    while (mg.childNodes.length > 1) mg.removeChild(mg.lastChild)
+    $('kind-name').textContent = t.kind
+    $('method-name').textContent = t.method
+    data.kinds.forEach(function (k) {
+      kg.appendChild(chip('kinds', k.id, [el('span', { class: 'mark', 'aria-hidden': 'true', text: MARKS[k.id][0] + ' ' + MARKS[k.id][1] }), k.name[state.lang]], k.tip[state.lang]))
+    })
+    data.methods.forEach(function (m) { mg.appendChild(chip('methods', m, [m], t.methods[m])) })
+  }
+
+  function anyOn(set) { for (var k in set) if (set[k]) return true; return false }
+
+  function matches(a, words) {
+    if (anyOn(state.kinds) && !state.kinds[a.kind]) return false
+    if (anyOn(state.methods) && !state.methods[a.method]) return false
+    if (!words.length) return true
+    var hay = (a.id + '\n' + a.label[state.lang] + '\n' + a.summary[state.lang]).toLowerCase()
+    return words.every(function (w) { return hay.indexOf(w) !== -1 })
+  }
+
+  function apply() {
+    var t = UI[state.lang]
+    var words = state.query.toLowerCase().split(/\s+/).filter(Boolean)
+    var shown = 0
+    var perKind = {}
+    data.actions.forEach(function (a) {
+      var on = matches(a, words)
+      cards[a.id].hidden = !on
+      if (on) { shown++; perKind[a.kind] = (perKind[a.kind] || 0) + 1 }
+    })
+    categoryNodes.forEach(function (c) {
+      var n = c.ids.filter(function (id) { return !cards[id].hidden }).length
+      c.node.hidden = n === 0
+      c.countNode.textContent = '(' + n + ')'
+    })
+    for (var k in kindNodes) {
+      var n = perKind[k] || 0
+      kindNodes[k].node.hidden = n === 0
+      kindNodes[k].countNode.textContent = '(' + n + ')'
+    }
+    $('empty').hidden = shown !== 0
+    $('status').textContent = t.shown(shown, data.total)
+  }
+
+  function setLang(lang, remember) {
+    state.lang = lang
+    document.documentElement.lang = lang
+    if (remember) {
+      store(lang)
+      try {
+        var url = new URL(window.location.href)
+        if (url.searchParams.has('lang')) { url.searchParams.set('lang', lang); history.replaceState(null, '', url) }
+      } catch (e) { /* the address stays as it is */ }
+    }
+    var t = UI[lang]
+    document.title = t.title
+    $('title').textContent = t.title
+    $('lang-group').setAttribute('aria-label', t.language)
+    Array.prototype.forEach.call(document.querySelectorAll('#lang-group button'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-lang') === lang ? 'true' : 'false')
+    })
+    $('q-label').textContent = t.search
+    $('q').placeholder = t.placeholder
+    if (!data) {
+      $('lead').textContent = ''
+      $('main').textContent = ''
+      $('main').appendChild(el('p', { class: 'error', role: 'alert', text: t.noData }))
+      $('status').textContent = ''
+      return
+    }
+    $('lead').textContent = t.lead(data.total)
+    $('footer').textContent = t.footer
+    buildControls()
+    build()
+    apply()
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#lang-group button'), function (b) {
+    b.addEventListener('click', function () { setLang(b.getAttribute('data-lang'), true) })
+  })
+  $('q').addEventListener('input', function (e) {
+    state.query = e.target.value
+    if (data) apply()
+  })
+  if (!data) document.querySelector('.filters').hidden = true
+  setLang(state.lang, false)
+})()
+</script>
+</body>
+</html>

@@ -20,3 +20,11 @@ export async function settleQuietly(scrolled: Promise<unknown>): Promise<void> {
     // Left where it was; see above.
   }
 }
+
+/**
+ * What a result's "Go to selection" asks of $.ui.scroll: the transcript row
+ * `requestId` its selection lay in, brought to the middle of the window. No
+ * `in`: the engine finds the transcript that draws the row. It moves only as
+ * the answer to the person's press, so the call is made in the onPress itself.
+ */
+export const toRow = (requestId: string): UiScrollArgs => ({ to: { requestId }, block: 'center' })

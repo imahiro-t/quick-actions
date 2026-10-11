@@ -122,6 +122,10 @@ export type Messages = {
   localTickerOnSelection: string
   /** The stop button of a running timer (or anything else that runs over time). */
   stop: string
+  /** The button of a result on a selection that scrolls the transcript back to where that selection lies. */
+  gotoSelection: string
+  /** The button of a result on a selection that takes that result's highlight off its transcript row. */
+  clearHighlight: string
   /** A run over time, stopped: after how long, or with no time when it is not known any more. */
   tickerStopped: (elapsed?: string) => string
   /** A run over time, done. */
@@ -219,6 +223,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     localAsync: '結果をすぐに返しませんでした',
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
     stop: '停止',
+    gotoSelection: '選択箇所に戻る',
+    clearHighlight: 'ハイライトをクリア',
     tickerStopped: elapsed => (elapsed === undefined ? '停止しました' : `停止しました（経過 ${elapsed}）`),
     tickerDone: '終了',
     tickerLimit: limit => `同時に動かせるのは ${limit} 個までです。停止してから実行してください`,
@@ -307,6 +313,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     localAsync: 'the result did not come at once',
     localTickerOnSelection: 'an action on the selection cannot run over time',
     stop: 'Stop',
+    gotoSelection: 'Go to selection',
+    clearHighlight: 'Clear highlight',
     tickerStopped: elapsed => (elapsed === undefined ? 'Stopped' : `Stopped (after ${elapsed})`),
     tickerDone: 'Done',
     tickerLimit: limit => `Up to ${limit} can run at once. Stop one, then run this again`,

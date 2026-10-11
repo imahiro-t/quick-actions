@@ -64,6 +64,42 @@ export const PANE = {
   },
 } as const
 
+// Transcript rows, by the requestId $.ui.selection() names (a tool call's
+// row and its result block share the call's tool_use_id).
+export const USER_ROW = {
+  plugin: PLUGIN,
+  component: 'UserMessage',
+  requestId: 'msg-user-1',
+  props: { text: 'why does it exit 137?', origin: { kind: 'composer' }, isExpanded: true },
+} as const
+
+export const ASSISTANT_ROW = {
+  plugin: PLUGIN,
+  component: 'AssistantMessage',
+  requestId: 'msg-assistant-1',
+  props: { text: 'The process was **killed**: exit 137 is SIGKILL, often the OOM killer.', isFirstOfReply: true },
+} as const
+
+export const OTHER_ASSISTANT_ROW = {
+  ...ASSISTANT_ROW,
+  requestId: 'msg-assistant-2',
+  props: { text: 'Raise the memory limit, or find what grows.', isFirstOfReply: true },
+} as const
+
+export const TOOL_USE_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolUse',
+  requestId: 'toolu_1',
+  props: { tool_use_id: 'toolu_1', tool: 'Bash', input: { command: 'dmesg | tail' }, isRunning: false, isErrored: false, isInterrupted: false },
+} as const
+
+export const TOOL_RESULT_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolResult',
+  requestId: 'toolu_1',
+  props: { tool_use_id: 'toolu_1', tool: 'Bash', output: { stdout: 'Out of memory: Killed process 4242', stderr: '', interrupted: false }, isErrored: false },
+} as const
+
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
@@ -91,6 +127,11 @@ export const JAPANESE = /[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef]/
 
 export type Stage = {
   selected: string | null
+  // The transcript row the selection lies in, as $.ui.selection() names it
+  // (UiSelection.requestId); null, as by default: none named (a selection
+  // over several rows, in a pane or the prompt), which every test before the
+  // highlights assumed.
+  selectedRow: string | null
   models: { model: string; system?: string; prompt: string }[]
   registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string }[]
   commands: { name: string; description: string }[]
@@ -131,7 +172,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -149,7 +190,9 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
     const { Box } = $.ui.resolve(e)
     return <Box key="engine" />
   })
-  on('ui.selection', () => ({ value: s.selected === null ? undefined : { text: s.selected } }))
+  on('ui.selection', () => ({
+    value: s.selected === null ? undefined : { text: s.selected, ...(s.selectedRow === null ? {} : { requestId: s.selectedRow }) },
+  }))
   on('ui.open', (_$, e) => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
     s.rows[e.id] = e.rows

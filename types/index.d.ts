@@ -18,14 +18,35 @@ export type Result = {
   ticker?: true
   status: 'running' | 'done' | 'failed'
   text: string
+  /**
+   * Where the selection it ran on lies: set on an action on the selection
+   * alone, and only when the engine named the transcript row it lies in (a
+   * selection within one row). Left out otherwise (several rows, a pane, the
+   * prompt; a context or standalone action; an entry from before it existed).
+   */
+  origin?: ResultOrigin
+}
+
+/**
+ * The transcript row a selection action's entry ran on, and whether that row
+ * still shows it highlighted.
+ */
+export type ResultOrigin = {
+  /** The row, by the id its `ui.render` hook reads as `e.requestId` and `$.ui.scroll` takes. */
+  requestId: string
+  /** The selected text, trimmed, whole (the entry's `quote` is it shortened). */
+  text: string
+  /** True until the entry's "Clear highlight" is pressed. */
+  highlighted: boolean
 }
 
 /**
  * The hint line `/quick-actions hint` opened. `text` is what was selected as
- * the command ran (trimmed), or null with nothing selected; `armed` turns true
+ * the command ran (trimmed), or null with nothing selected; `requestId`, the
+ * transcript row it lies in, when the engine named one; `armed` turns true
  * once a selection made after it opened is seen, whose going then closes it.
  */
-export type HintState = { text: string | null; armed: boolean }
+export type HintState = { text: string | null; requestId?: string; armed: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -36,9 +57,10 @@ declare module 'claude-code' {
       /**
        * The ⋯ dialog: null while it is closed; open, the text it runs selection
        * actions on (null: none, context and standalone actions only) and what
-       * its filter field holds (empty as it opens: every action listed).
+       * its filter field holds (empty as it opens: every action listed);
+       * `requestId`, the transcript row that text lies in, when there is one.
        */
-      picking: { text: string | null; filter: string } | null
+      picking: { text: string | null; requestId?: string; filter: string } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
     }

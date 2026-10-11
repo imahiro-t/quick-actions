@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Result } from '../types'
+import type { Result, ResultOrigin } from '../types'
 import {
   ACTIONS,
   DEFAULT_ACTION_IDS,
@@ -31,11 +31,12 @@ import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { USAGE_KEY, arrange, defaultsLead, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { OrderSlot } from './order'
-import { paneStyle, parsePaneTheme } from './palette'
+import { HIGHLIGHT_ROWS, clearHighlight, highlightsFor, nextEntryId } from './highlight'
+import { HIGHLIGHT, paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
 import { FILTER_KEY, toFilterField } from './focus'
-import { settleQuietly, toLatest } from './scroll'
+import { settleQuietly, toLatest, toRow } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
 // own from the `customActions` setting (./custom): no action is named here, so
@@ -71,6 +72,10 @@ const CANDIDATES = 10
 const PICKER_MAX_ROWS = 30
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
+// The two buttons of an entry run on a selection that lies in one transcript
+// row: back to that row, and its highlight off. One of each per entry.
+const gotoKey = (id: number) => `_goto-${id}`
+const unmarkKey = (id: number) => `_unmark-${id}`
 
 // The colours of the result pane and the ⋯ dialog (the `paneTheme` setting)
 // are worked out in ./palette, why they are as they are included. These two
@@ -135,6 +140,8 @@ async function ensureLanguage($: EngineInterface): Promise<Lang> {
   return pendingLanguage
 }
 
+// The module's count of entries. A reload starts it again from 1 while the
+// results stay, so begin() takes the next ID past those too (nextEntryId).
 let nextId = 1
 const registeredAgents = new Set<string>()
 const pendingAgents = new Map<string, number>()
@@ -352,8 +359,19 @@ async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, 
   await startTicker($, lang, id, def.label, now, outcome)
 }
 
-/** What a new entry says it ran on. */
-type EntryHead = Pick<Result, 'target' | 'quote' | 'arg'>
+/** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */
+type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'origin'>
+
+/**
+ * A selection as the engine answers it: its text, trimmed, and the transcript
+ * row it lies in when the engine names one (a selection within one row).
+ */
+type Picked = { text: string; requestId?: string }
+
+/** `picked` as the engine answered it: the text trimmed, an empty or missing row left out. */
+function pickedOf(text: string, requestId: unknown): Picked {
+  return typeof requestId === 'string' && requestId !== '' ? { text, requestId } : { text }
+}
 
 /**
  * What every run does first, whatever it runs on: one more use of the action,
@@ -365,9 +383,16 @@ async function begin($: EngineInterface, def: ActionDef, head: EntryHead): Promi
   // Not awaited: the score must not hold up the answer.
   void recordUsage($, def.id)
   await update($, hint, () => null)
-  const id = nextId++
-  const result: Result = { id, action: def.id, ...head, status: 'running', text: '' }
-  await update($, results, list => [result, ...list].slice(0, KEEP))
+  // Worked out on the list it is added to, in the same update: past every ID
+  // kept, whatever a reload did to nextId. The update may run the change again
+  // (another write came first): the ID is the one its last run settled on.
+  let id = nextId
+  await update($, results, list => {
+    id = nextEntryId(list, nextId)
+    const result: Result = { id, action: def.id, ...head, status: 'running', text: '' }
+    return [result, ...list].slice(0, KEEP)
+  })
+  nextId = Math.max(nextId, id + 1)
   if (tickers.size > 0) {
     const kept = new Set((await read($, results)).map(r => r.id))
     for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
@@ -396,9 +421,16 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // action runs on; a context action runs on the conversation and reads none.
 // Any run closes the hint line that `/quick-actions hint` opened. A
 // standalone action runs through runStandalone instead, which takes no text.
-async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
+// `requestId` is the transcript row the selection lies in, when the engine
+// named one: the entry then keeps it (its origin), highlighted.
+async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string) {
   const context = isContext(def)
-  const id = await begin($, def, context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text) })
+  const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId, text, highlighted: true }
+  const id = await begin(
+    $,
+    def,
+    context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text), ...(origin === undefined ? {} : { origin }) },
+  )
 
   if (def.kind === 'local') {
     await runLocalAction($, def, lang, id, { text })
@@ -472,21 +504,21 @@ async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, giv
   )
 }
 
-/** The text selected now, trimmed; undefined (and a toast saying so) when there is none. */
-async function selectedText($: EngineInterface, lang: Lang): Promise<string | undefined> {
-  const picked = (await $.ui.selection())?.text.trim()
-  if (!picked) {
+/** The selection now, its text trimmed, with its row; undefined (and a toast saying so) when there is none. */
+async function selectedText($: EngineInterface, lang: Lang): Promise<Picked | undefined> {
+  const picked = await pickedNow($)
+  if (picked === null) {
     $.ui.toast(MESSAGES[lang].noSelection)
     return undefined
   }
   return picked
 }
 
-async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, text: string) {
+async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, picked: Picked) {
   // Done with this selection: its icons go until another one is made. The
   // engine keeps answering it after a click elsewhere, so this is what hides them.
-  await update($, dismissed, () => text)
-  await run($, def, lang, text)
+  await update($, dismissed, () => picked.text)
+  await run($, def, lang, picked.text, picked.requestId)
 }
 
 /** Runs `def` on the text selected now; false (and a toast saying so) when there is none. */
@@ -502,9 +534,16 @@ async function runOnConversation($: EngineInterface, def: ActionDef, lang: Lang)
   await run($, def, lang, '')
 }
 
+/** The selection now, its text trimmed, with its row; null when there is none. No toast. */
+async function pickedNow($: EngineInterface): Promise<Picked | null> {
+  const selected = await $.ui.selection()
+  const text = selected?.text.trim()
+  return text ? pickedOf(text, selected?.requestId) : null
+}
+
 /** The text selected now, trimmed; null when there is none. No toast. */
 async function selectionNow($: EngineInterface): Promise<string | null> {
-  return (await $.ui.selection())?.text.trim() || null
+  return (await pickedNow($))?.text ?? null
 }
 
 /** The order of `specs` (every action of this load) by ID, `pins` first, from the usage scores as they stand now. Never rejects. */
@@ -529,15 +568,15 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
 }
 
 /**
- * Opens the ⋯ dialog on `text` (null: none), or, left out, on the text
- * selected now. The text is kept in `picking` as it opens, so a pick runs on
- * it however the selection changes meanwhile. With no text, the dialog lists
- * the context and standalone actions alone.
+ * Opens the ⋯ dialog on `given` (null: none), or, left out, on the selection
+ * now. The text (and its row) is kept in `picking` as it opens, so a pick
+ * runs on it however the selection changes meanwhile. With no text, the
+ * dialog lists the context and standalone actions alone.
  */
-async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
-  const picked = text === undefined ? await selectionNow($) : text
+async function openPicker($: EngineInterface, lang: Lang, rows: number, given?: Picked | null) {
+  const picked = given === undefined ? await pickedNow($) : given
   // Every open starts with the filter empty: every action listed.
-  await update($, picking, () => ({ text: picked, filter: '' }))
+  await update($, picking, () => ({ text: picked?.text ?? null, ...(picked?.requestId === undefined ? {} : { requestId: picked.requestId }), filter: '' }))
   // The same width as the results: an open without `columns` resets the dock to
   // its default share, which widens it for as long as the dialog is open.
   await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
@@ -559,7 +598,8 @@ async function closePicker($: EngineInterface) {
  * conversation. Either way, that text's icons go, as after a press on them.
  */
 async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) {
-  const text = (await read($, picking))?.text ?? null
+  const held = await read($, picking)
+  const text = held?.text ?? null
   await closePicker($)
   if (def === undefined) return
   // Standalone: run with no argument, the held text neither sent nor needed.
@@ -577,7 +617,7 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) 
     $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
-  await runOnText($, def, lang, text)
+  await runOnText($, def, lang, pickedOf(text, held?.requestId))
 }
 
 export const register: Register = (on, options) => {
@@ -736,8 +776,8 @@ export const register: Register = (on, options) => {
     // engine still answers it (see the poll in session.start).
     if (wanted === HINT_ARG) {
       if (arg !== undefined) return refuse(wanted, arg)
-      const held = await selectionNow($)
-      await update($, hint, () => ({ text: held, armed: false }))
+      const held = await pickedNow($)
+      await update($, hint, () => ({ text: held?.text ?? null, ...(held?.requestId === undefined ? {} : { requestId: held.requestId }), armed: false }))
       await update($, dismissed, () => null)
       return { text: withProblems(t.hintOpened, problems, l) }
     }
@@ -813,8 +853,17 @@ export const register: Register = (on, options) => {
       } else if (current !== null) {
         await runOnSelection($, a, l)
       } else if (text !== null) {
-        await run($, a, l, text)
+        await run($, a, l, text, opened?.requestId)
       }
+    }
+    // What the ⋯ dialog opens on: the selection now with its row (as read
+    // now, should the engine still answer it), else the text the line holds.
+    const forPicker = async (): Promise<Picked | null> => {
+      if (current !== null) {
+        const now = await pickedNow($)
+        return now !== null && now.text === current ? now : { text: current }
+      }
+      return text === null ? null : pickedOf(text, opened?.requestId)
     }
     const close = async () => {
       if (current !== null) await update($, dismissed, () => current)
@@ -845,7 +894,7 @@ export const register: Register = (on, options) => {
           <Button
             key={MORE_KEY}
             label="⋯"
-            onPress={() => openPicker($, l, pickerRows, text)}
+            onPress={async () => openPicker($, l, pickerRows, await forPicker())}
           />
         </Box>
         {enabled.map(a => (
@@ -1010,6 +1059,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The transcript row a result's selection lies in, highlighted until that
+  // result's "Clear highlight" (or until it is pushed out of the pane): the
+  // engine's own drawing of the row, untouched, inside a Box of the highlight
+  // colour. A row with no highlight is left to the engine, as it always was.
+  // Closing the pane leaves the highlights alone.
+  on('ui.render', { component: HIGHLIGHT_ROWS }, async ($, e, next) => {
+    if (highlightsFor(await read($, results), e.requestId).length === 0) return next(e)
+    const drawn = await next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box backgroundColor={HIGHLIGHT}>{drawn}</Box>
+  })
+
   // The person closed the result pane: every run over time stops with it, its
   // entry done and saying how long it ran. The plugin never closes this pane
   // itself, so this is the only close to follow.
@@ -1062,6 +1123,40 @@ export const register: Register = (on, options) => {
         </Box>
       )
     }
+    /**
+     * The buttons of an entry run on a selection in one transcript row: back
+     * to that row (scrolled to as the answer to the press itself, which is
+     * when the engine moves the transcript), and, while the row shows it, the
+     * entry's highlight off. A refused scroll (the row no longer kept) does nothing.
+     */
+    const marks = (r: Result, origin: ResultOrigin) => {
+      const goto = { label: t.gotoSelection, onPress: () => settleQuietly($.ui.scroll(toRow(origin.requestId))) }
+      const unmark = {
+        label: t.clearHighlight,
+        onPress: async () => {
+          await update($, results, list => clearHighlight(list, r.id))
+        },
+      }
+      return (
+        <Box flexDirection="row">
+          {fixed ? (
+            <Button key={gotoKey(r.id)} {...goto}>
+              <Text color={style.muted}>{t.gotoSelection}</Text>
+            </Button>
+          ) : (
+            <Button key={gotoKey(r.id)} {...goto} />
+          )}
+          {origin.highlighted &&
+            (fixed ? (
+              <Button key={unmarkKey(r.id)} {...unmark}>
+                <Text color={style.muted}>{t.clearHighlight}</Text>
+              </Button>
+            ) : (
+              <Button key={unmarkKey(r.id)} {...unmark} />
+            ))}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" {...painted(style)}>
@@ -1092,6 +1187,7 @@ export const register: Register = (on, options) => {
               ) : (
                 <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
+              {r.origin !== undefined && marks(r, r.origin)}
             </Box>
           )
         })}

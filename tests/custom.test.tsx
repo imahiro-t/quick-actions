@@ -262,7 +262,8 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       await showKind(band, 'standalone')
-      expect((await hintIcons(band)).slice(0, 2)).toEqual(['{💭}', '{🛰}'])
+      // 🛰 is text by default: drawn with VS16 so the engine counts it as the terminal draws it (emojiIcon).
+      expect((await hintIcons(band)).slice(0, 2)).toEqual(['{💭}', '{🛰\uFE0F}'])
       await band.press({ key: 'ideas' })
       await band.unmount()
       // Its free text is asked for first: Enter with the field empty runs it with none.

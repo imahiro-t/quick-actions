@@ -151,12 +151,78 @@ export const ASK_ROW = {
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
-/** The keys of the dialog's list and its close button: never an action's ID. */
-export const PICKER_SELECT = '_picker'
+/** The key of the dialog's close button: never an action's ID. */
 export const PICKER_CLOSE = '_picker-close'
+/** The Box the dialog's list is drawn in is keyed by this and how many it lists. */
+export const PICKER_LIST = '_picker-list-'
+/** Each row of the list is a Box (kept whole: flexShrink 0) keyed by this and its action's ID, its Button inside. */
+export const PICKER_ROW = '_picker-row-'
 /** The dialog's filter field and the button that empties it. */
 export const PICKER_FILTER = '_filter'
 export const PICKER_FILTER_CLEAR = '_filter-clear'
+
+/** What the helpers below need of a mounted ⋯ dialog. */
+type PickerView = {
+  findAll: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined; props: Record<string, unknown>; children: unknown[] }[]>
+  find: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined } | undefined>
+  press: (target: { key: string }) => Promise<unknown>
+  // Absent where the surface draws no Input (mobile).
+  input?: (target: { key: string; text: string; kind?: 'change' | 'submit' }) => Promise<unknown>
+}
+
+/** The key a child of a drawn element carries, as a description or as a tree node. */
+const keyOf = (child: unknown): string | undefined => {
+  if (typeof child !== 'object' || child === null) return undefined
+  const c = child as { key?: unknown; props?: { key?: unknown } }
+  const key = c.key ?? c.props?.key
+  return typeof key === 'string' ? key : undefined
+}
+
+/** The Box the ⋯ dialog's list is drawn in, or undefined when it lists none. */
+export const listBox = async (picker: PickerView) =>
+  (await picker.findAll({ type: 'Box' })).find(b => String(b.key).startsWith(PICKER_LIST))
+
+/** The ⋯ dialog's list rows (each a Box round its Button), in the order drawn; none when it lists none. */
+export const listRows = async (picker: PickerView) =>
+  (await listBox(picker)) === undefined ? [] : (await picker.findAll({ type: 'Box' })).filter(b => String(b.key).startsWith(PICKER_ROW))
+
+/** The list's buttons as drawn: each row's one child. */
+const listButtons = async (picker: PickerView) => (await listRows(picker)).flatMap(row => row.children)
+
+/** The IDs of the actions the ⋯ dialog lists (its list's buttons' keys), in the order drawn. */
+export const listedActions = async (picker: PickerView): Promise<string[]> => (await listButtons(picker)).flatMap(c => keyOf(c) ?? [])
+
+/** The ⋯ dialog's list as `{ value: ID, label: what its button says }`, in the order drawn. */
+export const listedOptions = async (picker: PickerView): Promise<{ value: string; label: string }[]> =>
+  (await listButtons(picker)).flatMap(c => {
+    const value = keyOf(c)
+    const label = (c as { props?: { label?: unknown } }).props?.label
+    return value === undefined ? [] : [{ value, label: String(label) }]
+  })
+
+/** How many actions the ⋯ dialog lists, as the key of the Box it lists them in says; undefined when it lists none. */
+export const listedCount = async (picker: PickerView) => {
+  const box = await listBox(picker)
+  return box === undefined ? undefined : Number(String(box.key).slice(PICKER_LIST.length))
+}
+
+/**
+ * Picks the action `id` in the ⋯ dialog, as a press on its button. Listed: its
+ * button is pressed. Not listed and the filter field drawn: `id` is typed in
+ * it (an edit, not Enter), then the button keyed `id` is pressed, whatever
+ * else the filter leaves. The filter is left as typed. Not reached either way
+ * (no field: every action is listed): the test fails here, never silently.
+ */
+export async function pickAction(picker: PickerView, id: string) {
+  if ((await listedActions(picker)).includes(id)) return picker.press({ key: id })
+  if (picker.input === undefined || (await picker.find({ key: PICKER_FILTER })) === undefined) {
+    throw new Error(`pickAction: "${id}" is not listed and there is no filter field; listed: ${(await listedActions(picker)).join(', ')}`)
+  }
+  await picker.input({ key: PICKER_FILTER, text: id, kind: 'change' })
+  const listed = await listedActions(picker)
+  if (!listed.includes(id)) throw new Error(`pickAction: "${id}" is not listed after filtering by it; listed: ${listed.join(', ')}`)
+  return picker.press({ key: id })
+}
 
 export const PICKER_PANE = {
   ...PANE,
@@ -224,6 +290,16 @@ export type Stage = {
   // The panes open now, in open order, and the one shown, as $.ui.panes() answers them.
   panes: string[]
   shown: string | null
+  // The pane that holds the keys (null: the prompt does), as the engine
+  // keeps it (focusedId): a pane opened anew shows only while none does
+  // (otherwise the one holding them stays shown); a close of it hands them
+  // back to the prompt. A test sets it to stand for the person giving a tab
+  // the keys (a click on it); /quick-actions gives the dialog's tab them.
+  focused: string | null
+  // The pane that asked for the keys (focus) and has not had them yet
+  // (focusRequest): it gets them, from the prompt alone, once it is shown;
+  // asking does not show it.
+  focusRequest: string | null
   // Whether an open of a pane already open shows it (true), or only retitles
   // it, leaving it behind the shown one (false), the two ways a host may go.
   reopenShows: boolean
@@ -245,7 +321,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -275,18 +351,27 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
     s.opened.push({ id: e.id, title: e.title, focus: e.focus, closeOnEscape: e.closeOnEscape, columns: e.columns })
     s.rows[e.id] = e.rows
     const isNew = !s.panes.includes(e.id)
-    if (isNew) s.panes.push(e.id)
-    if (isNew || s.reopenShows) s.shown = e.id
+    if (isNew) {
+      s.panes.push(e.id)
+      s.shown = s.focused ?? e.id
+    } else if (s.reopenShows) s.shown = e.id
+    if (e.focus === true) s.focusRequest = e.id
+    if (s.focusRequest !== null && s.focusRequest === s.shown) {
+      if (s.focused === null) s.focused = s.focusRequest
+      s.focusRequest = null
+    }
     return { value: { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {
     s.closed.push(e.id)
     s.panes = s.panes.filter(id => id !== e.id)
+    if (s.focused === e.id) s.focused = null
+    if (s.focusRequest === e.id) s.focusRequest = null
     if (s.shown === e.id) s.shown = s.panes.at(-1) ?? null
     return { value: undefined }
   })
   on('ui.panes', () => ({
-    value: s.panes.map(id => ({ id, title: id, isShown: id === s.shown, isFocused: false, isPlaced: true })),
+    value: s.panes.map(id => ({ id, title: id, isShown: id === s.shown, isFocused: id === s.focused, isPlaced: true })),
   }))
   on('settings.read', () => {
     s.settingsReads++

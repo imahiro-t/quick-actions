@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon } from '../hooks/actions'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, hintKinds, runCommand, showKind, stage, start } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, listedOptions, pickAction, SURFACES, hintIcons, hintKinds, runCommand, showKind, stage, start } from './stage'
 import type { Clock, HintKindName, Stage } from './stage'
 
 // Context actions: on the conversation itself, with no selected text, a fork
@@ -33,7 +33,7 @@ const CONTEXT = [
   { id: 'translate-last', icon: '🌐', ja: '直前の回答を翻訳' },
   { id: 'assumptions', icon: '🧱', ja: '前提・仮定の洗い出し' },
   { id: 'risks', icon: '⚠️', ja: 'リスク・懸念点' },
-  { id: 'changed-files', icon: '🗂', ja: '変更したファイルとその内容' },
+  { id: 'changed-files', icon: '🗂️', ja: '変更したファイルとその内容' },
   { id: 'next-questions', icon: '💭', ja: '次に聞くとよい質問' },
   { id: 'handoff', icon: '📝', ja: '引き継ぎメモ' },
   { id: 'recap-oneline', icon: '🪶', ja: '会話を一行で' },
@@ -405,13 +405,14 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.unmount()
 
   let picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  let listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  // A Select takes 64 options at most; the filter reaches the rest.
-  expect(listed).toHaveLength(Math.min(ACTIONS.length, 64))
+  let listed = await listedOptions(picker)
+  // As many as the pane's height holds; the filter reaches the rest.
+  expect(listed.length).toBeGreaterThan(0)
+  expect(listed.length).toBeLessThan(ACTIONS.length)
   expect(listed.find(o => o.value === 'explain')?.label).toBe('[💡] 意味')
   for (const [id, label] of [['timer', '{⏳} タイマー'], ['handoff', '<📝> 引き継ぎメモ']] as const) {
     await picker.input({ key: '_filter', text: id, kind: 'change' })
-    const found = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+    const found = await listedOptions(picker)
     expect(found.find(o => o.value === id)?.label).toBe(label)
   }
   await picker.press({ key: '_picker-close' })
@@ -425,17 +426,18 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await band.press({ key: '_more' })
   await band.unmount()
   picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
-  // The context actions and the standalone ones: nothing that needs a selection. A Select takes 64 options
-  // at most (more than that many need no selection now); the filter reaches the rest.
+  listed = await listedOptions(picker)
+  // The context actions and the standalone ones: nothing that needs a selection. As many as the
+  // pane's height holds; the filter reaches the rest.
   const free = [...CONTEXT.map(c => c.id), ...ACTIONS.filter(isStandalone).map(a => a.id)]
-  expect(listed).toHaveLength(Math.min(free.length, 64))
+  expect(listed.length).toBeGreaterThan(0)
+  expect(listed.length).toBeLessThanOrEqual(free.length)
   for (const o of listed) expect(free).toContain(o.value)
   await picker.input({ key: '_filter', text: 'session-release-check', kind: 'change' })
-  const reached = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+  const reached = await listedOptions(picker)
   expect(reached.map(o => o.value)).toContain('session-release-check')
   await picker.input({ key: '_filter', text: '', kind: 'change' })
-  await picker.select({ key: PICKER_SELECT, value: 'todo' })
+  await pickAction(picker, 'todo')
   await picker.unmount()
   expect(s.forks).toHaveLength(1)
   expect(s.forks[0]).toContain('to-do list')

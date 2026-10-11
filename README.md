@@ -17,7 +17,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
 1. Select text in the transcript with the mouse (or, with nothing selected, run [`/quick-actions hint`](#opening-the-hint-line-without-a-selection-quick-actions-hint))
 2. The hint line appears under the prompt: the kind buttons `[selection] <context> {standalone}` first, then the icons of the kind shown, then ✕ and ⋯. Hover over an icon to see its label
    - With a selection it opens on the actions on the selection; with none, on the context actions (see [Switching the kind shown](#switching-the-kind-shown))
-   - How many icons are shown follows the line's width: six on an 80-column line by default, more on a wider one, fewer on a narrower one (see [`hintCount`](#hintcount))
+   - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like), up to `hintCount × columns ÷ 80`: 2 on an 80-column line, 3 on 100 and 10 on 160 (see [`hintCount`](#hintcount))
    - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
    - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
@@ -42,7 +42,7 @@ The hint line starts with a button per kind: `[selection]`, `<context>` and `{st
 - **Where it opens**: on the actions on the selection when there is text to run on (a selection, or the text `/quick-actions hint` took in), on the context actions otherwise. With no text there is no `[selection]` button
 - **How long a switch holds**: while the line is up. It opens on its starting kind again after a new selection (other text than before), `/quick-actions hint`, ✕, or running an action. Selecting exactly the same text again does not count as a new selection, so the kind you switched to stays
 - **Why the buttons**: Claude Code keeps answering the last selection after its highlight is gone and does not tell the plugin when it goes, so the line cannot tell a selection you can see from one you clicked away. When the actions on the selection are still shown after you clicked away, switch to `<context>` or `{standalone}`
-- **On a narrow line**: below 60 columns the buttons are drawn as their marks alone (`[ ]`, `< >`, `{ }`; hover for which). On a line too narrow for even those beside ✕ and ⋯, they are left out and the kind shown stays as it is
+- **On a narrow line**: when drawn with their names they would leave room for fewer than two actions (or fewer than `hintCount` asks for, when that is less), the buttons are drawn as their marks alone (`[ ]`, `< >`, `{ }`; hover for which), as on an 80-column line. On a line too narrow for even those beside ✕ and ⋯, they are left out and the kind shown stays as it is
 - **Their names**: screen readers and the desktop app's native buttons read each button by what it shows, the one shown saying so, such as "Actions on the selection (shown)" ("選択範囲へのアクション（表示中）" in Japanese), whatever the button draws
 
 ### The right pane's two tabs
@@ -56,6 +56,7 @@ The right pane (above the prompt on a narrow terminal) always opens with two tab
   - Esc pressed at an idle, empty prompt closes the pane too (with both tabs), though the keyboard is at the prompt
   - Closing stops every [action that runs over time](#actions-that-run-over-time). A model call or subagent under way goes on, and its answer lands in "Quick Actions", shown the next time the pane opens
 - On a Claude Code that does not bring a reopened tab to the front, the plugin closes that tab and opens it again to show it, so a tab may close and reopen for a moment
+  - When you run an action from "Select an action" while it has the keyboard (as after picking in its list or typing an argument), Claude Code keeps that tab in front even over a tab opened again, so the plugin closes both tabs and opens them again, "Quick Actions" last, to bring the result to the front. The keyboard goes back to the prompt then: to pick another action, click "Select an action" (or ctrl+x tab), and Esc at an idle, empty prompt closes the pane as usual
 
 ### Opening the hint line without a selection (`/quick-actions hint`)
 
@@ -79,10 +80,10 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 
 - The actions are listed in the hint line's order, as `[icon] label`, `<icon> label` or `{icon} label`, under a legend of the marks (`[ ] selection  < > context  { } standalone`)
 - Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and the legend reads `< > context  { } standalone`
-- The list fills the pane's height, and is laid out again when the terminal is resized (shrunk and grown back, it fills the height again)
-- The list shows the first 64 of the order. When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
+- The list is a column of buttons, shown as soon as the dialog opens (nothing to open first)
+- The list fills the pane's height: it shows as many actions as fit from the top of the order (a long label that wraps onto two rows takes two), and lists them again when the terminal is resized (shrunk and grown back, it fills the height again). When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
 - An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation. A standalone action that takes an argument turns the list into its [argument screen](#the-argument-screen); one that takes none runs at once. The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
-- ↑ / ↓ move, Enter runs. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
+- Tab or ↓ moves from the filter to the first action; ↑ / ↓ (or Tab / Shift+Tab) move between the actions, and Enter runs the one with the focus. ↓ on the last action goes on to the Close button, and Shift+Tab on the first back to the filter. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app): click your pick, or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
 **The filter**: above the list is a field, "Filter (ID, name, kind)", which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
@@ -93,9 +94,9 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - The order stays as it was, except that the action whose ID is the whole query comes first
 - **Enter** runs the first action left (the field says "run first"; when nothing matches it says "no match" and Enter runs nothing)
 - While the field holds text, a Clear button beside it empties it and lists everything again (as deleting the text does)
-- Move the keyboard from the field to the list (with Tab, for one) and ↑ / ↓ and Enter pick from it
+- Move the keyboard from the field to the list (Tab or ↓) and ↑ / ↓ and Enter pick from it
 - **In the mobile app** there is no filter field: every action is listed as a button, with no limit, to tap
-- With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter stays, and the list is a row of buttons instead of a selection list, every action on it with no limit
+- With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter and the list work the same, the buttons drawn in the palette's colours
 - **While Claude asks a question** (AskUserQuestion), there is no filter field: every action is listed as a button to click (see below)
 
 ### While Claude asks you a question (AskUserQuestion)
@@ -103,7 +104,7 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 While Claude's question dialog (AskUserQuestion) is up, it holds the keyboard and the prompt is gone, so `/quick-actions` cannot be typed and the pane's keys do not work. Quick Actions stays usable with clicks, so you can look something up before you answer:
 
 - **A ⚡ Quick Actions button over the question**: press it to open the right pane on its "Select an action" tab (an action on the selection runs on the text selected at that moment). It sits above the question, since Claude Code draws nothing below it
-- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, no selection list, which need the keyboard). Click one to run it; its result shows in "Quick Actions"
+- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, which needs the keyboard). Click one to run it; its result shows in "Quick Actions"
 - **A pane already open when the question comes up** works the same way: the action buttons in "Select an action" and the Stop button of a run in "Quick Actions" answer clicks
 - **After you answer or cancel the question**, the usual list and filter come back, and the keys (scrolling, typing in the filter, Esc to close) work again
 
@@ -232,11 +233,13 @@ How many actions the hint line shows on an 80-column line (default `6`); the res
 
 The number shown follows the width of the hint line:
 
-- **In proportion to the width**: `hintCount × columns ÷ 80`, rounded down, at least 1. With the default 6: up to 9 at 120 columns, 12 at 160
-- **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕ and ⋯, so the line never runs over. When not even one fits, none is shown; ✕ and ⋯ always stay, and every action can be picked from ⋯
-- **Below 80 columns, fewer than `hintCount`**: the default shows fewer than six there (at most 5 at 70 columns and 4 at 60, fewer still where they do not fit), where it used to show six whatever the width
+- **In proportion to the width, as an upper bound**: `hintCount × columns ÷ 80`, rounded down, at least 1 (with the default 6: 9 at 120 columns, 12 at 160). It is a bound, not the count: only as many as fit are shown
+- **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left, so the line never runs over and no button is split across two rows. Where they do not fit, fewer are shown; when not even one fits, none is; ✕ and ⋯ always stay, and every action can be picked from ⋯. Should the row still be narrower than counted, only the end of the actions is cut: the kind buttons, ✕ and ⋯ stay whole
+- **Each button as drawn**: a button is drawn `[ label ]`, flush against the next, so each counts its label and the four cells of its frame
+- **What that comes to** (with the default 6, a selection, each icon a single emoji): 2 at 80 columns (the kind buttons as their marks alone), 3 at 100 (4 in English, the kind buttons as their marks) and 10 at 160 (8 in English). At 60 columns, 2 with no kind buttons; at 45, none: only ✕ and ⋯
 - **Beside the docked pane**: while this plugin's pane docks on the right, the hint line takes the transcript's width, the pane's taken off. A docked pane of another plugin is not taken off
-- Each icon is given one column to spare, since terminals draw emoji at slightly different widths
+- **Beside the permission mode**: Claude Code draws the permission mode at the line's left (the one shift+tab cycles: `⏵⏵ auto mode on ·`, `⏵⏵ accept edits on ·`, `⏸ plan mode on ·` and the like), with two columns clear at each side of the row. The plugin cannot tell which mode is up, so 30 cells are always kept for it, enough for the longest, `⏵⏵ bypass permissions on ·`
+- Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
 - Where the width is not known, `hintCount` icons are shown as before
 
 ```sh
@@ -302,7 +305,7 @@ The colours of the docked result pane (on the right) and the ⋯ dialog.
 
 - Use `light` or `dark` when the terminal and the theme disagree (a dark terminal on the light theme, or the other way round), or to see the pane in the brightness you like
 - Every text colour of both palettes (heading, body, failures and the secondary texts) has a contrast ratio of at least 4.5:1 against its background (WCAG AA), also when a 256-colour terminal (Terminal.app, for one) rounds them to its nearest colours. A 16-colour terminal draws a rougher approximation, which may lower it
-- With `light` or `dark`, the ⋯ dialog lists the actions as buttons instead of a selection list, since a selection list cannot take the palette's colours. The buttons show every action (a selection list shows the first 64). The filter field is there as usual and has the keyboard when the dialog opens; Tab moves from it to the buttons and between them, and Enter runs one
+- With `light` or `dark`, the ⋯ dialog's action buttons are drawn in the palette's body colour. The filter field and the list work as without a palette
 - The Stop button of an action that runs over time is drawn in the palette too
 - The inline pane (a terminal narrower than 110 columns) is not affected: it keeps the terminal's own colours whatever the setting
 - Unknown or empty values count as `auto`
@@ -318,7 +321,7 @@ Like the other settings, a change in `/config` takes effect at once; after `clau
 
 ### `customActions`
 
-Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
+Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
 
 In `/config`, under `quick-actions`, enter the array on one line in `customActions`, for example:
 
@@ -872,7 +875,7 @@ They use neither the selected text nor the conversation (105 of them). The Argum
 
 ## Adding an action
 
-The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
+The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
 
 ### From the settings (customActions)
 

@@ -15,7 +15,7 @@
     "hintCount": {
       "type": "string",
       "title": "Hint count",
-      "description": "How many actions the hint line shows on an 80-column line (a whole number of 1 or more; default 6). A wider line shows more in proportion (12 at 160 columns) and a narrower one fewer, never more than fit; the rest are under ⋯. Anything else counts as the default.",
+      "description": "How many actions the hint line shows on an 80-column line (a whole number of 1 or more; default 6). A wider line shows more in proportion (up to 12 at 160 columns) and a narrower one fewer, never more than fit beside the kind buttons, ✕, ⋯ and the permission mode; the rest are under ⋯. Anything else counts as the default.",
       "default": "6"
     },
     "customActions": {

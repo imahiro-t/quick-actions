@@ -70,8 +70,6 @@ export type Messages = {
   allActions: string
   /** The title of the ⋯ dialog's pane. */
   pickerTitle: string
-  /** Drawn before the ⋯ dialog's list. */
-  pickerLabel: string
   /** Shown in the ⋯ dialog while it does not hold the keyboard. */
   pickerNoFocus: string
   /** The ⋯ dialog's close button. */
@@ -198,7 +196,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     close: '閉じる',
     allActions: 'すべてのアクション',
     pickerTitle: 'アクションを選択',
-    pickerLabel: 'アクション: ',
     pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
     pickerFilterPlaceholder: '絞り込み（ID・名前・種類）',
@@ -299,7 +296,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     close: 'Close',
     allActions: 'All actions',
     pickerTitle: 'Select an action',
-    pickerLabel: 'Action: ',
     pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
     pickerFilterPlaceholder: 'Filter (ID, name, kind)',

@@ -16,7 +16,7 @@ import {
   OTHER_ASSISTANT_ROW,
   PANE,
   PICKER_PANE,
-  PICKER_SELECT,
+  pickAction,
   SURFACES,
   TOOL_GROUP_ROW,
   TOOL_PROGRESS_ROW,
@@ -311,7 +311,7 @@ test('a pick in the ⋯ dialog carries the row it opened on, whatever is selecte
   s.selected = 'something else'
   s.selectedRow = USER_ROW.requestId
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   await picker.unmount()
   expect(s.models[0]?.prompt).toContain('exit 137')
   expect(await paneKeys($)).toEqual([GOTO(1)])
@@ -326,7 +326,7 @@ test('/quick-actions with no ID opens the ⋯ dialog on the selection and its ro
   s.selectedRow = USER_ROW.requestId
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   await picker.unmount()
   expect(await paneKeys($)).toEqual([GOTO(1)])
   expect(rowOf(1)).toBe(USER_ROW.requestId)
@@ -363,7 +363,7 @@ test('the ⋯ dialog from the line /quick-actions hint holds carries its row too
   await clock.advance(400)
   await pressIcon($, '_more')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   await picker.unmount()
   expect(await paneKeys($)).toEqual([GOTO(1)])
   expect(rowOf(1)).toBe(TOOL_USE_ROW.requestId)

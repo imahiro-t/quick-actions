@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_FILTER, PICKER_PANE, listedOptions, pickAction, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // Standalone actions ({icon}): on neither the selection nor the conversation.
@@ -119,7 +119,7 @@ test('the ⋯ dialog from the line /quick-actions hint opened on a held text: ti
   await band.press({ key: '_more' })
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await pickAction(picker, 'timer')
   await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
   sentNothing(s)
@@ -139,9 +139,10 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   // The legend, with all three kinds listed.
   expect(await picker.find({ text: MESSAGES.en.pickerLegend(true) })).toBeDefined()
-  const listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
+  await picker.input({ key: PICKER_FILTER, text: 'timer', kind: 'change' })
+  const listed = await listedOptions(picker)
   expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} Timer')
-  await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await pickAction(picker, 'timer')
   await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
 
@@ -164,7 +165,7 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   expect(await picker.find({ text: MESSAGES.ja.pickerLegend(false) })).toBeDefined()
-  await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await pickAction(picker, 'timer')
   await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
   // A pick keeps the dialog's tab and shows the results' (SELM-00050).

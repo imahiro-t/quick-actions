@@ -14,6 +14,7 @@ import {
   isContext,
   isStandalone,
   markedIcon,
+  emojiIcon,
   messageOf,
   needsSelection,
   resolveAll,
@@ -31,7 +32,8 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
-import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
+import { pickerShownCount } from './picker-rows'
+import { buttonWidth, dockWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
@@ -62,12 +64,17 @@ const KEEP = 20
 // hyphens), so no custom action's element ever shares one.
 const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
-const PICKER_SELECT_KEY = '_picker'
-/** The most options the engine takes in one Select. */
-export const SELECT_MAX_OPTIONS = 64
 const PICKER_CLOSE_KEY = '_picker-close'
-// The Box the list is drawn in, keyed by its rows as well (see the dialog).
+// The Box the list is drawn in, keyed by how many it lists as well (see the dialog).
 const PICKER_LIST_KEY = '_picker-list'
+/** Each row of the ⋯ dialog's list is a Box keyed by this and the action's ID. */
+const PICKER_ROW_KEY = '_picker-row'
+// The hint line's Box of the actions, the one part of the row that shrinks.
+const HINT_ACTIONS_KEY = '_hint-actions'
+// How readily it shrinks beside a hover label (flexShrink 1): far less, so a
+// label shown takes the cut first and the actions stay as laid out.
+const ACTIONS_SHRINK = 1
+const TIP_SHRINK = 100
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
 const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
@@ -79,11 +86,6 @@ const PICKER_MAX_ROWS = 30
 // an AskUserQuestion dialog that opens the panes.
 const kindKey = (kind: HintKind) => `_kind-${kind}`
 const ASK_OPEN_KEY = '_ask-open'
-// The rows the ⋯ dialog's list leaves for the rest of the dialog at most: the
-// notice, the legend, the filter row, the "n more" row and the close button.
-const PICKER_CHROME_ROWS = 5
-// The fewest rows the list is sized to, however short the pane.
-const PICKER_MIN_LIST_ROWS = 3
 // What the dock is taken to be before this plugin's pane has been drawn
 // docked: the width every open asks for, and its frame.
 const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
@@ -695,7 +697,15 @@ type Shown = 'results' | 'picker'
  *
  * Should the tab opened last stay behind the other (an open of an id already
  * open retitles it, and need not show it), it is closed and opened afresh,
- * which shows it.
+ * which shows it as long as no tab holds the keys. A tab that holds them (the
+ * person typing in the dialog's filter, its list or its argument field) stays
+ * shown over a tab opened afresh: the engine shows a new tab only while the
+ * keys are at the prompt, and a plugin has no call that shows a tab. So when
+ * the tab is still behind after that, both tabs are closed, which hands the
+ * keys back to the prompt, and opened afresh in order, the one `show` names
+ * last, which then shows. That happens only when a tab holds the keys (a run
+ * picked in the dialog), never twice: the hint line, the icons and the
+ * command, run from the prompt, are settled by the first reopen or need none.
  */
 async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Picked | null, focus: boolean, arg?: ArgInput) {
   await update($, picking, () => ({
@@ -713,10 +723,17 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Pick
   await $.ui.open(last)
   const panes = await readQuietly($.ui.panes())
   const frontPane = panes?.find(p => p.id === front.id)
-  if (frontPane !== undefined && frontPane.isPlaced && !frontPane.isShown) {
-    await readQuietly($.ui.close({ id: front.id }))
-    await $.ui.open(last)
-  }
+  if (frontPane === undefined || !frontPane.isPlaced || frontPane.isShown) return
+  await readQuietly($.ui.close({ id: front.id }))
+  await $.ui.open(last)
+  const reopened = (await readQuietly($.ui.panes()))?.find(p => p.id === front.id)
+  if (reopened === undefined || !reopened.isPlaced || reopened.isShown) return
+  // Still behind: the other tab holds the keys. Closing both lets go of them
+  // (the plugin's own closes, which close no more and go back to no list).
+  await readQuietly($.ui.close({ id: front.id }))
+  await readQuietly($.ui.close({ id: behind.id }))
+  await $.ui.open(behind)
+  await $.ui.open(last)
 }
 
 // The cells this plugin's docked pane takes off the transcript's column (its
@@ -1094,7 +1111,8 @@ export const register: Register = (on, options) => {
   //
   // How many icons: the `hintCount` setting is the count on an 80-column line;
   // the line's width (the terminal's, less this plugin's dock beside it) moves
-  // it in proportion, never past what fits (./hint-width).
+  // it in proportion, never past what fits beside the permission mode the
+  // engine draws at the row's left (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
     const selected = await read($, selection)
@@ -1116,6 +1134,10 @@ export const register: Register = (on, options) => {
     // before it is drawn, as every open asks for it while the tabs are open on
     // a terminal wide enough to dock them.
     const viewport = e.viewport
+    // `width`: the terminal's less the dock, what hintCount is in proportion
+    // to; `columns`: that less the rest of the row (the mode at its left), what
+    // the buttons have.
+    let width: number | undefined
     let columns: number | undefined
     if (viewport !== undefined) {
       // Open by the engine's record: a tab unloaded unheard takes nothing off.
@@ -1124,26 +1146,41 @@ export const register: Register = (on, options) => {
       // says nothing of the terminal's docked one).
       const measured = isOpen ? measuredDock.get(e.surface) : undefined
       const docked = isOpen && viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS
-      columns = hintLineColumns(viewport.columns, measured ?? (docked ? ASSUMED_DOCK : 0))
+      const dock = measured ?? (docked ? ASSUMED_DOCK : 0)
+      width = hintLineColumns(viewport.columns, dock)
+      columns = hintLineColumns(viewport.columns, dock, leadFor(e.surface))
     }
-    // Narrow, the kind buttons are drawn as their marks alone; their hover
-    // labels say which.
-    const compact = columns !== undefined && columns < COMPACT_BELOW
-    const kindLabel = (k: HintKind) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
+    const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
     // What each kind button is named, whatever it draws (a desktop's native
     // button and assistive tech read the label, not the drawing): which actions
     // it shows, and, for the one shown now, that it is.
     const kindName = (k: HintKind) => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])
-    // ✕ and ⋯ always; the kind buttons while they fit beside them (on a line
-    // too narrow even for their marks, the kind shown stays as it is).
+    // ✕ and ⋯ always; the kind buttons with their names while enough actions
+    // still fit beside them, else as their marks alone (their hover labels say
+    // which), else, too narrow even for those, left out (the kind shown stays
+    // as it is). Then as many actions as fit (./hint-width hintLayout).
     const ends = buttonWidth('✕') + buttonWidth('⋯')
-    const kindsWidth = kinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0)
-    const shownKinds = columns === undefined || ends + kindsWidth <= columns ? kinds : []
-    const reserved = ends + (shownKinds.length > 0 ? kindsWidth : 0)
+    const kindsWidth = (compact: boolean) => kinds.reduce((sum, k) => sum + buttonWidth(kindMark(k, compact)), 0)
     // Widths measured for as many as the line could take at most, not every candidate.
-    const most = columns === undefined ? hintCount : hintTarget(columns, hintCount)
-    const count = hintCountFor(columns, hintCount, reserved, candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))))
-    const enabled = candidates.slice(0, count)
+    const most = width === undefined ? hintCount : hintTarget(width, hintCount)
+    const layout = hintLayout({
+      line: columns,
+      target: most,
+      kindsLabeled: kindsWidth(false),
+      kindsMarks: kindsWidth(true),
+      ends,
+      widths: candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))),
+    })
+    const shownKinds = layout.kinds === 'none' ? [] : kinds
+    const kindLabel = (k: HintKind) => kindMark(k, layout.kinds === 'marks')
+    const enabled = candidates.slice(0, layout.count)
+    // What the row has left beside its buttons, for a hover label: it is cut
+    // there, so a label shown neither pushes the mode at the row's left nor
+    // takes the actions' room (undefined, not measured: it takes what is left).
+    const tipColumns =
+      columns === undefined
+        ? undefined
+        : Math.max(0, columns - ends - shownKinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0) - enabled.reduce((sum, a) => sum + buttonWidth(markedIcon(a)), 0))
     const hintElements = $.ui.resolve(e)
     const { Box, Button, Text } = hintElements
     // Not while an AskUserQuestion dialog holds the keys: the ⋯ dialog then draws no field.
@@ -1188,15 +1225,22 @@ export const register: Register = (on, options) => {
     }
     // The hover labels: cut where the row ends rather than wrapped onto another.
     const tip = (scope: string, label: string) => (
-      <Box display="none" flexShrink={1} hover={{ scope, display: 'flex' }}>
+      <Box display="none" flexShrink={TIP_SHRINK} {...(tipColumns === undefined ? {} : { width: tipColumns })} hover={{ scope, display: 'flex' }}>
         <Text color="cyan" wrap="truncate"> {label}</Text>
       </Box>
     )
 
+    // Each button is kept whole (flexShrink 0): squeezed, its `]` would fall
+    // onto a second row. The row takes what the mode at its left leaves (grown
+    // from nothing, so the mode is never squeezed for it either), and should
+    // the buttons still be more than that, the actions alone are cut at their
+    // end (their Box the one that shrinks): the kind buttons, ✕ and ⋯ stay
+    // whole, and ⋯ reaches every action. The actions' Box gives way to a hover
+    // label only once that label is all but gone (its weight a hundredth).
     return (
-      <Box flexDirection="row">
+      <Box flexDirection="row" overflow="hidden">
         {shownKinds.map(k => (
-          <Box key={`act-${kindKey(k)}`} hover={{ scope: `tip-kind-${k}` }}>
+          <Box key={`act-${kindKey(k)}`} flexShrink={0} hover={{ scope: `tip-kind-${k}` }}>
             {k === kind ? (
               <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
                 <Text bold color="cyan">{kindLabel(k)}</Text>
@@ -1208,16 +1252,18 @@ export const register: Register = (on, options) => {
             )}
           </Box>
         ))}
-        {enabled.map(a => (
-          <Box key={`act-${a.id}`} hover={{ scope: `tip-action-${a.id}` }}>
-            <Button
-              key={a.id}
-              label={markedIcon(a)}
-              onPress={() => press(a)}
-            />
-          </Box>
-        ))}
-        <Box key="act-close" hover={{ scope: 'tip-close' }}>
+        <Box key={HINT_ACTIONS_KEY} flexDirection="row" flexShrink={ACTIONS_SHRINK} overflow="hidden">
+          {enabled.map(a => (
+            <Box key={`act-${a.id}`} flexShrink={0} hover={{ scope: `tip-action-${a.id}` }}>
+              <Button
+                key={a.id}
+                label={markedIcon(a)}
+                onPress={() => press(a)}
+              />
+            </Box>
+          ))}
+        </Box>
+        <Box key="act-close" flexShrink={0} hover={{ scope: 'tip-close' }}>
           <Button
             key="close"
             label="✕"
@@ -1226,7 +1272,7 @@ export const register: Register = (on, options) => {
             onPress={close}
           />
         </Box>
-        <Box key={`act-${MORE_KEY}`} hover={{ scope: 'tip-more' }}>
+        <Box key={`act-${MORE_KEY}`} flexShrink={0} hover={{ scope: 'tip-more' }}>
           <Button
             key={MORE_KEY}
             label="⋯"
@@ -1248,9 +1294,9 @@ export const register: Register = (on, options) => {
   // ID, labels in both languages, kind names, kind marks), and Enter in it runs
   // the first action left; Clear beside it, or deleting its text, lists them
   // all again. The field takes the focus as the dialog opens; the focus ring
-  // moves on to the list, where a Select takes the keys (arrows move, Enter
-  // runs). Escape closes the whole pane through closeOnEscape (both tabs; the
-  // filter too, rather than emptying it), as the close button does.
+  // moves on to the list's buttons (Enter runs the one it is on). Escape
+  // closes the whole pane through closeOnEscape (both tabs; the filter too,
+  // rather than emptying it), as the close button does.
   // Focus is a request the engine refuses while the composer holds text: then
   // a line says how to get the keys, and the list and the close button still
   // answer a click. The mobile app draws no field and gets no such line: its
@@ -1258,12 +1304,17 @@ export const register: Register = (on, options) => {
   //
   // While an AskUserQuestion dialog is up it holds the keys, and the engine
   // refuses the pane any focus asked for: the list is buttons to click then
-  // (no field, no Select, which want the keys), under a line saying so.
+  // (no field, which wants the keys), under a line saying so.
   //
-  // The list fills the pane's height: it is drawn in a Box keyed by the rows it
-  // has (scroll.bodyRows less the rest of the dialog), so a terminal shrunk and
-  // grown again draws the Select anew at the new height rather than keeping
-  // the rows it was first laid out in.
+  // The list is a column of buttons, there from the start (no drop-down to
+  // open). With the filter field it fills the pane's height: as many actions
+  // as fit (./picker-rows: each button's rows as its label wraps at its words,
+  // less the rest of the dialog), then a line saying how many more the filter
+  // reaches.
+  // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
+  // again lists as many as the new height holds. Without the field (mobile, a
+  // question dialog up) nothing would reach the rest: every action is listed,
+  // and the pane scrolls.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -1275,28 +1326,32 @@ export const register: Register = (on, options) => {
     const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
-    // The mobile app draws no Select (though its table names one): there the
-    // actions are buttons.
-    // A palette draws buttons too: a Select takes no colour, and core's (the
-    // theme's) need not read on the palette's background.
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
-    const Select = e.surface !== 'mobile' && !fixed && !isAsking && 'Select' in elements ? elements.Select : undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
     const Input = !isAsking && canInput(e.surface, elements) ? elements.Input : undefined
     const input = Input !== undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
-    // A Select takes 64 options at most: past that it lists the first 64 (in
-    // the dialog's order, so the most used come first) and a line under it says
-    // how many more the filter reaches. Every surface that draws a Select draws
-    // an Input too (all but mobile carry both, and a table handed out is
-    // completed to every name), so wherever a Select is drawn the filter field
-    // is there to reach the rest; buttons (mobile, a palette) list them all.
-    const listed = Select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
     const keyboardNotice = e.surface !== 'mobile' && !isAsking && !e.props.isFocused
-    // The rows the list has: the pane's, less the rest of the dialog.
-    const listRows = Math.max(PICKER_MIN_LIST_ROWS, e.props.scroll.bodyRows - PICKER_CHROME_ROWS)
+    const askingNotice = isAsking && e.surface !== 'mobile'
+    const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
+    // As many as the pane's height holds (in the dialog's order, so the most
+    // used come first), with the filter field there to reach the rest;
+    // without it, all of them.
+    const count =
+      Input === undefined
+        ? shown.length
+        : pickerShownCount({
+            bodyRows: e.props.scroll.bodyRows,
+            bodyColumns: e.props.bodyColumns,
+            // A question dialog's line is never among them: it is up only
+            // with no field, when every action is listed and none counted.
+            chrome: [...(keyboardNotice ? [t.pickerNoFocus] : []), t.pickerLegend(hasSelection)],
+            labels: shown.map(labelOf),
+            more: t.pickerMore,
+          })
+    const listed = shown.slice(0, count)
     // The close button's props; it is drawn dimColor as before, or in the
     // palette's muted colour. It closes the whole pane, both tabs.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closeAll($) }
@@ -1357,7 +1412,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column" {...painted(style)}>
           {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
           <Text bold color={style.heading}>
-            {argDef.icon} {argDef.label}
+            {emojiIcon(argDef.icon)} {argDef.label}
           </Text>
           <Text color={style.body}>{argSpec.hint}</Text>
           <Text {...muted(style)}>{argSpec.default === undefined ? t.argNoDefault : t.argDefault(argSpec.default)}</Text>
@@ -1388,7 +1443,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
-        {isAsking && e.surface !== 'mobile' && <Text {...muted(style)}>{t.pickerAsking}</Text>}
+        {askingNotice && <Text {...muted(style)}>{t.pickerAsking}</Text>}
         {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
         {state !== null && Input !== undefined && (
           <Box flexDirection="row">
@@ -1411,37 +1466,33 @@ export const register: Register = (on, options) => {
         {state === null ? (
           <Text {...muted(style)}>{t.noSelection}</Text>
         ) : shown.length === 0 ? (
-          // A Select takes one option at least: with none, this line instead.
           <Text {...muted(style)}>{t.pickerNoMatch}</Text>
-        ) : Select !== undefined ? (
-          <Box key={`${PICKER_LIST_KEY}-${listRows}`} flexDirection="column">
-            <Select
-              key={PICKER_SELECT_KEY}
-              label={t.pickerLabel}
-              options={listed.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
-              onSelect={value => pick($, l, findAction(listed, value), input)}
-            />
-            {shown.length > listed.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
-          </Box>
         ) : (
-          <Box flexDirection="column">
-            {shown.map((a, i) => {
-              const label = `${markedIcon(a)} ${a.label}`
+          <Box key={`${PICKER_LIST_KEY}-${listed.length}`} flexDirection="column">
+            {listed.map((a, i) => {
+              const label = labelOf(a)
               const button = { label, onPress: () => pick($, l, a, input) }
               // With a palette the label is a child Text in its colour, and,
               // with no filter field to take it, the first takes the focus ring
-              // as the dialog takes the keys, as the Select would; otherwise
-              // the button stays as it always was.
-              return fixed ? (
-                <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
-                  <Text color={style.body}>{label}</Text>
-                </Button>
-              ) : (
-                <Button key={a.id} {...button} />
+              // as the dialog takes the keys; otherwise the button is its label.
+              // Either way the same text, in a row kept whole (flexShrink 0):
+              // a column short of height would squeeze a wrapped label onto
+              // fewer rows than it takes, its rows drawn over one another.
+              return (
+                <Box key={`${PICKER_ROW_KEY}-${a.id}`} flexShrink={0}>
+                  {fixed ? (
+                    <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
+                      <Text color={style.body}>{label}</Text>
+                    </Button>
+                  ) : (
+                    <Button key={a.id} {...button} />
+                  )}
+                </Box>
               )
             })}
           </Box>
         )}
+        {state !== null && listed.length < shown.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
         {closeButton}
       </Box>
     )
@@ -1570,7 +1621,7 @@ export const register: Register = (on, options) => {
           return (
             <Box flexDirection="column" marginBottom={1}>
               <Text bold color={style.heading}>
-                {def?.icon ?? '•'} {def?.label ?? r.action}{' '}
+                {def === undefined ? '•' : emojiIcon(def.icon)} {def?.label ?? r.action}{' '}
                 <Text {...muted(style)}>{onWhat(r)}</Text>
               </Text>
               {r.status === 'running' ? (

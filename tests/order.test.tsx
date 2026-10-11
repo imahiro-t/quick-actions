@@ -17,7 +17,7 @@ import {
 } from '../hooks/order'
 import type { OrderSlot } from '../hooks/order'
 import type { Usage } from '../hooks/order'
-import { BAND, PICKER_PANE, PICKER_SELECT, hintIcons, reselect, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, PICKER_PANE, pickAction, hintIcons, reselect, runCommand, stage, start, storedUsage } from './stage'
 
 // The hint line's order: pins, then the usage score (halving every 30 days),
 // ties in the order of definition; with no pin and no usage, the default set
@@ -294,7 +294,7 @@ test('every way of running records a use: the hint line, the ⋯ dialog and the 
   await band.press({ key: '_more' })
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+  await pickAction(picker, 'tldr')
   await picker.unmount()
   await clock.settle()
 

@@ -9,7 +9,6 @@ import {
   LEAD_RESERVE,
   MIN_LABELED_ACTIONS,
   buttonWidth,
-  dockWidth,
   LEAD_SURFACES,
   hasEmoji,
   hintLayout,
@@ -42,10 +41,15 @@ test('the cells a label takes: wide characters and emoji count two, joiners and 
   expect(buttonWidth('[💡]')).toBe(4 + BUTTON_FRAME + BUTTON_GAP + EMOJI_EXTRA)
 })
 
-test('the line is the terminal less the dock beside it, never below 0', () => {
-  expect(hintLineColumns(160, 0)).toBe(160)
-  expect(hintLineColumns(160, dockWidth(56))).toBe(160 - 56 - 3)
-  expect(hintLineColumns(40, 80)).toBe(0)
+test('the line is the viewport\'s columns: no dock comes off them again (SELM-00066)', () => {
+  expect(hintLineColumns(160)).toBe(160)
+  // 180 columns with this plugin's pane docked, as seen in a pseudo-terminal:
+  // the engine hands PromptHint a viewport of 123, the dock already off.
+  expect(hintLineColumns(123)).toBe(123)
+  expect(hintLineColumns(0)).toBe(0)
+  // The dock is neither measured nor taken off here any more.
+  expect('dockWidth' in hintWidth).toBe(false)
+  expect('DOCK_FRAME' in hintWidth).toBe(false)
 })
 
 test('hintCount is the count at 80 columns, in proportion beyond, one at least', () => {
@@ -182,15 +186,15 @@ test('the rest of the row: LEAD_RESERVE where the mode is drawn at its left, whi
   expect('SESSION_MODE_SURFACES' in hintWidth).toBe(false)
 })
 
-test('the line less the dock and the rest of the row', () => {
-  expect(hintLineColumns(120, 40, LEAD_RESERVE)).toBe(50)
-  expect(hintLineColumns(120, 40)).toBe(80)
-  expect(hintLineColumns(20, 0, 30)).toBe(0)
+test('the line less the rest of the row, never below 0', () => {
+  expect(hintLineColumns(120, LEAD_RESERVE)).toBe(90)
+  expect(hintLineColumns(120)).toBe(120)
+  expect(hintLineColumns(20, 30)).toBe(0)
 })
 
 test('hintCount is in proportion to the line before the rest of the row comes off; the fit, after', () => {
-  expect(hintTarget(hintLineColumns(160, 0), 6)).toBe(12)
-  expect(hintLineColumns(160, 0, LEAD_RESERVE)).toBe(130)
+  expect(hintTarget(hintLineColumns(160), 6)).toBe(12)
+  expect(hintLineColumns(160, LEAD_RESERVE)).toBe(130)
 })
 
 test('COMPACT_BELOW is gone: hintLayout alone decides how the kind buttons are drawn', () => {
@@ -210,10 +214,10 @@ const ENDS = buttonWidth('✕') + buttonWidth('⋯')
 const sum = (labels: readonly string[]) => labels.reduce((n, l) => n + buttonWidth(l), 0)
 const CANDIDATES = Array.from({ length: 20 }, () => buttonWidth('[🔤]'))
 
-function layoutAt(columns: number, lang: 'ja' | 'en', lead: number, hintCount = 6, dock = 0) {
-  const target = hintTarget(hintLineColumns(columns, dock), hintCount)
+function layoutAt(columns: number, lang: 'ja' | 'en', lead: number, hintCount = 6) {
+  const target = hintTarget(hintLineColumns(columns), hintCount)
   return hintLayout({
-    line: hintLineColumns(columns, dock, lead),
+    line: hintLineColumns(columns, lead),
     target,
     kindsLabeled: sum(KINDS[lang].labeled),
     kindsMarks: sum(MARKS),
@@ -274,13 +278,37 @@ test('not measured: named kinds and the setting\'s count as it always was', () =
   expect(hintLayout({ line: undefined, target: 6, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
 })
 
+// SELM-00066: with this plugin's pane docked, the line is what the engine hands
+// PromptHint, the terminal's columns less the dock (seen in a pseudo-terminal:
+// 160, 180 and 200 columns with a body of 56 give 103, 123 and 143). Taking the
+// dock off again (56 + 3) left 14, 34 and 54 cells for the buttons: at 160 and
+// 180 columns no action, ✕ and ⋯ alone, as the person saw.
+const DOCKED = [[160, 103], [180, 123], [200, 143]] as const
+
+test('docked: the line the engine hands over holds at least one action, never more than it holds (SELM-00066)', () => {
+  for (const lang of ['ja', 'en'] as const) {
+    for (const [, viewport] of DOCKED) {
+      const { kinds, count } = layoutAt(viewport, lang, LEAD_RESERVE)
+      expect({ lang, viewport, atLeastOne: count >= 1 }).toEqual({ lang, viewport, atLeastOne: true })
+      const kindCells = kinds === 'labeled' ? sum(KINDS[lang].labeled) : kinds === 'marks' ? sum(MARKS) : 0
+      expect(ENDS + kindCells + count * buttonWidth('[🔤]')).toBeLessThanOrEqual(hintLineColumns(viewport, LEAD_RESERVE))
+    }
+  }
+  // As the table: 103 columns as 100's, 123 and 143 between it and 160's.
+  expect(layoutAt(103, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 3 })
+  expect(layoutAt(123, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 5 })
+  expect(layoutAt(143, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 8 })
+  // The dock taken off twice, as before the fix: none at 160 and 180 columns.
+  for (const [, viewport] of DOCKED.slice(0, 2)) expect(layoutAt(viewport - (56 + 3), 'ja', LEAD_RESERVE).count).toBe(0)
+})
+
 test('the buttons laid out never take more than the line, whatever its width', () => {
   for (const lang of ['ja', 'en'] as const) {
     for (const lead of [0, 19, LEAD_RESERVE]) {
       for (let columns = 0; columns <= 200; columns++) {
         const { kinds, count } = layoutAt(columns, lang, lead)
         const kindCells = kinds === 'labeled' ? sum(KINDS[lang].labeled) : kinds === 'marks' ? sum(MARKS) : 0
-        const line = hintLineColumns(columns, 0, lead)
+        const line = hintLineColumns(columns, lead)
         // ✕ and ⋯ stay however narrow: what is laid out beside them fits whenever they do.
         if (ENDS <= line) expect(ENDS + kindCells + count * buttonWidth('[🔤]')).toBeLessThanOrEqual(line)
         else expect({ kinds, count }).toEqual({ kinds: 'none', count: 0 })

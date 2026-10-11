@@ -187,8 +187,8 @@ test('a run on a selection in a row, and a run over time ticking, draw no transc
   const other = await $.ui.mount({ ...USER_ROW, surface: 'terminal' })
   await runCommand($, 'timer 10s')
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  // The docked pane's first drawing measures the dock and asks every drawing
-  // again, once (noteDock): the counts are taken from there.
+  // The counts are taken once the pane is drawn (it asks for no redraw of its
+  // own: since SELM-00066 the dock is not measured).
   const PICKED = `AssistantMessage:${ASSISTANT_ROW.requestId}`
   const OTHER = `UserMessage:${USER_ROW.requestId}`
   const before = { picked: s.drawn[PICKED], other: s.drawn[OTHER] }

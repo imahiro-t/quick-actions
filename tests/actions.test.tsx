@@ -36,7 +36,7 @@ import {
   wrapInput,
 } from '../hooks/actions'
 import { TEXT_ARG_LIMIT, parseArg } from '../hooks/args'
-import { ofKind, parsePins } from '../hooks/order'
+import { HINT_KINDS, ofKind, parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
@@ -1562,17 +1562,15 @@ test('parsePins: unset, empty, unknown and odd values pin nothing and never thro
 // every definition (see the coverage test below); the order on the line is
 // checked with all of them pinned, without pressing any.
 
-const HINT_KIND_NAMES = ['selection', 'context', 'standalone'] as const
-
 test('the runs by kind together press every definition once, in both languages: none left out, none twice', () => {
   for (const language of ['ja', 'en'] as const) {
     const defs = actionsFor(language)
-    const pressed = HINT_KIND_NAMES.flatMap(kind => ofKind(defs, kind).map(a => a.id))
+    const pressed = HINT_KINDS.flatMap(kind => ofKind(defs, kind).map(a => a.id))
     expect(pressed).toHaveLength(311)
     expect(new Set(pressed).size).toBe(311)
     expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
     // Each action is pressed on the kind the line shows it under.
-    for (const kind of HINT_KIND_NAMES) {
+    for (const kind of HINT_KINDS) {
       for (const a of ofKind(defs, kind)) expect([a.id, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection']).toEqual([a.id, kind])
     }
   }
@@ -1591,7 +1589,7 @@ for (const language of ['ja', 'en'] as const) {
 
       // One kind at a time (since SELM-00050): each kind's, in the order pinned.
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      for (const kind of HINT_KIND_NAMES) {
+      for (const kind of HINT_KINDS) {
         await showKind(band, kind)
         expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])
       }
@@ -1599,7 +1597,7 @@ for (const language of ['ja', 'en'] as const) {
     },
   )
 
-  for (const kind of HINT_KIND_NAMES) {
+  for (const kind of HINT_KINDS) {
     const defs = ofKind(actionsFor(language), kind)
     test(
       `[${language}] every ${kind} definition runs by its kind`,

@@ -43,7 +43,12 @@ export const EMOJI_SLACK = 1
  * seen to (SELM-00062), while a docked body's 54 to 56 columns keep it one.
  */
 export const FIELD_LEAD = '> '
-export const FIELD_FRAME = 6
+/** Ahead of the field's Enter label: the gap and the opening bracket. */
+export const SUBMIT_OPEN = '  ('
+/** After the field's Enter label: the closing bracket. */
+export const SUBMIT_CLOSE = ')'
+/** The frame's cells all told (6): fieldLine is built from the same pieces. */
+export const FIELD_FRAME = textWidth(FIELD_LEAD) + textWidth(SUBMIT_OPEN) + textWidth(SUBMIT_CLOSE)
 
 /** The fewest actions listed, however short the pane. */
 export const MIN_SHOWN = 3
@@ -128,7 +133,7 @@ export type FilterRow = {
 /** The field counted as one line: the mark, the wider of its text and its placeholder, the Enter label in brackets. */
 export function fieldLine({ placeholder, value, submitLabel }: FilterRow): string {
   const text = textWidth(value) > textWidth(placeholder) ? value : placeholder
-  return `${FIELD_LEAD}${text}  (${submitLabel})`
+  return `${FIELD_LEAD}${text}${SUBMIT_OPEN}${submitLabel}${SUBMIT_CLOSE}`
 }
 
 /**

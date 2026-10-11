@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { ofKind } from '../hooks/order'
+import { HINT_KINDS, ofKind } from '../hooks/order'
 import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
@@ -227,20 +227,18 @@ for (const [options, thinking] of [
 // Pressed a kind at a time (SELM-00070), each kind's actions pinned alone,
 // so that no one test presses all 311 under a loaded machine's timeout; the
 // three kinds together press every action (checked below).
-const HINT_KIND_NAMES = ['selection', 'context', 'standalone'] as const
-
 test('the answer-language runs by kind together press every action once: none left out, none twice', () => {
-  const pressed = HINT_KIND_NAMES.flatMap(kind => ofKind(ACTIONS, kind).map(a => a.id))
+  const pressed = HINT_KINDS.flatMap(kind => ofKind(ACTIONS, kind).map(a => a.id))
   expect(pressed).toHaveLength(311)
   expect(new Set(pressed).size).toBe(311)
   expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
   // So the complete, fork and subagent actions each test checks add up to all of them.
   for (const k of ['complete', 'fork', 'subagent'] as const) {
-    expect(HINT_KIND_NAMES.reduce((sum, kind) => sum + ofKind(ACTIONS, kind).filter(a => a.kind === k).length, 0)).toBe(ACTIONS.filter(a => a.kind === k).length)
+    expect(HINT_KINDS.reduce((sum, kind) => sum + ofKind(ACTIONS, kind).filter(a => a.kind === k).length, 0)).toBe(ACTIONS.filter(a => a.kind === k).length)
   }
   // In both languages the same actions, in the same order, of the same kind.
   for (const language of ['en', 'ja'] as const) {
-    for (const kind of HINT_KIND_NAMES) expect(ofKind(actionsFor(language), kind).map(a => a.id)).toEqual(ofKind(ACTIONS, kind).map(a => a.id))
+    for (const kind of HINT_KINDS) expect(ofKind(actionsFor(language), kind).map(a => a.id)).toEqual(ofKind(ACTIONS, kind).map(a => a.id))
   }
 })
 
@@ -248,7 +246,7 @@ for (const language of ['en', 'ja'] as const) {
   const name = language === 'en' ? 'English' : 'Japanese'
   const other = language === 'en' ? 'Japanese' : 'English'
 
-  for (const kind of HINT_KIND_NAMES) {
+  for (const kind of HINT_KINDS) {
     const actions = ofKind(ACTIONS, kind)
     test(
       `[${language}] every ${kind} action asks for an answer in ${name}, translations aside`,

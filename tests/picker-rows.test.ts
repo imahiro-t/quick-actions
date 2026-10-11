@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { textWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
 import { BUTTON_FRAME, EMOJI_SLACK, FIELD_FRAME, MIN_SHOWN, buttonLines, fieldLine, filterRowLines, fixedRows, linesOf, pickerShownCount, wrappedRows } from '../hooks/picker-rows'
-import type { FilterRow } from '../hooks/picker-rows'
+import { pickerDialogRows } from './stage'
 
 // How many actions the ⋯ dialog lists (SELM-00059): as many buttons as the
 // pane's rows hold once the lines around the list are taken off, each button
@@ -12,14 +12,8 @@ import type { FilterRow } from '../hooks/picker-rows'
 const more = MESSAGES.en.pickerMore
 const short = (n: number) => Array.from({ length: n }, (_, i) => `[💡] Action ${i}`)
 
-/** The filter row and the close button as the dialog draws them in `lang`, the field holding `value` (Clear beside it once it does). */
-const dialog = (lang: 'en' | 'ja' = 'en', value = ''): { filterRow: FilterRow; close: string } => {
-  const t = MESSAGES[lang]
-  return {
-    filterRow: { placeholder: t.pickerFilterPlaceholder, value, submitLabel: t.pickerFilterSubmit, ...(value !== '' && { clear: t.pickerFilterClear }) },
-    close: t.pickerClose,
-  }
-}
+/** The filter row and the close button as the dialog draws them in `lang`, the field holding `value`. */
+const dialog = (lang: 'en' | 'ja' = 'en', value = '') => pickerDialogRows(MESSAGES[lang], value)
 
 test('a line takes the rows its width wraps to at the columns, one at least', () => {
   expect(linesOf('', 34)).toBe(1)
@@ -165,6 +159,7 @@ test('the filter field is counted as its mark, its text or placeholder (the wide
   const row = dialog('en').filterRow
   expect(fieldLine(row)).toBe('> Filter (ID, name, kind)  (run first)')
   expect(textWidth(fieldLine(row)) - textWidth(row.placeholder) - textWidth(row.submitLabel)).toBe(FIELD_FRAME)
+  expect(FIELD_FRAME).toBe(6)
   // A text wider than the placeholder is counted in its place; a narrower one is not.
   expect(fieldLine({ ...row, value: 'x' })).toBe(fieldLine(row))
   expect(fieldLine({ ...row, value: 'x'.repeat(30) })).toBe(`> ${'x'.repeat(30)}  (run first)`)

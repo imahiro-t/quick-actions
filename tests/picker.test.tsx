@@ -145,14 +145,39 @@ test('the text selected as the dialog opened is the one run on, though the selec
   // The selection goes (a click elsewhere, a prompt) while the dialog is up.
   s.selected = null
   await clock.advance(400)
-  s.selected = 'something else'
   await clock.advance(400)
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   await pickAction(picker, 'explain')
   expect(s.models).toHaveLength(1)
   expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
-  expect(s.models[0]?.prompt).not.toContain('something else')
+})
+
+test('a selection made while the dialog is up is the one run on next, each time', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const band = await openByMore($, s, clock)
+  await band.unmount()
+  s.selected = null
+  await clock.advance(400)
+
+  s.selected = 'something else'
+  await clock.advance(400)
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await pickAction(picker, 'explain')
+  await picker.unmount()
+  expect(s.models.at(-1)?.prompt).toContain('something else')
+  expect(s.models.at(-1)?.prompt).not.toContain('ECONNREFUSED 127.0.0.1:3306')
+
+  // After that run (the results in front, the dialog behind): a third one.
+  s.selected = 'a third text'
+  await clock.advance(400)
+  const again = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await pickAction(again, 'explain')
+  await again.unmount()
+  expect(s.models.at(-1)?.prompt).toContain('a third text')
+  expect(s.models.at(-1)?.prompt).not.toContain('something else')
 })
 
 // Escape closes the dialog through closeOnEscape, which the engine raises as

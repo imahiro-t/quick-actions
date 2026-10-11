@@ -71,6 +71,14 @@ test('runLocal: a result past 20,000 characters is cut there and marked, in each
   expect(MESSAGES.en.truncated).toBe('(truncated)')
 })
 
+test('runLocal: an error past 20,000 characters is cut there and marked too', () => {
+  const over = on(() => ({ error: `${'e'.repeat(20_000)}x` }))
+  for (const lang of ['ja', 'en'] as const) {
+    const r = runLocal(over, localInputFor(over, SOURCE), { selection: true, lang })
+    expect(r).toEqual({ kind: 'settle', ok: false, text: `${'e'.repeat(20_000)}\n${MESSAGES[lang].truncated}` })
+  }
+})
+
 test('runLocal: an error, a throw and a promise are failures', () => {
   const error = on(() => ({ error: 'the units do not match' }))
   expect(runLocal(error, localInputFor(error, SOURCE), { selection: true, lang: 'en' })).toEqual({ kind: 'settle', ok: false, text: 'the units do not match' })

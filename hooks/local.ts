@@ -106,7 +106,8 @@ function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
     return { kind: 'settle', ok: true, text: truncate(out['text'], lang) }
   }
   if (isRecord(out) && typeof out['error'] === 'string') {
-    return { kind: 'settle', ok: false, text: out['error'] }
+    // Cut as a text is: an error can quote the input (parse-url's port) at any length.
+    return { kind: 'settle', ok: false, text: truncate(out['error'], lang) }
   }
   if (isRecord(out) && isRecord(out['ticker']) && typeof out['ticker']['frame'] === 'function') {
     if (selection) return { kind: 'settle', ok: false, text: t.failed(t.localTickerOnSelection) }

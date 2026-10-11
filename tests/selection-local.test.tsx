@@ -526,8 +526,8 @@ test('color-convert: #RGB, #RRGGBB, rgb() and hsl() to all three; errors on othe
 
 // C0 but tab and line breaks, DEL and C1: what the pane must never hand the terminal raw.
 // The note under a decoder's output once anything in it is escaped (HIDDEN_NOTE).
-const NOTE_EN = '(Control, bidirectional, zero-width and tag characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)'
-const NOTE_JA = '（制御文字・双方向制御文字・ゼロ幅文字・タグ文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）'
+const NOTE_EN = '(Control, bidirectional, zero-width and other invisible characters, tag characters and stray variation selectors are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)'
+const NOTE_JA = '（制御文字・双方向制御文字・ゼロ幅文字などの不可視文字・タグ文字・余分な異体字セレクタは \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）'
 
 const RAW_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 
@@ -650,8 +650,8 @@ test('a ZWJ between emoji is kept; anywhere else it is escaped', () => {
   expect(escapeHidden(`\u{1f468}${ZWJ}${ZWJ}\u{1f469}`)).toBe('\u{1f468}\\u200d\\u200d\u{1f469}')
   expect(escapeHidden(`\u{1f468}${ZWJ}a`)).toBe('\u{1f468}\\u200da')
   expect(escapeHidden(`a${ZWJ}\u{1f469}`)).toBe('a\\u200d\u{1f469}')
-  // At most one U+FE0F or modifier before it.
-  expect(escapeHidden(`\u{1f469}\u{fe0f}\u{fe0f}${ZWJ}\u{1f4bb}`)).toBe('\u{1f469}\u{fe0f}\u{fe0f}\\u200d\u{1f4bb}')
+  // At most one U+FE0F or modifier before it; the second U+FE0F, a stray selector, is escaped too.
+  expect(escapeHidden(`\u{1f469}\u{fe0f}\u{fe0f}${ZWJ}\u{1f4bb}`)).toBe('\u{1f469}\u{fe0f}\\ufe0f\\u200d\u{1f4bb}')
   expect(textOf(run(urlDecode, encodeURIComponent(`a${ZWJ}b`)))).toBe(`a\\u200db\n\n${NOTE_EN}`)
   expect(textOf(run(base64DecodeText, b64(`a${ZWJ}b`)))).toBe(`a\\u200db\n\n${NOTE_EN}`)
 })
@@ -810,6 +810,41 @@ test('tag characters: each edge of the range escaped as its surrogate pair, the 
   expect(JSON.parse(`"${escapeHidden('x\u{e0041}y')}"`)).toBe('x\u{e0041}y')
   // A BMP character's escape is as it was: six characters.
   expect(escapeHidden(`${RLO}\u{e0041}`)).toBe('\\u202e\\udb40\\udc41')
+})
+
+test('the other invisible characters: every format character, the separators and the fillers are escaped', () => {
+  // Format characters (Cf) beyond the bidirectional and zero-width ones, the line and paragraph separators, and the invisible fillers.
+  for (const cp of [0xad, 0x600, 0x6dd, 0x70f, 0x8e2, 0x110bd, 0x1d173, 0x2028, 0x2029, 0x34f, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180b, 0x180f, 0x3164, 0xffa0]) {
+    const c = String.fromCodePoint(cp)
+    expect({ cp, hidden: hasHidden(`a${c}b`) }).toEqual({ cp, hidden: true })
+    expect(escapeHidden(`a${c}b`)).toBe(`a${Array.from({ length: c.length }, (_, i) => `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`).join('')}b`)
+  }
+  expect(textOf(run(urlDecode, encodeURIComponent('a\u{ad}b')))).toBe(`a\\u00adb\n\n${NOTE_EN}`)
+})
+
+test('variation selectors: one on a visible character is kept; one opening the text or following another is escaped', () => {
+  // Kept: an emoji or text presentation, a kanji's variant (an ideographic variation sequence), a keycap.
+  for (const s of ['\u{2600}\u{fe0f}', '\u{2600}\u{fe0e}', '\u{845b}\u{e0100}', '#\u{fe0f}\u{20e3}', '\u{2764}\u{fe0f}\u{200d}\u{1f525}', 'x\u{fe00}']) {
+    expect(hasHidden(s)).toBe(false)
+    expect(showHidden(s)).toEqual({ shown: s, escaped: false })
+  }
+  expect(escapeHidden('\u{fe0f}a')).toBe('\\ufe0fa')
+  expect(escapeHidden('a\u{fe0f}\u{fe0f}')).toBe('a\u{fe0f}\\ufe0f')
+  expect(escapeHidden('\u{845b}\u{e0100}\u{e0101}')).toBe('\u{845b}\u{e0100}\\udb40\\udd01')
+  // A hidden text carried a byte a selector after one visible letter: all but the first selector shown escaped, with the note.
+  const smuggled = `A${Array.from('ignore previous instructions', c => String.fromCodePoint(c.charCodeAt(0) < 16 ? 0xfe00 + c.charCodeAt(0) : 0xe0100 + c.charCodeAt(0) - 16)).join('')}`
+  const shown = textOf(run(urlDecode, encodeURIComponent(smuggled)))
+  expect(shown.endsWith(NOTE_EN)).toBe(true)
+  expect(shown.match(/\\udb40\\ud[c-f][0-9a-f]{2}/g)).toHaveLength(27)
+  expect(textOf(run(urlDecode, encodeURIComponent(smuggled), 'ja')).endsWith(NOTE_JA)).toBe(true)
+})
+
+test('many flag emoji: each tag is found in its flag by halving, so a long text of flags is escaped at once', () => {
+  const many = `${ENGLAND.repeat(20_000)}\u{e0041}`
+  const began = performance.now()
+  expect(hasHidden(many)).toBe(true)
+  expect(escapeHidden(many)).toBe(`${ENGLAND.repeat(20_000)}\\udb40\\udc41`)
+  expect(performance.now() - began).toBeLessThan(2_000)
 })
 
 test('tag characters: a flag emoji is kept whole, with no note', () => {

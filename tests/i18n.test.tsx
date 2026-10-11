@@ -1,9 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor } from '../hooks/actions'
+import { ACTIONS, actionsFor, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] every action asks for an answer in ${name}, translations aside`,
-    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
+    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -243,6 +243,8 @@ for (const language of ['en', 'ja'] as const) {
       for (const a of ACTIONS) {
         await reselect(s, clock)
         await band.press({ key: a.id })
+        // One that takes an argument asks for it first: Enter with the field empty, its default.
+        if (takesArg(a)) await submitArg($)
       }
       await band.unmount()
 

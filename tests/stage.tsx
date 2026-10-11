@@ -80,6 +80,21 @@ export const PICKER_PANE = {
   props: { ...PANE.props, title: PICKER, isFocused: true },
 } as const
 
+/** The ⋯ dialog's argument screen: its field and the button back to the list. */
+export const PICKER_ARG = '_arg'
+export const PICKER_ARG_BACK = '_arg-back'
+
+/**
+ * Enter in the ⋯ dialog's argument screen with `text` (empty: the action's
+ * default), as after a press on the hint line or a pick of an action that
+ * takes an argument, where an Input is drawn.
+ */
+export async function submitArg($: Engine, text = '', surface: 'terminal' | 'desktop' = 'terminal') {
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface })
+  await picker.input({ key: PICKER_ARG, text })
+  await picker.unmount()
+}
+
 export const SURFACES = ['terminal', 'desktop'] as const
 
 /** The test options that pin the display and answer language. */

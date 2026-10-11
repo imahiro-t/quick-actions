@@ -22,6 +22,7 @@ import {
   findAction,
   isContext,
   isStandalone,
+  takesArg,
   markedIcon,
   messageOf,
   needsSelection,
@@ -36,7 +37,7 @@ import { parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, promptOf, reselect, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, promptOf, reselect, stage, start, submitArg } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, writing, code,
 // evidence, research, data, learning, checks.
@@ -890,7 +891,7 @@ test('the thirty-one catalog standalone actions run by a model (ideas, drafting 
     expect(prompt.slice(ALONE.length).includes('<input>')).toBe(input !== 'none')
     expect(prompt.includes(PANE_ONLY)).toBe(SHOW_ONLY.has(id))
     for (const lang of ['ja', 'en'] as const) {
-      expect(resolveSpec(spec, lang).prompt).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
+      expect(promptOf(resolveSpec(spec, lang))).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
     }
   }
   // In the catalog's order, right after the local ones (port-numbers last).
@@ -1005,7 +1006,7 @@ test('the seventeen catalog standalone actions on learning, team talk and a brea
     expect(prompt.slice(ALONE.length).includes('<input>')).toBe(input !== 'none')
     expect(prompt.includes(PANE_ONLY)).toBe(id === 'prompt-ideas')
     for (const lang of ['ja', 'en'] as const) {
-      expect(resolveSpec(spec, lang).prompt).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
+      expect(promptOf(resolveSpec(spec, lang))).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
     }
   }
   // In the catalog's order, right after cheatsheet.
@@ -1109,7 +1110,7 @@ test('the seven catalog repository surveys: standalone subagents on sonnet, read
       if (prompt.includes(want)) expect(prompt.indexOf(want)).toBeLessThan(prompt.indexOf(STYLE))
     }
     for (const lang of ['ja', 'en'] as const) {
-      expect(resolveSpec(spec, lang).prompt).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
+      expect(promptOf(resolveSpec(spec, lang))).toContain(lang === 'en' ? 'Answer in English' : 'Answer in Japanese')
     }
   }
   // In the catalog's order, last of all.
@@ -1556,7 +1557,7 @@ for (const language of ['ja', 'en'] as const) {
   const defs = actionsFor(language)
   test(
     `[${language}] every definition is drawn in order and runs by its kind`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 30_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -1572,6 +1573,8 @@ for (const language of ['ja', 'en'] as const) {
         const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
         await reselect(s, clock)
         await band.press({ key: a.id })
+        // One that takes an argument asks for it first: Enter with the field empty, its default.
+        if (takesArg(a)) await submitArg($)
         if (a.kind === 'local') {
           // In the module: no model, no fork, no subagent.
           expect(s.models.length).toBe(before.models)

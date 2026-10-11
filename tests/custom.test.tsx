@@ -4,7 +4,7 @@ import { ACTIONS, ANSWER_LANGUAGE, STYLE, resolveSpec } from '../hooks/actions'
 import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, TARGETS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, promptOf, reselect, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, promptOf, reselect, runCommand, stage, start, submitArg } from './stage'
 
 // The person's own actions, from the `customActions` setting: read, checked,
 // shown on the hint line and run like the built-ins.
@@ -264,6 +264,9 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
       expect((await band.findAll({ type: 'Button' })).map(b => b.props.label).slice(0, 2)).toEqual(['{💭}', '{🛰}'])
       await band.press({ key: 'ideas' })
       await band.unmount()
+      // Its free text is asked for first: Enter with the field empty runs it with none.
+      expect(s.models).toEqual([])
+      await submitArg($)
       // Pressed: no argument, the selection not sent.
       expect(s.models.at(-1)).toMatchObject({ model: 'haiku', prompt: 'There is no input; follow the instructions alone.' })
       expect(s.models.at(-1)?.system).toContain('Suggest five ideas')

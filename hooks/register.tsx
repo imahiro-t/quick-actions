@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, PaneCloseOrigin, Register, RenderSurface } from 'claude-code'
 
-import type { Result } from '../types'
+import type { ArgInput, Result } from '../types'
 import {
   ACTIONS,
   DEFAULT_ACTION_IDS,
@@ -9,6 +9,7 @@ import {
   PLUGIN,
   READ_ONLY_TOOLS,
   TICKER_LIMIT,
+  argSpecOf,
   findAction,
   isContext,
   isStandalone,
@@ -17,12 +18,13 @@ import {
   needsSelection,
   resolveAll,
   subagentType,
+  takesArg,
   wrap,
   wrapInput,
 } from './actions'
 import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from './actions'
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
-import type { ArgValue } from './args'
+import type { ArgSpec, ArgValue } from './args'
 import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
@@ -34,7 +36,7 @@ import type { OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
-import { FILTER_KEY, toFilterField } from './focus'
+import { ARG_KEY, FILTER_KEY, toArgField, toFilterField } from './focus'
 import { settleQuietly, toLatest } from './scroll'
 
 // Everything below is driven by the definitions in ./actions and the person's
@@ -71,6 +73,20 @@ const CANDIDATES = 10
 const PICKER_MAX_ROWS = 30
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
+// A timer's (or the like's) buttons once it no longer runs: again with the
+// same argument, and the argument screen.
+const againKey = (id: number) => `_again-${id}`
+const setArgKey = (id: number) => `_set-arg-${id}`
+// The ⋯ dialog's argument screen: its field, and the button back to the list.
+const PICKER_ARG_KEY = ARG_KEY
+const PICKER_ARG_BACK_KEY = '_arg-back'
+
+/**
+ * Whether an Input can be drawn here: everywhere the surface's table has one
+ * but the mobile app. Without it, the argument screen is never shown and an
+ * action that takes an argument runs at once with its default, as before.
+ */
+const canInput = (surface: RenderSurface, elements: object) => surface !== 'mobile' && 'Input' in elements
 
 // The colours of the result pane and the ⋯ dialog (the `paneTheme` setting)
 // are worked out in ./palette, why they are as they are included. These two
@@ -308,6 +324,10 @@ async function applyStep(
 /** Starts a run over time on entry `id`: its first frame now, then one every `intervalMs`. */
 async function startTicker($: EngineInterface, lang: Lang, id: number, label: string, now: number, run: { intervalMs: number; frame: Frame }) {
   const t = MESSAGES[lang]
+  // Marked first, before anything below can refuse or end it, so the pane
+  // offers it again however it ends (see Result's `timed`). Nothing awaited
+  // between the check and the set below, so the limit holds.
+  await update($, results, list => list.map(r => (r.id === id ? { ...r, timed: true as const } : r)))
   if (tickers.size >= TICKER_LIMIT) {
     await settle($, id, false, t.tickerLimit(TICKER_LIMIT))
     return
@@ -353,7 +373,7 @@ async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, 
 }
 
 /** What a new entry says it ran on. */
-type EntryHead = Pick<Result, 'target' | 'quote' | 'arg'>
+type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'input'>
 
 /**
  * What every run does first, whatever it runs on: one more use of the action,
@@ -424,15 +444,41 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string)
   )
 }
 
+/** A standalone action's argument as given and parsed: `raw` as typed (trimmed), `value` what it came to. */
+type GivenArg = { raw: string; value: ArgValue | undefined }
+
+/**
+ * An argument as typed (the command's, the argument screen's, the one "again"
+ * runs with once more), parsed by `spec` for the action `id`: blank (or none)
+ * gives no argument, which runStandalone takes as its default; one that does
+ * not parse gives the error the person reads, in the same words wherever it
+ * was typed. Never rejects.
+ */
+async function parseInputArg(
+  $: EngineInterface,
+  lang: Lang,
+  id: string,
+  spec: ArgSpec,
+  raw: string | undefined,
+): Promise<{ ok: true; given: GivenArg | undefined } | { ok: false; error: string }> {
+  const typed = raw?.trim()
+  if (typed === undefined || typed === '') return { ok: true, given: undefined }
+  const now = (await readQuietly($.clock.now())) ?? 0
+  const parsed = parseArg(spec, typed, { now, utcOffsetMinutes })
+  if (!parsed.ok) return { ok: false, error: MESSAGES[lang].invalidArg(id, typed, spec.hint) }
+  return { ok: true, given: { raw: typed, value: parsed.value } }
+}
+
 /**
  * A standalone action: on neither the selection nor the conversation, so it
- * takes no text, only its argument. `given` is the one the command gave and
- * already parsed (`raw` as typed, `value` what it came to); with none, the
- * action's default is parsed here.
+ * takes no text, only its argument. `given` is the one the command or the
+ * argument screen gave and already parsed (see parseInputArg); with none, the
+ * action's default is parsed here. The entry keeps the argument as typed, for
+ * "again".
  */
-async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: { raw: string; value: ArgValue | undefined }) {
+async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: GivenArg) {
   const t = MESSAGES[lang]
-  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw) }) })
+  const id = await begin($, def, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw), input: given.raw }) })
 
   let value: ArgValue | undefined = given?.value
   if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
@@ -530,14 +576,16 @@ async function ensureOrder($: EngineInterface, load: OrderLoad): Promise<readonl
 
 /**
  * Opens the ⋯ dialog on `text` (null: none), or, left out, on the text
- * selected now. The text is kept in `picking` as it opens, so a pick runs on
- * it however the selection changes meanwhile. With no text, the dialog lists
- * the context and standalone actions alone.
+ * selected now; on the argument screen of `arg`'s action when it is given.
+ * The text is kept in `picking` as it opens, so a pick runs on it however the
+ * selection changes meanwhile. With no text, the dialog lists the context and
+ * standalone actions alone.
  */
-async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null) {
+async function openPicker($: EngineInterface, lang: Lang, rows: number, text?: string | null, arg?: ArgInput) {
   const picked = text === undefined ? await selectionNow($) : text
-  // Every open starts with the filter empty: every action listed.
-  await update($, picking, () => ({ text: picked, filter: '' }))
+  // Every open starts with the filter empty: every action listed. With `arg`
+  // (the hint line, the result pane), on that action's argument screen.
+  await update($, picking, () => ({ text: picked, filter: '', ...(arg === undefined ? {} : { arg: { action: arg.action, value: arg.value } }) }))
   // The same width as the results: an open without `columns` resets the dock to
   // its default share, which widens it for as long as the dialog is open.
   await $.ui.open({ id: PICKER, title: MESSAGES[lang].pickerTitle, focus: true, closeOnEscape: true, rows, columns: PANE_COLUMNS })
@@ -554,11 +602,39 @@ async function closePicker($: EngineInterface) {
 }
 
 /**
+ * From the argument screen back to the list (its Back button, Escape): the
+ * screen goes, the text and the filter stay, and the focus ring is asked back
+ * on the filter field. Escape hands the keyboard back to the prompt as it
+ * closes, so without that the list would not hold the keys; refused, the list
+ * is shown regardless, and still answers a click.
+ */
+async function backToList($: EngineInterface) {
+  await update($, picking, p => (p === null ? p : { text: p.text, filter: p.filter }))
+  await settleQuietly($.ui.focus(toFilterField(PICKER)))
+}
+
+/**
+ * Whether a close of the ⋯ dialog goes back to its list instead: the person's
+ * (Escape, the close mark) while the argument screen shows. Any other close
+ * (from within, the engine's unload) or one from the list closes it.
+ */
+export const closeGoesBack = (state: { text: string | null; filter: string; arg?: ArgInput } | null, origin: PaneCloseOrigin): boolean =>
+  origin.kind === 'person' && state !== null && state.arg !== undefined
+
+/**
  * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on, read
  * before the dialog closes and lets go of it; a context action, on the
  * conversation. Either way, that text's icons go, as after a press on them.
+ * An action that takes an argument, where an Input can be drawn (`input`),
+ * runs nothing yet: the dialog turns to its argument screen.
  */
-async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined) {
+async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, input: boolean) {
+  if (def !== undefined && input && takesArg(def)) {
+    await update($, picking, p => (p === null ? p : { ...p, arg: { action: def.id, value: '' } }))
+    // The list it was picked in is gone: the field takes the focus ring.
+    await settleQuietly($.ui.focus(toArgField(PICKER)))
+    return
+  }
   const text = (await read($, picking))?.text ?? null
   await closePicker($)
   if (def === undefined) return
@@ -758,13 +834,13 @@ export const register: Register = (on, options) => {
     if (isStandalone(def)) {
       // The argument is parsed once, here: invalid, it is refused before
       // anything runs; valid, its value is what the run uses.
-      let given: { raw: string; value: ArgValue | undefined } | undefined
+      let given: GivenArg | undefined
       if (arg !== undefined) {
-        if (def.kind === 'fork' || def.arg === undefined) return refuse(def.id, arg)
-        const now = (await readQuietly($.clock.now())) ?? 0
-        const parsed = parseArg(def.arg, arg, { now, utcOffsetMinutes })
-        if (!parsed.ok) return { text: withProblems(t.invalidArg(def.id, arg, def.arg.hint), problems, l) }
-        given = { raw: arg, value: parsed.value }
+        const spec = argSpecOf(def)
+        if (spec === undefined) return refuse(def.id, arg)
+        const parsed = await parseInputArg($, l, def.id, spec, arg)
+        if (!parsed.ok) return { text: withProblems(parsed.error, problems, l) }
+        given = parsed.given
       }
       // A selection there now is not used: its icons go, as after a press.
       const current = await selectionNow($)
@@ -798,11 +874,20 @@ export const register: Register = (on, options) => {
     // The first hintCount in the order, of the kinds that apply; pins beyond it too wait under ⋯.
     const ordered = inOrder(await ensureOrder($, orderLoad), l)
     const enabled = arrange(ordered, pins, text !== null, orderLoad.defaults).slice(0, hintCount)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const hintElements = $.ui.resolve(e)
+    const { Box, Button, Text } = hintElements
+    const input = canInput(e.surface, hintElements)
 
     // A press puts this line away, whichever kind it runs: the selection's
     // icons (dismissed) and the line `hint` opened.
     const press = async (a: ActionDef) => {
+      // Standalone taking an argument, where an Input can be drawn: nothing
+      // runs yet; the ⋯ dialog opens on its argument screen, holding the text
+      // as ⋯ does. The run there puts this line away.
+      if (input && takesArg(a)) {
+        await openPicker($, l, pickerRows, text, { action: a.id, value: '' })
+        return
+      }
       // Standalone: run with no argument; the selection (or held text) is not sent.
       if (isStandalone(a)) {
         if (current !== null) await update($, dismissed, () => current)
@@ -893,7 +978,8 @@ export const register: Register = (on, options) => {
     const fixed = style.background !== undefined
     const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
-    const Input = e.surface !== 'mobile' && 'Input' in elements ? elements.Input : undefined
+    const Input = canInput(e.surface, elements) && 'Input' in elements ? elements.Input : undefined
+    const input = Input !== undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
     // A Select takes 64 options at most: past that it lists the first 64 (in
@@ -917,7 +1003,7 @@ export const register: Register = (on, options) => {
         await setFilter(value)
         return
       }
-      await pick($, l, first)
+      await pick($, l, first, input)
     }
     // Clear empties the field and hands the focus ring back to it (see ./focus).
     const clear = {
@@ -926,6 +1012,71 @@ export const register: Register = (on, options) => {
         await setFilter('')
         await settleQuietly($.ui.focus(toFilterField(PICKER)))
       },
+    }
+
+    // The argument screen of the action picked (or pressed on the hint line,
+    // or named by a result's button), in place of the list: its icon and
+    // label, how to write the argument, what Enter with the field empty does,
+    // the field, and why the last Enter ran nothing. Enter runs it (empty: its
+    // default); Back, or Escape (see the ui.close hook), goes to the list.
+    const argState = state?.arg
+    const argDef = argState === undefined ? undefined : findAction(defsFor(l), argState.action)
+    const argSpec = argDef === undefined ? undefined : argSpecOf(argDef)
+    if (state !== null && argState !== undefined && argDef !== undefined && argSpec !== undefined && Input !== undefined) {
+      const heldText = state.text
+      const submitArg = async (value: string) => {
+        const parsed = await parseInputArg($, l, argDef.id, argSpec, value)
+        if (!parsed.ok) {
+          // Nothing runs and no use is counted: the field keeps what was typed.
+          await update($, picking, p => (p === null || p.arg === undefined ? p : { ...p, arg: { ...p.arg, value, error: parsed.error } }))
+          return
+        }
+        await closePicker($)
+        // As any pick of a standalone action: the held text is neither sent nor needed, its icons go.
+        if (heldText !== null) await update($, dismissed, () => heldText)
+        await runStandalone($, argDef, l, parsed.given)
+      }
+      const back = { label: t.argBack, onPress: () => backToList($) }
+      return (
+        <Box flexDirection="column" {...painted(style)}>
+          {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
+          <Text bold color={style.heading}>
+            {argDef.icon} {argDef.label}
+          </Text>
+          <Text color={style.body}>{argSpec.hint}</Text>
+          <Text {...muted(style)}>{argSpec.default === undefined ? t.argNoDefault : t.argDefault(argSpec.default)}</Text>
+          <Input
+            key={PICKER_ARG_KEY}
+            placeholder={argSpec.default ?? t.argPlaceholder(argSpec.type)}
+            value={argState.value}
+            submitLabel={t.argSubmit}
+            autoFocus
+            onInput={value => {
+              void update($, picking, p => (p === null || p.arg === undefined ? p : { ...p, arg: { ...p.arg, value } }))
+            }}
+            onSubmit={value => {
+              void submitArg(value)
+            }}
+          />
+          {argState.error !== undefined && <Text color={style.failed}>{argState.error}</Text>}
+          <Box flexDirection="row">
+            {fixed ? (
+              <Button key={PICKER_ARG_BACK_KEY} {...back}>
+                <Text color={style.muted}>{t.argBack}</Text>
+              </Button>
+            ) : (
+              <Button key={PICKER_ARG_BACK_KEY} {...back} />
+            )}
+            {fixed ? (
+              <Button key={PICKER_CLOSE_KEY} {...close}>
+                <Text color={style.muted}>{t.pickerClose}</Text>
+              </Button>
+            ) : (
+              <Button key={PICKER_CLOSE_KEY} {...close} dimColor />
+            )}
+          </Box>
+        </Box>
+      )
     }
 
     return (
@@ -968,7 +1119,7 @@ export const register: Register = (on, options) => {
               key={PICKER_SELECT_KEY}
               label={t.pickerLabel}
               options={listed.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
-              onSelect={value => pick($, l, findAction(listed, value))}
+              onSelect={value => pick($, l, findAction(listed, value), input)}
             />
             {shown.length > listed.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
           </Box>
@@ -976,7 +1127,7 @@ export const register: Register = (on, options) => {
           <Box flexDirection="column">
             {shown.map((a, i) => {
               const label = `${markedIcon(a)} ${a.label}`
-              const button = { label, onPress: () => pick($, l, a) }
+              const button = { label, onPress: () => pick($, l, a, input) }
               // With a palette the label is a child Text in its colour, and,
               // with no filter field to take it, the first takes the focus ring
               // as the dialog takes the keys, as the Select would; otherwise
@@ -1004,8 +1155,14 @@ export const register: Register = (on, options) => {
 
   // The person's close (Escape through closeOnEscape, the close mark): the
   // text it held goes with it and nothing runs. Closes from within go
-  // through closePicker, which does the same.
+  // through closePicker, which does the same. On the argument screen it goes
+  // back to the list instead, the dialog left open (answered without next),
+  // and the next close closes it.
   on('ui.close', { id: PICKER }, async ($, e, next) => {
+    if (closeGoesBack(await read($, picking), e.origin)) {
+      await backToList($)
+      return { value: undefined }
+    }
     await update($, picking, () => null)
     return next(e)
   })
@@ -1033,7 +1190,9 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const defs = defsFor(l)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const paneElements = $.ui.resolve(e)
+    const { Box, Button, Text } = paneElements
+    const input = canInput(e.surface, paneElements)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
@@ -1062,6 +1221,58 @@ export const register: Register = (on, options) => {
         </Box>
       )
     }
+
+    /** "Again": a new entry at the top, with the argument the entry ran with (as typed), parsed afresh. */
+    const again = async (r: Result, def: ActionDef) => {
+      const spec = argSpecOf(def)
+      if (spec === undefined || r.input === undefined) {
+        await runStandalone($, def, l)
+        return
+      }
+      const parsed = await parseInputArg($, l, def.id, spec, r.input)
+      if (parsed.ok) {
+        await runStandalone($, def, l, parsed.given)
+        return
+      }
+      // Not expected (it parsed once): the new entry fails, saying why.
+      const id = await begin($, def, { target: 'none', quote: '', arg: quoteOf(r.input), input: r.input })
+      await settle($, id, false, parsed.error)
+    }
+    /**
+     * A timer's (or the like's) buttons once it no longer runs (done, failed,
+     * stopped, or drawn stopped after a reload): "again", and, for one that
+     * takes an argument where an Input can be drawn, the argument screen with
+     * the last argument in its field.
+     */
+    const rerun = (r: Result, def: ActionDef) => {
+      const spec = argSpecOf(def)
+      const againButton = { label: t.again, onPress: () => again(r, def) }
+      const setArg =
+        spec !== undefined && input
+          ? { label: t.setArg(spec.type), onPress: () => openPicker($, l, pickerRows, null, { action: def.id, value: r.input ?? '' }) }
+          : undefined
+      return (
+        <Box flexDirection="row">
+          {fixed ? (
+            <Button key={againKey(r.id)} {...againButton}>
+              <Text color={style.muted}>{t.again}</Text>
+            </Button>
+          ) : (
+            <Button key={againKey(r.id)} {...againButton} />
+          )}
+          {setArg !== undefined &&
+            (fixed ? (
+              <Button key={setArgKey(r.id)} {...setArg}>
+                <Text color={style.muted}>{setArg.label}</Text>
+              </Button>
+            ) : (
+              <Button key={setArgKey(r.id)} {...setArg} />
+            ))}
+        </Box>
+      )
+    }
+    /** Whether the entry is a timer's (or the like's) that no longer runs: what rerun is drawn for. */
+    const idle = (r: Result) => r.status !== 'running' || (r.ticker === true && !tickers.has(r.id))
 
     return (
       <Box flexDirection="column" {...painted(style)}>
@@ -1092,6 +1303,7 @@ export const register: Register = (on, options) => {
               ) : (
                 <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
+              {r.timed === true && def !== undefined && isStandalone(def) && idle(r) && rerun(r, def)}
             </Box>
           )
         })}

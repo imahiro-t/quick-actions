@@ -13,3 +13,9 @@ export const FILTER_KEY = '_filter'
 
 /** What Clear asks of $.ui.focus: the filter field of the dialog `pane`. */
 export const toFilterField = (pane: string): UiFocusArgs => ({ requestId: pane, key: FILTER_KEY })
+
+/** The key the ⋯ dialog's argument field is drawn under. */
+export const ARG_KEY = '_arg'
+
+/** What a pick of an action that takes an argument asks of $.ui.focus: the argument field of the dialog `pane`. */
+export const toArgField = (pane: string): UiFocusArgs => ({ requestId: pane, key: ARG_KEY })

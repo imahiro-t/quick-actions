@@ -6,7 +6,7 @@ import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
 import { SELECT_MAX_OPTIONS } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, in the hint line's order, picked with the
@@ -643,6 +643,9 @@ test('with nothing selected, the filter narrows the context and standalone actio
   expect(await listed(picker)).toBeUndefined()
   expect(await picker.find({ text: MESSAGES.en.pickerNoMatch })).toBeDefined()
   await picker.input({ key: PICKER_FILTER, text: 'timer' })
+  // The timer takes an argument: asked for first, then run with its default.
+  expect(s.closed).toEqual([])
+  await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
   expect(s.closed).toEqual([PICKER])
   expect(s.toasts).toEqual([])

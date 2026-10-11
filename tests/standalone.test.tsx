@@ -4,13 +4,15 @@ import type { Engine } from 'claude-code/testing'
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
-import { BAND, EN, JA, PANE, PICKER, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_PANE, PICKER_SELECT, SURFACES, runCommand, stage, start, storedUsage, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // Standalone actions ({icon}): on neither the selection nor the conversation.
 // The built-in timer stands for them here: pressed on the hint line or picked
-// in the ⋯ dialog it runs with no argument (25 minutes), whatever is selected
-// or held, and sends no text; `/quick-actions timer <duration>` gives it one.
+// in the ⋯ dialog it asks for its argument first (tests/arg-input.test.tsx),
+// and Enter with the field empty runs it with none (25 minutes), whatever is
+// selected or held, sending no text; `/quick-actions timer <duration>` gives
+// it one. The mobile app, with no field, runs it at once.
 // It counts down in the result pane once a second, with a stop button, and
 // says it is done in a toast.
 
@@ -66,6 +68,7 @@ for (const surface of SURFACES) {
     expect((await band.findAll({ type: 'Button' }))[0]?.props.label).toBe('{⏳}')
     await band.press({ key: 'timer' })
     await band.unmount()
+    await submitArg($, '', surface)
 
     sentNothing(s)
     expect(s.toasts).not.toContain(MESSAGES.en.noSelection)
@@ -92,6 +95,7 @@ test('the hint line /quick-actions hint opened with no selection: timer runs, an
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'timer' })
   await band.unmount()
+  await submitArg($)
   sentNothing(s)
   expect(s.toasts).toEqual([])
   expect(await paneTexts($)).toContain('⏳ 25:00 残り')
@@ -111,6 +115,7 @@ test('the ⋯ dialog from the line /quick-actions hint opened on a held text: ti
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
   sentNothing(s)
   expect(s.toasts).toEqual([])
@@ -132,6 +137,7 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   const listed = ((await picker.find({ type: 'Select' }))?.props.options ?? []) as { value: string; label: string }[]
   expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} Timer')
   await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
 
   expect(s.closed).toEqual([PICKER])
@@ -152,6 +158,7 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   expect(await picker.find({ text: MESSAGES.ja.pickerLegend(false) })).toBeDefined()
   await picker.select({ key: PICKER_SELECT, value: 'timer' })
+  await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
   expect(s.closed).toEqual([PICKER])
   sentNothing(s)
@@ -285,7 +292,8 @@ for (const [options, t, label] of [[JA, MESSAGES.ja, 'タイマー'], [EN, MESSA
     const texts = await paneTexts($)
     expect(texts).toContain(`⏳ 01:30 ${t.tickerDone}`)
     expect(s.toasts).toEqual([t.timerFinishedToast(label, '01:30')])
-    expect(await paneButtons($)).toEqual([])
+    // The stop button goes; "again" and the argument screen's take its place.
+    expect(await paneButtons($)).toEqual(['_again-1', '_set-arg-1'])
     // Over: nothing more happens.
     await clock.advance(5000)
     expect(s.toasts).toHaveLength(1)
@@ -301,7 +309,7 @@ for (const [options, t, label] of [[JA, MESSAGES.ja, 'タイマー'], [EN, MESSA
     await pane.press({ key: STOP(1) })
     await pane.unmount()
     expect(await paneTexts($)).toContain(t.tickerStopped('00:02'))
-    expect(await paneButtons($)).toEqual([])
+    expect(await paneButtons($)).toEqual(['_again-1', '_set-arg-1'])
     await clock.advance(120_000)
     expect(await paneTexts($)).toContain(t.tickerStopped('00:02'))
     expect(s.toasts).toEqual([])
@@ -318,7 +326,7 @@ test('the stop button stops its own timer alone', { options: EN }, async ($, on)
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await pane.press({ key: STOP(1) })
   await pane.unmount()
-  expect(await paneButtons($)).toEqual([STOP(2)])
+  expect(await paneButtons($)).toEqual([STOP(2), '_again-1', '_set-arg-1'])
   await clock.advance(20_000)
   // The other one ran on to its end.
   expect(s.toasts).toEqual([MESSAGES.en.timerFinishedToast('Timer', '00:20')])
@@ -349,10 +357,11 @@ test(`up to ${TICKER_LIMIT} run at once: the next one fails, saying so, and the 
   const failed = (await pane.findAll({ text: MESSAGES.ja.tickerLimit(TICKER_LIMIT) })).filter(f => f.type === 'Text')
   expect(failed.map(f => f.props.color)).toEqual(['error'])
   await pane.unmount()
-  expect(await paneButtons($)).toHaveLength(TICKER_LIMIT)
+  // The one refused offers to run again; the others have their stop button.
+  expect(await paneButtons($)).toEqual(['_again-6', '_set-arg-6', ...[5, 4, 3, 2, 1].map(STOP)])
   await clock.advance(10_000)
   expect(s.toasts).toHaveLength(TICKER_LIMIT)
-  expect(await paneButtons($)).toEqual([])
+  expect((await paneButtons($)).filter(k => k.startsWith('_stop-'))).toEqual([])
 })
 
 // After a reload the module has no timer running (the engine cancelled them),

@@ -85,7 +85,7 @@ import {
 } from './calc-local'
 
 type ActionBase<T> = {
-  /** The ID written in the `actions` setting: lowercase letters, digits, hyphens. */
+  /** The ID written in the `pinActions` setting: lowercase letters, digits, hyphens. */
   id: string
   /** The glyph on the hint line. */
   icon: string

@@ -931,7 +931,7 @@ export const register: Register = (on, options) => {
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
   // The pins alone are read here: they do not depend on the language.
-  const pins = parsePins(allSpecs, options.actions)
+  const pins = parsePins(allSpecs, options.pinActions)
   // Tall enough for every action in the ⋯ dialog, its kind buttons, its
   // filter field and its close button, with rows to spare, up to
   // PICKER_MAX_ROWS: with hundreds of actions the pane scrolls rather than

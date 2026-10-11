@@ -214,7 +214,7 @@ test('a broken store still shows the default order', async ($, on) => {
   expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
 })
 
-test('pins beyond what fits wait under ⋯', { options: { actions: 'why,tldr,ask,code' } }, async ($, on) => {
+test('pins beyond what fits wait under ⋯', { options: { pinActions: 'why,tldr,ask,code' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

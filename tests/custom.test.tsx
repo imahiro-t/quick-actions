@@ -252,7 +252,7 @@ test('parse: target none takes complete and subagent, with an optional free-text
 for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
   test(
     `[${options.language}] a custom standalone action: marked { }, run with no selection sent, its argument in <input> or NO_INPUT`,
-    { options: { ...options, customActions: JSON.stringify([IDEAS, SCOUT]), actions: 'ideas,scout' } },
+    { options: { ...options, customActions: JSON.stringify([IDEAS, SCOUT]), pinActions: 'ideas,scout' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -303,7 +303,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
 test(
   'a custom icon of ©, ® or ™ is drawn as the text mark it is, while a text-default pictograph takes VS16',
-  { options: { ...EN, customActions: JSON.stringify([{ ...IDEAS, id: 'legal', icon: '\u00A9' }, { ...IDEAS, id: 'reg', icon: '\u00AE' }, { ...IDEAS, id: 'tm', icon: '\u2122' }, SCOUT]), actions: 'legal,reg,tm,scout' } },
+  { options: { ...EN, customActions: JSON.stringify([{ ...IDEAS, id: 'legal', icon: '\u00A9' }, { ...IDEAS, id: 'reg', icon: '\u00AE' }, { ...IDEAS, id: 'tm', icon: '\u2122' }, SCOUT]), pinActions: 'legal,reg,tm,scout' } },
   async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
@@ -446,7 +446,7 @@ test('the reasons about target read in each language, English with no Japanese i
 // ---------------------------------------------------------------------------
 // On the hint line, by press and by command
 
-const WITH_CUSTOM = { customActions: json(VALID), actions: 'mine,explain,relate,review-pr,look' }
+const WITH_CUSTOM = { customActions: json(VALID), pinActions: 'mine,explain,relate,review-pr,look' }
 
 for (const surface of SURFACES) {
   for (const [options, labels] of [
@@ -575,7 +575,7 @@ for (const [options, texts] of [
 
 const BAD_TOOLS = { ...LOOK, id: 'shell-look', tools: ['Read', 'Bash'] }
 const BAD_MODEL = { ...MINE, id: 'gpt', model: 'gpt-4' }
-const MIXED = { customActions: json([BAD_TOOLS, MINE, BAD_MODEL]), actions: 'mine,shell-look,gpt,explain' }
+const MIXED = { customActions: json([BAD_TOOLS, MINE, BAD_MODEL]), pinActions: 'mine,shell-look,gpt,explain' }
 
 test('invalid definitions: a toast at start with the count and the first reason', { options: { ...JA, ...MIXED } }, async ($, on) => {
   const s = stage(on)
@@ -675,7 +675,7 @@ for (const placement of ['dock', 'inline'] as const) {
   })
 }
 
-test('broken JSON: the built-in default set shows, and the command tells why', { options: { ...JA, customActions: '[{"id": "mine",', actions: 'mine' } }, async ($, on) => {
+test('broken JSON: the built-in default set shows, and the command tells why', { options: { ...JA, customActions: '[{"id": "mine",', pinActions: 'mine' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

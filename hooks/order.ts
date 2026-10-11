@@ -3,7 +3,7 @@
 // or throws. register.tsx reads and writes the score through `$.store`.
 //
 // One order for every kind of action, those on the selection, on the
-// conversation and standalone, mixed: the actions the `actions` setting names
+// conversation and standalone, mixed: the actions the `pinActions` setting names
 // (pinned, of any kind), in its order; then the rest by their usage score,
 // highest first, a tie or an unused one keeping the order of definition
 // (built-ins on the selection, built-ins on the conversation, built-in
@@ -84,7 +84,7 @@ export function pickActions<D extends { id: string }>(defs: readonly D[], ids: r
 }
 
 /**
- * The actions the `actions` setting pins to the front, in its order. Unlike
+ * The actions the `pinActions` setting pins to the front, in its order. Unlike
  * the hint line of old, nothing stands in when it names none: no pins.
  */
 export const parsePins = <D extends { id: string }>(defs: readonly D[], setting: unknown): D[] =>

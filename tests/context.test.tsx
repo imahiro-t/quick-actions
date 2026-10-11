@@ -375,7 +375,7 @@ test('the usage scores order the kinds as one; with a selection, the actions on 
   expect(await labelsOf($)).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
 })
 
-test('`actions` pins either kind', { options: { actions: 'recap,explain,handoff' } }, async ($, on) => {
+test('`pinActions` pins either kind', { options: { pinActions: 'recap,explain,handoff' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -459,7 +459,7 @@ const STANDUP = {
 }
 const PIRATE = { id: 'pirate', icon: '🦜', label: 'Pirate talk', kind: 'fork', prompt: 'Retell the selected text the way a pirate would.' }
 
-test('a custom context action runs with no selection, marked < >; one with no target waits for a selection', { options: { customActions: JSON.stringify([STANDUP, PIRATE]), actions: 'standup,pirate' } }, async ($, on) => {
+test('a custom context action runs with no selection, marked < >; one with no target waits for a selection', { options: { customActions: JSON.stringify([STANDUP, PIRATE]), pinActions: 'standup,pirate' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

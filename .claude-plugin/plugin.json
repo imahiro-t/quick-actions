@@ -6,16 +6,16 @@
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
-    "actions": {
+    "pinActions": {
       "type": "string",
-      "title": "Actions",
+      "title": "Pinned actions",
       "description": "Comma-separated action IDs to pin at the front of the hint line, in this order (e.g. explain,recap); each kind's pins lead that kind on the line. Actions of any kind can go here: on the selection, on the conversation (context actions, e.g. recap) and standalone actions that use neither (e.g. timer), and the IDs of your customActions too. The other actions follow in the order you use them, and every action is under ⋯. Leave empty for no pins (the first time: explain,recap,translate-ja,decisions,summarize,code,timer first); unknown IDs are ignored.",
       "default": ""
     },
     "customActions": {
       "type": "string",
       "title": "Custom actions",
-      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete or subagent, taking an optional text argument). Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in actions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
+      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete or subagent, taking an optional text argument). Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in pinActions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
       "default": ""
     },
     "language": {

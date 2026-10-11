@@ -82,8 +82,11 @@ export type Messages = {
   pickerFilterSubmitNone: string
   /** Stands for the ⋯ dialog's list when the filter matches no action. */
   pickerNoMatch: string
-  /** Below the ⋯ dialog's list when it holds more actions than a Select can show: how many more, and how to reach them. */
-  pickerMore: (count: number) => string
+  /** The ⋯ dialog's page buttons, under a list longer than the pane holds: back a page, on a page. */
+  pickerPrev: string
+  pickerNext: string
+  /** Between the page buttons: the page shown of how many, and the actions listed in all. */
+  pickerPage: (page: number, pages: number, count: number) => string
   /** The command's result when it opened the ⋯ dialog. */
   pickerOpened: string
   /** The command's result when `/quick-actions hint` opened the hint line. */
@@ -125,6 +128,8 @@ export type Messages = {
    * name. A press lists that kind alone.
    */
   pickerKinds: { selection: string; context: string; standalone: string }
+  /** The ⋯ dialog's button ahead of the kind buttons that lists every kind; named as allActions. */
+  pickerAll: string
   /** Ends a local action's result cut at its limit. */
   truncated: string
   /** A local action that answered with a promise rather than at once. */
@@ -203,7 +208,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterSubmit: '先頭を実行',
     pickerFilterSubmitNone: '一致なし',
     pickerNoMatch: '一致するアクションがありません',
-    pickerMore: count => `ほか ${count} 件は絞り込みで表示`,
+    pickerPrev: '前へ',
+    pickerNext: '次へ',
+    pickerPage: (page, pages, count) => `${page} / ${pages}（${count} 件）`,
     pickerOpened: 'ダイアログでアクションを選んでください。',
     hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
     onConversation: '今の会話',
@@ -254,6 +261,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
     invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
     pickerKinds: { selection: '[ ] 選択', context: '< > 会話', standalone: '{ } 単独' },
+    pickerAll: '全て',
     hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
     hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
     hintKindShown: name => `${name}（表示中）`,
@@ -302,7 +310,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterSubmit: 'run first',
     pickerFilterSubmitNone: 'no match',
     pickerNoMatch: 'No action matches',
-    pickerMore: count => `${count} more: type in the filter to reach them`,
+    pickerPrev: 'Prev',
+    pickerNext: 'Next',
+    pickerPage: (page, pages, count) => `${page} / ${pages} (${count})`,
     pickerOpened: 'Pick an action in the dialog.',
     hintOpened: 'Pick an action on the hint line below the prompt.',
     onConversation: 'this conversation',
@@ -353,6 +363,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
     invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
     pickerKinds: { selection: '[ ] selection', context: '< > context', standalone: '{ } standalone' },
+    pickerAll: 'all',
     hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
     hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
     hintKindShown: name => `${name} (shown)`,

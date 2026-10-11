@@ -32,8 +32,8 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
-import { pickerKindLabels, pickerKindsShown, pickerShownCount } from './picker-rows'
-import { buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
+import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
+import { TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
 import {
   HINT_KINDS,
   USAGE_KEY,
@@ -101,7 +101,10 @@ const PICKER_MAX_ROWS = 30
 const kindKey = (kind: HintKind) => `_kind-${kind}`
 // The ⋯ dialog's kind buttons above its list, one per kind.
 const PICKER_KIND_KEY = '_picker-kind'
-const pickerKindKey = (kind: HintKind) => `${PICKER_KIND_KEY}-${kind}`
+const pickerKindKey = (kind: HintKind | 'all') => `${PICKER_KIND_KEY}-${kind}`
+// The ⋯ dialog's page buttons under a list longer than the pane holds.
+const PICKER_PREV_KEY = '_picker-prev'
+const PICKER_NEXT_KEY = '_picker-next'
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
 // The button of an entry run on a selection that lies in one transcript row:
@@ -265,6 +268,10 @@ async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, la
 // refused, over its 4 MiB) loses that use alone: the action runs regardless.
 let usageWrite: Promise<void> = Promise.resolve()
 
+// What a use written calls: the load's settled order let go, so the next
+// drawing settles it afresh from the scores as they now stand. Set by register.
+let usageRecorded: () => void = () => {}
+
 /** Adds one use of `id` to its score in `$.store`. Never rejects; the returned promise settles once it is written. */
 function recordUsage($: EngineInterface, id: string): Promise<void> {
   usageWrite = usageWrite.then(async () => {
@@ -275,6 +282,7 @@ function recordUsage($: EngineInterface, id: string): Promise<void> {
     } catch {
       // This use goes unrecorded; see above.
     }
+    usageRecorded()
   })
   return usageWrite
 }
@@ -667,10 +675,16 @@ async function pickedNow($: EngineInterface): Promise<Picked | null> {
 }
 
 /** The ⋯ dialog's state `p` holding `picked`: its text and row, a row it held before left out. */
-type Picking = { text: string | null; requestId?: string; filter: string; arg?: ArgInput; kind?: HintKind }
+type Picking = { text: string | null; requestId?: string; filter: string; arg?: ArgInput; kind?: HintKind; page?: number }
 function holding(p: Picking, picked: Picked): Picking {
   const { requestId: _held, ...rest } = p
   return { ...rest, text: picked.text, ...(picked.requestId === undefined ? {} : { requestId: picked.requestId }) }
+}
+
+/** The ⋯ dialog's state back on its first page: a new filter, kind or pick lists from the top. */
+function withoutPage(p: Picking): Picking {
+  const { page: _page, ...rest } = p
+  return rest
 }
 
 /** The text selected now, trimmed; null when there is none. No toast. */
@@ -902,7 +916,7 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, 
   }
   const held = await read($, picking)
   const text = held?.text ?? null
-  await update($, picking, p => (p === null ? p : { ...p, filter: '' }))
+  await update($, picking, p => (p === null ? p : { ...withoutPage(p), filter: '' }))
   if (def === undefined) return
   // Standalone: run with no argument, the held text neither sent nor needed.
   if (isStandalone(def)) {
@@ -953,12 +967,17 @@ export const register: Register = (on, options) => {
     return filterActions(specs, query).flatMap(spec => byId.get(spec.id) ?? [])
   }
 
-  // The order of every action, settled once per load: at session start, or by
-  // whichever hook needs it first. Uses during the session do not move it, so
-  // an icon stays where the person reaches for it. Kept with this load, not in
-  // the module: a settling an earlier load started (with its own definitions)
-  // may finish after a reload, and must not become this load's order.
+  // The order of every action, settled at session start, or by whichever hook
+  // needs it first, and settled afresh after each use is written: the order
+  // follows the usage during the session too. A line up as a use is written
+  // has already been put away by the run (begin), so an icon never moves
+  // under the pointer: the new order shows from the next line. Kept with this
+  // load, not in the module: a settling an earlier load started (with its own
+  // definitions) may finish after a reload, and must not become this load's order.
   const orderLoad: OrderLoad = { specs: allSpecs, pins, slot: {}, defaults: [] }
+  usageRecorded = () => {
+    orderLoad.slot = {}
+  }
 
   // Kept here, with this load's settings, rather than in a module-level cache
   // like actionsFor's: the custom definitions change with the setting, and
@@ -1211,6 +1230,8 @@ export const register: Register = (on, options) => {
       kindsMarks: kindsWidth(true),
       ends,
       widths: candidates.slice(0, most).map(a => buttonWidth(markedIcon(a))),
+      // Room after ⋯ for the hover label, fewer actions laid out for it.
+      tip: TIP_RESERVE,
     })
     const shownKinds = layout.kinds === 'none' ? [] : kinds
     const kindLabel = (k: HintKind) => kindMark(k, layout.kinds === 'marks')
@@ -1334,8 +1355,8 @@ export const register: Register = (on, options) => {
   // alone. Above the list, a button per kind, its mark and name ([ ] selection,
   // < > context, { } standalone; the selection's only with text, as on the
   // hint line), lists that kind alone: that button drawn bold while it does,
-  // the others dim; pressed again, every kind again. As the dialog opens it
-  // lists every kind, and no button stands out.
+  // the others dim; pressed again, every kind again. Ahead of them, "all"
+  // lists every kind. As the dialog opens it lists every kind, "all" bold.
   // A filter field above the list narrows what it lists as the person types
   // (./filter: ID, labels in both languages, kind names, kind marks), within
   // the kind shown, and Enter in it runs the first action left; Clear beside
@@ -1354,11 +1375,11 @@ export const register: Register = (on, options) => {
   // as fit (./picker-rows: each button's rows as its label wraps at its words,
   // less the rest of the dialog, the kind buttons' row, the filter row and
   // the close button counted as they wrap too, in a narrow pane onto two rows
-  // or more), then a line
-  // saying how many more the filter reaches.
+  // or more), a page at a time, then the page buttons that reach the rest
+  // (back, the page of how many, on; round from either end).
   // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
   // again lists as many as the new height holds. Without the field (mobile)
-  // nothing would reach the rest: every action is listed, and the pane scrolls.
+  // every action is listed on one page, and the pane scrolls.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -1388,13 +1409,14 @@ export const register: Register = (on, options) => {
       submitLabel: shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit,
       ...(filter !== '' && { clear: t.pickerFilterClear }),
     }
-    // As many as the pane's height holds (in the dialog's order, so the most
-    // used come first), with the filter field there to reach the rest;
-    // without it, all of them.
-    const count =
+    // As many as the pane's height holds a page (in the dialog's order, so
+    // the most used come first), the page buttons under them reaching the
+    // rest, as the filter does; without the field (mobile), all of them on
+    // one page, the pane scrolling.
+    const starts =
       Input === undefined
-        ? shown.length
-        : pickerShownCount({
+        ? [0]
+        : pickerPages({
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
             chrome: [],
@@ -1404,15 +1426,21 @@ export const register: Register = (on, options) => {
             // (not in the redraw as it closes).
             buttons: state === null ? [] : pickerKindLabels(t, hasSelection),
             labels: shown.map(labelOf),
-            more: t.pickerMore,
+            // Measured at its widest: as many pages as there are actions.
+            more: () => pagerWidest(t, shown.length),
           })
-    const listed = shown.slice(0, count)
+    const pages = starts.length
+    // The page asked for, kept within what there is (a shorter pane or list).
+    const page = Math.min(Math.max(0, state?.page ?? 0), pages - 1)
+    const listed = shown.slice(starts[page], starts[page + 1] ?? shown.length)
+    // Back or on a page, round from either end.
+    const turn = (by: number) => update($, picking, p => (p === null ? p : { ...p, page: (page + by + pages) % pages }))
     // The close button's props; it is drawn dimColor as before, or in the
     // palette's muted colour. It closes the whole pane, both tabs.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closeAll($) }
     const closeButton = mutedButton(elements, style, PICKER_CLOSE_KEY, close, true)
 
-    const setFilter = (value: string) => update($, picking, p => (p === null ? p : { ...p, filter: value }))
+    const setFilter = (value: string) => update($, picking, p => (p === null ? p : { ...withoutPage(p), filter: value }))
     // Enter in the field: the first action its text leaves, worked out from
     // that text rather than the last drawn list, in case a change had not
     // reached the state yet. None left: the dialog stays, with that filter.
@@ -1425,37 +1453,38 @@ export const register: Register = (on, options) => {
       await pick($, l, first, input)
     }
     // A kind button: lists its kind alone, or, pressed while it does, every
-    // kind again. Named as the hint line's are (which actions it shows, and,
-    // for the one listed now, that it is: bold and dim reach no name). Listed,
-    // it is drawn bold, in the palette's heading colour where one is painted;
-    // the others dim (in the palette's muted colour, as its buttons are); with
-    // every kind listed, all of them as they are, none standing out.
-    const switchKind = (k: HintKind) =>
+    // kind again; ahead of them, "all" lists every kind. Named as the hint
+    // line's are (which actions it shows, and, for the one listed now, that it
+    // is: bold and dim reach no name). The one listing now (all, as the dialog
+    // opens) is drawn bold, in the palette's heading colour where one is
+    // painted; the others dim (in the palette's muted colour, as its buttons are).
+    const switchKind = (k: HintKind | 'all') =>
       update($, picking, p => {
         if (p === null) return p
-        const { kind: was, ...rest } = p
-        return was === k ? rest : { ...rest, kind: k }
+        const { kind: was, ...rest } = withoutPage(p)
+        return k === 'all' || was === k ? rest : { ...rest, kind: k }
       })
-    const kindButton = (k: HintKind) => {
-      const drawn = t.pickerKinds[k]
-      const props = { key: pickerKindKey(k), label: k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k], onPress: () => switchKind(k) }
-      if (k === kind) {
+    const kindButton = (k: HintKind | 'all') => {
+      const drawn = k === 'all' ? t.pickerAll : t.pickerKinds[k]
+      const name = k === 'all' ? t.allActions : t.hintKindTips[k]
+      const listing = k === 'all' ? kind === undefined : k === kind
+      const props = { key: pickerKindKey(k), label: listing ? t.hintKindShown(name) : name, onPress: () => switchKind(k) }
+      if (listing) {
         return (
           <Button {...props}>
             <Text bold {...(fixed && { color: style.heading })}>{drawn}</Text>
           </Button>
         )
       }
-      const dim = kind !== undefined
       if (fixed) {
         return (
           <Button {...props}>
-            <Text color={dim ? style.muted : style.body}>{drawn}</Text>
+            <Text color={style.muted}>{drawn}</Text>
           </Button>
         )
       }
       return (
-        <Button {...props} {...(dim && { dimColor: true })}>
+        <Button {...props} dimColor>
           {drawn}
         </Button>
       )
@@ -1534,6 +1563,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" {...painted(style)}>
         {state !== null && (
           <Box flexDirection="row" flexWrap="wrap">
+            {kindButton('all')}
             {kinds.map(kindButton)}
           </Box>
         )}
@@ -1584,7 +1614,13 @@ export const register: Register = (on, options) => {
             })}
           </Box>
         )}
-        {state !== null && listed.length < shown.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
+        {state !== null && pages > 1 && (
+          <Box flexDirection="row" flexWrap="wrap">
+            {mutedButton(elements, style, PICKER_PREV_KEY, { label: t.pickerPrev, onPress: () => turn(-1) })}
+            <Text {...muted(style)}>{` ${t.pickerPage(page + 1, pages, shown.length)} `}</Text>
+            {mutedButton(elements, style, PICKER_NEXT_KEY, { label: t.pickerNext, onPress: () => turn(1) })}
+          </Box>
+        )}
         {closeButton}
       </Box>
     )

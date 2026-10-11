@@ -137,11 +137,11 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   await band.unmount()
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  // The kind buttons, all three with a text held: their marks and names, none standing out.
+  // The kind buttons, all three with a text held after "all": their marks and names, "all" standing out.
   const kinds = await pickerKindButtons(picker)
-  expect(kinds.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
-  expect(kinds.map(k => k.drawn)).toEqual(['[ ] selection', '< > context', '{ } standalone'])
-  expect(kinds.map(k => k.bold)).toEqual([false, false, false])
+  expect(kinds.map(k => k.kind)).toEqual(['all', 'selection', 'context', 'standalone'])
+  expect(kinds.map(k => k.drawn)).toEqual(['all', '[ ] selection', '< > context', '{ } standalone'])
+  expect(kinds.map(k => k.bold)).toEqual([true, false, false, false])
   await picker.input({ key: PICKER_FILTER, text: 'timer', kind: 'change' })
   const listed = await listedOptions(picker)
   expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} Timer')
@@ -168,7 +168,7 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   // The kind buttons without the selection's: no text to run it on.
-  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['context', '< > 会話'], ['standalone', '{ } 単独']])
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['all', '全て'], ['context', '< > 会話'], ['standalone', '{ } 単独']])
   await pickAction(picker, 'timer')
   await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
@@ -186,7 +186,7 @@ test('[mobile] the ⋯ dialog lists the timer as a button with the kind buttons 
   await start($)
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
-  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['context', '< > 会話'], ['standalone', '{ } 単独']])
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['all', '全て'], ['context', '< > 会話'], ['standalone', '{ } 単独']])
   // Switched to the standalone actions: the timer among them.
   await showPickerKind(picker, 'standalone')
   expect((await picker.find({ key: 'timer' }))?.props.label).toBe('{⏳} タイマー')

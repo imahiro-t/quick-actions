@@ -179,7 +179,7 @@ for (const [name, row, selected] of [
 // Nothing hooks the transcript rows any more: a run on a row draws none of
 // them again, nor does a run over time ticking (which writes the results every
 // tick). Counted as the engine's drawings beneath the plugin.
-test('a run on a selection in a row, and a run over time ticking, draw no transcript row again', { options: EN }, async ($, on) => {
+test('a run on a selection in a row, and a run over time ticking, draw no transcript row again', { options: { ...EN, pinActions: 'explain,translate-ja' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

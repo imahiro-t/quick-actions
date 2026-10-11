@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_PANE, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
+import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -59,25 +59,28 @@ type PickerMount = Parameters<typeof pickerKindButtons>[0]
 
 /**
  * The ⋯ dialog's kind buttons where the style leaves the colours to core (auto
- * docked, and inline whatever the setting): every kind listed, none stands
+ * docked, and inline whatever the setting): every kind listed, "all" stands
  * out; one listed, it is bold with no colour of its own, the others dimColor.
  */
 async function kindsLeftToCore(picker: PickerMount) {
+  const everyKind = [[true, false], [false, true], [false, true], [false, true]]
   const before = await pickerKindButtons(picker)
-  expect(before.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
-  expect(before.map(k => [k.bold, k.dimColor, k.color])).toEqual(before.map(() => [false, false, undefined]))
-  expect(before.map(k => k.label)).toEqual([t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
+  expect(before.map(k => k.kind)).toEqual(['all', 'selection', 'context', 'standalone'])
+  expect(before.map(k => [k.bold, k.dimColor])).toEqual(everyKind)
+  expect(before.map(k => k.color)).toEqual(before.map(() => undefined))
+  expect(before.map(k => k.label)).toEqual([t.hintKindShown(t.allActions), t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
   await showPickerKind(picker, 'context')
   const after = await pickerKindButtons(picker)
   expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color])).toEqual([
+    ['all', false, true, undefined],
     ['selection', false, true, undefined],
     ['context', true, false, undefined],
     ['standalone', false, true, undefined],
   ])
-  expect(after[1]?.label).toBe(t.hintKindShown(t.hintKindTips.context))
-  // Pressed again: every kind, none standing out.
+  expect(after[2]?.label).toBe(t.hintKindShown(t.hintKindTips.context))
+  // Pressed again: every kind, "all" standing out.
   await showPickerKind(picker, 'context')
-  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
+  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual(everyKind)
 }
 
 async function openPicker($: Engine, s: Stage, clock: Clock, surface: 'terminal' | 'desktop' | 'mobile') {
@@ -273,16 +276,19 @@ for (const theme of THEMES) {
       // Without the keyboard, no notice (SELM-00068).
       expect(await texts(picker, NOTICE)).toEqual([])
 
-      // The kind buttons: every kind listed as the dialog opens, none standing
-      // out, each in the body colour; one listed, it is bold in the heading
-      // colour, the others in the muted colour (the palette's dim), never dimColor.
+      // The kind buttons: every kind listed as the dialog opens, "all" bold in
+      // the heading colour; one listed, it is bold in the heading colour; the
+      // others in the muted colour (the palette's dim), never dimColor.
+      const everyKind = [
+        ['all', true, false, p.heading, false],
+        ...['selection', 'context', 'standalone'].map(k => [k, false, true, p.muted, false]),
+      ]
       const kinds = await pickerKindButtons(picker, p.muted)
-      expect(kinds.map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual(
-        ['selection', 'context', 'standalone'].map(k => [k, false, false, p.body, false]),
-      )
+      expect(kinds.map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual(everyKind)
       for (const b of (await picker.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(PICKER_KIND))) expect(b.props.autoFocus).toBeUndefined()
       await showPickerKind(picker, 'selection')
       expect((await pickerKindButtons(picker, p.muted)).map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual([
+        ['all', false, true, p.muted, false],
         ['selection', true, false, p.heading, false],
         ['context', false, true, p.muted, false],
         ['standalone', false, true, p.muted, false],
@@ -290,9 +296,9 @@ for (const theme of THEMES) {
       expect(contrastRatio(p.heading, p.background)).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.muted, p.background)).toBeGreaterThanOrEqual(4.5)
       await showPickerKind(picker, 'selection')
-      expect((await pickerKindButtons(picker, p.muted)).map(k => [k.bold, k.dim])).toEqual([[false, false], [false, false], [false, false]])
+      expect((await pickerKindButtons(picker, p.muted)).map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual(everyKind)
 
-      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE && !String(b.key).startsWith(PICKER_KIND))
+      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => ![PICKER_CLOSE, PICKER_PREV, PICKER_NEXT].includes(String(b.key)) && !String(b.key).startsWith(PICKER_KIND))
       // Every action on mobile, which draws no filter field; elsewhere as many as the pane's height holds.
       expect(buttons.map(b => b.key)).toEqual(await listedActions(picker))
       if (surface === 'mobile') expect(buttons).toHaveLength(ACTIONS.length)

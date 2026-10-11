@@ -6,7 +6,7 @@
 // narrow terminal), so a long label (an English name, a Japanese one in
 // full-width characters) can wrap onto a second row:
 // each button's rows are counted from its label, and so are those of the
-// lines around the list (the "n more" line) and of the row of kind buttons
+// lines around the list (the page buttons) and of the row of kind buttons
 // above it, which wraps button by button (kindRowLines).
 //
 // The terminal wraps a line at its spaces, not at its last cell: a word that
@@ -23,8 +23,8 @@
 // counted as it wraps too (fixedRows, kindRowLines): a narrow
 // pane (an inline body of 28 columns or fewer) wraps the filter row onto a
 // second row, and a very narrow one the close button as well. Every action
-// fits: all of them, no "n more" line. Otherwise as many as fit above that
-// line, and never fewer than MIN_SHOWN (when the pane is that short, it
+// fits: all of them, no page buttons. Otherwise as many a page as fit above
+// them, and never fewer than MIN_SHOWN (when the pane is that short, it
 // scrolls).
 
 import { BUTTON_FRAME, textWidth } from './hint-width'
@@ -163,11 +163,12 @@ export function fixedRows(columns: number, { filterRow, close }: { filterRow: Fi
 }
 
 /**
- * The labels the ⋯ dialog's kind buttons draw, in their order: every kind's
- * with text to run on, else all but the selection's (it needs text).
+ * The labels the ⋯ dialog's kind buttons draw, in their order: the one that
+ * lists every kind, then every kind's with text to run on, else all but the
+ * selection's (it needs text).
  */
-export function pickerKindLabels(t: { pickerKinds: Readonly<Record<HintKind, string>> }, hasSelection: boolean): string[] {
-  return pickerKindsShown(hasSelection).map(k => t.pickerKinds[k])
+export function pickerKindLabels(t: { pickerKinds: Readonly<Record<HintKind, string>>; pickerAll: string }, hasSelection: boolean): string[] {
+  return [t.pickerAll, ...pickerKindsShown(hasSelection).map(k => t.pickerKinds[k])]
 }
 
 /** The kinds the ⋯ dialog draws a button for: every kind with text to run on, else all but the selection's. */
@@ -215,17 +216,53 @@ export type ShownCountInput = {
   buttons?: readonly string[]
   /** Each action's button label, in the order listed. */
   labels: readonly string[]
-  /** The line under a list cut short, for that many left out. */
+  /** The line under a list cut short (the page buttons), for that many left out. */
   more: (count: number) => string
 }
 
-/** How many of `labels`, from the first, the list shows. */
-export function pickerShownCount({ bodyRows, bodyColumns, chrome, filterRow, close, buttons = [], labels, more }: ShownCountInput): number {
+/** The rows the list has, less the rest of the dialog: the filter row, the close button, `chrome` and the row of `buttons`. */
+function listBudget({ bodyRows, bodyColumns, chrome, filterRow, close, buttons = [] }: ShownCountInput): number {
   const columns = Math.max(1, bodyColumns)
-  const budget = bodyRows - fixedRows(columns, { filterRow, close }) - chrome.reduce((sum, line) => sum + linesOf(line, columns), 0) - kindRowLines(buttons, columns)
+  return bodyRows - fixedRows(columns, { filterRow, close }) - chrome.reduce((sum, line) => sum + linesOf(line, columns), 0) - kindRowLines(buttons, columns)
+}
+
+/**
+ * Where each page of `labels` starts, the first at 0: one page when every
+ * action fits; else as many on each as fit above the line `more` gives (the
+ * page buttons, measured at the count of all), never fewer than MIN_SHOWN a
+ * page (when the pane is that short, it scrolls). A page is as pickerShownCount
+ * counts the first: each later one counted the same way from where it starts.
+ */
+export function pickerPages(input: ShownCountInput): number[] {
+  const { bodyColumns, labels, more } = input
+  const columns = Math.max(1, bodyColumns)
+  const budget = listBudget(input)
+  const rows = labels.map(label => buttonLines(label, columns))
+  if (rows.reduce((sum, n) => sum + n, 0) <= budget) return [0]
+  const room = budget - linesOf(more(labels.length), columns)
+  const starts = [0]
+  let left = room
+  let count = 0
+  rows.forEach((n, i) => {
+    if (count >= MIN_SHOWN && n > left) {
+      starts.push(i)
+      left = room
+      count = 0
+    }
+    left -= n
+    count++
+  })
+  return starts
+}
+
+/** How many of `labels`, from the first, the list shows. */
+export function pickerShownCount(input: ShownCountInput): number {
+  const { bodyColumns, labels, more } = input
+  const columns = Math.max(1, bodyColumns)
+  const budget = listBudget(input)
   const rows = labels.map(label => buttonLines(label, columns))
   if (rows.reduce((sum, n) => sum + n, 0) <= budget) return labels.length
-  // Cut short: the "n more" line goes under it, measured at its widest count.
+  // Cut short: the page buttons go under it, measured at their widest.
   let left = budget - linesOf(more(labels.length), columns)
   let count = 0
   for (const n of rows) {
@@ -235,3 +272,13 @@ export function pickerShownCount({ bodyRows, bodyColumns, chrome, filterRow, clo
   }
   return Math.max(count, Math.min(MIN_SHOWN, labels.length))
 }
+
+/** The messages the page buttons' row is drawn from. */
+export type PagerMessages = { pickerPrev: string; pickerNext: string; pickerPage: (page: number, pages: number, count: number) => string }
+
+/** The page buttons' row as drawn under a list cut short: back, the page shown of how many and the count listed, on. */
+export const pagerRow = (t: PagerMessages, page: number, pages: number, count: number) =>
+  `[ ${t.pickerPrev} ] ${t.pickerPage(page, pages, count)} [ ${t.pickerNext} ]`
+
+/** That row at its widest for `count` actions (as many pages as actions): what the list's room is counted less. */
+export const pagerWidest = (t: PagerMessages, count: number) => pagerRow(t, count, count, count)

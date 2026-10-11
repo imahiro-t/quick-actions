@@ -246,7 +246,7 @@ export async function pickerKindButtons(picker: PickerView, muted?: string) {
     const drawnOf = (c: unknown): string =>
       typeof c === 'string' ? c : typeof c === 'object' && c !== null ? ((c as { children?: unknown[] }).children ?? []).map(drawnOf).join('') : ''
     return {
-      kind: String(b.key).slice(PICKER_KIND.length) as HintKindName,
+      kind: String(b.key).slice(PICKER_KIND.length) as HintKindName | 'all',
       label: String(b.props['label']),
       drawn: b.children.map(drawnOf).join(''),
       bold: text?.props?.['bold'] === true,
@@ -258,7 +258,7 @@ export async function pickerKindButtons(picker: PickerView, muted?: string) {
 }
 
 /** Lists the actions of `kind` alone in the ⋯ dialog (or, pressed again, every kind), as a press on its kind button does. */
-export const showPickerKind = (picker: PickerView, kind: HintKindName) => picker.press({ key: `${PICKER_KIND}${kind}` })
+export const showPickerKind = (picker: PickerView, kind: HintKindName | 'all') => picker.press({ key: `${PICKER_KIND}${kind}` })
 
 export const PICKER_PANE = {
   ...PANE,
@@ -527,3 +527,23 @@ export const pickerDialogRows = (t: Messages, value = ''): { filterRow: FilterRo
 
 /** The rows those take at `columns` (see pickerDialogRows). */
 export const pickerFixedRows = (t: Messages, columns: number, value = '') => fixedRows(columns, pickerDialogRows(t, value))
+
+/** The ⋯ dialog's page buttons, back and on. */
+export const PICKER_PREV = '_picker-prev'
+export const PICKER_NEXT = '_picker-next'
+
+/** The text the ⋯ dialog draws between its page buttons: the page shown of how many, and the count listed in all. */
+export const pageText = (t: Messages, page: number, pages: number, count: number) => ` ${t.pickerPage(page, pages, count)} `
+
+/**
+ * The page the ⋯ dialog's texts say is shown, of how many, for `count`
+ * actions listed in all: `[page, pages]`, read from the one text drawn
+ * between the page buttons; undefined when `texts` is not that one text.
+ */
+export function pageShown(texts: readonly string[], t: Messages, count: number): [number, number] | undefined {
+  if (texts.length !== 1) return undefined
+  const m = /(\d+) \/ (\d+)/.exec(texts[0] ?? '')
+  if (m === null) return undefined
+  const [page, pages] = [Number(m[1]), Number(m[2])]
+  return texts[0] === pageText(t, page, pages, count) ? [page, pages] : undefined
+}

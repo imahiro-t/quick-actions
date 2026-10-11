@@ -55,6 +55,16 @@ export const EMOJI_EXTRA = 1
 export const MIN_LABELED_ACTIONS = 2
 
 /**
+ * The cells kept clear after ⋯ for the hover label (its leading space and
+ * the label): enough for `選択範囲へのアクション` (22) and most action labels
+ * whole, a longer one cut with an ellipsis. Without it a full line left the
+ * label a cell or none (`要…`). Kept as long as it leaves the kind buttons
+ * drawn as they would be and MIN_LABELED_ACTIONS actions beside them; else as
+ * much of it as does (see hintLayout).
+ */
+export const TIP_RESERVE = 24
+
+/**
  * The cells of the hint line's row that are not the buttons': the footer's two
  * columns at each side and the widest permission mode at the left,
  * `⏵⏵ bypass permissions on ·` (26). The others take fewer (`⏵⏵ auto mode on ·`
@@ -201,6 +211,8 @@ export type HintLayoutInput = {
   ends: number
   /** The candidate actions' cells (buttonWidth), in the line's order. */
   widths: readonly number[]
+  /** The cells wanted clear for the hover label (TIP_RESERVE); 0, none. */
+  tip?: number
 }
 
 /**
@@ -212,8 +224,24 @@ export type HintLayoutInput = {
  * more than the line holds, so none is squeezed onto a second row, and ⋯
  * always stays to reach the rest. Should the estimate still fall short of
  * what is drawn, the row cuts the actions alone (./register PromptHint).
+ *
+ * With `tip`, that many cells are kept clear for the hover label, fewer
+ * actions laid out for it, as long as the kind buttons are drawn as they would
+ * be without it and MIN_LABELED_ACTIONS actions (or as many as there would
+ * be, when fewer) still fit; else the most cells short of `tip` that do.
  */
-export function hintLayout({ line, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
+export function hintLayout({ tip = 0, ...input }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
+  const base = layoutIn(input)
+  if (input.line === undefined || tip <= 0) return base
+  const keep = Math.min(MIN_LABELED_ACTIONS, base.count)
+  for (let reserve = Math.min(tip, input.line); reserve > 0; reserve--) {
+    const reserved = layoutIn({ ...input, line: input.line - reserve })
+    if (reserved.kinds === base.kinds && reserved.count >= keep) return reserved
+  }
+  return base
+}
+
+function layoutIn({ line, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
   if (line === undefined) return { kinds: 'labeled', count: Math.min(UNMEASURED_COUNT, widths.length) }
   const wanted = Math.min(MIN_LABELED_ACTIONS, widths.length)
   if (ends + kindsLabeled <= line) {

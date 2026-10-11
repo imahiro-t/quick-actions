@@ -18,7 +18,7 @@ import {
 } from '../hooks/order'
 import type { OrderSlot } from '../hooks/order'
 import type { Usage } from '../hooks/order'
-import { BAND, PICKER_PANE, pickAction, hintIcons, reselect, runCommand, stage, start, storedUsage } from './stage'
+import { BAND, PICKER_PANE, pickAction, hintIcons, listedActions, reselect, runCommand, stage, start, storedUsage } from './stage'
 
 // The hint line's order: pins, then the usage score (halving every 30 days),
 // ties in the order of definition; with no pin and no usage, the default set
@@ -226,26 +226,49 @@ test('pins beyond what fits wait under ⋯', { options: { pinActions: 'why,tldr,
   await band.unmount()
 })
 
-test('uses during the session are recorded but do not move the hint line', async ($, on) => {
+test('uses during the session are recorded and move the hint line from the next selection', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const s = stage(on)
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
   const before = await iconsOf($)
+  expect(before[0]).toBe(iconOf('explain'))
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  for (let i = 0; i < 3; i++) {
+  await band.press({ key: 'summarize' })
+  await clock.settle()
+  // The line the press put away comes back on the next selection, the one used first.
+  await reselect(s, clock)
+  const once = await iconsOf($)
+  expect(once[0]).toBe(iconOf('summarize'))
+  expect(once).not.toEqual(before)
+
+  // One used more, later in the session, overtakes it.
+  for (let i = 0; i < 2; i++) {
     await reselect(s, clock)
-    await band.press({ key: 'summarize' })
+    await band.press({ key: 'translate-ja' })
+    await clock.settle()
   }
   await band.unmount()
-  await clock.settle()
 
   const usage = await storedUsage(s)
-  expectNear(usage?.['summarize']?.score, 3)
+  expectNear(usage?.['summarize']?.score, 1)
+  expectNear(usage?.['translate-ja']?.score, 2)
   await reselect(s, clock)
-  expect(await iconsOf($)).toEqual(before)
+  expect((await iconsOf($)).slice(0, 2)).toEqual([iconOf('translate-ja'), iconOf('summarize')])
+})
+
+test('the ⋯ dialog follows a use during the session too', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const s = stage(on)
+  await start($)
+  await runCommand($, 'uuid')
+  await clock.settle()
+  await runCommand($, '')
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  expect((await listedActions(picker))[0]).toBe('uuid')
+  await picker.unmount()
 })
 
 test('a new session settles the order from the usage so far', async ($, on) => {

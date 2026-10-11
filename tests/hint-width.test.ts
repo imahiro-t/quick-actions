@@ -8,6 +8,7 @@ import {
   EMOJI_EXTRA,
   LEAD_RESERVE,
   MIN_LABELED_ACTIONS,
+  TIP_RESERVE,
   buttonWidth,
   dockReturn,
   LEAD_SURFACES,
@@ -279,6 +280,32 @@ test('fewer candidates than the bar: named kinds while those there are fit', () 
 
 test('not measured: named kinds and UNMEASURED_COUNT', () => {
   expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
+  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES, tip: TIP_RESERVE })).toEqual({ kinds: 'labeled', count: 6 })
+})
+
+// The hover label was cut to a cell or none on a full line (`要…`): room is kept for it.
+test('the hover label\'s room: TIP_RESERVE kept after ⋯, the kind buttons as they would be and two actions at least', () => {
+  // `選択範囲へのアクション` (22 cells) whole, with the space ahead of it.
+  expect(TIP_RESERVE).toBeGreaterThanOrEqual(textWidth(' 選択範囲へのアクション'))
+  const widths = Array.from({ length: 20 }, () => 9)
+  const at = (line: number, tip?: number) => hintLayout({ line, kindsLabeled: 30, kindsMarks: 21, ends: 10, widths, ...(tip === undefined ? {} : { tip }) })
+  // Wide: the whole reserve kept, the actions it costs left out (130 cells: 90 for actions, 66 with the reserve).
+  expect(at(130)).toEqual({ kinds: 'labeled', count: 10 })
+  expect(at(130, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: 7 })
+  // Narrower: as much of it as leaves two actions beside the named kinds (70 cells: 12 kept).
+  expect(at(70)).toEqual({ kinds: 'labeled', count: 3 })
+  expect(at(70, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: MIN_LABELED_ACTIONS })
+  // Never the kind buttons drawn otherwise for it, nor fewer than two actions (50 cells: marks and two, as without).
+  expect(at(50, TIP_RESERVE)).toEqual(at(50))
+  // No reserve asked for: as before.
+  expect(at(130, 0)).toEqual(at(130))
+  // Whatever the width, the buttons and the room kept never pass the line.
+  for (let line = 0; line <= 200; line++) {
+    const { kinds, count } = at(line, TIP_RESERVE)
+    expect(kinds).toBe(at(line).kinds)
+    expect(count).toBeLessThanOrEqual(at(line).count)
+    expect(count).toBeGreaterThanOrEqual(Math.min(MIN_LABELED_ACTIONS, at(line).count))
+  }
 })
 
 // SELM-00066: with this plugin's pane docked, the engine hands PromptHint the

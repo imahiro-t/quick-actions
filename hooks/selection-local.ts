@@ -94,8 +94,8 @@ export const hasControls = (s: string) => s.search(CONTROLS) >= 0
 // characters, whether a tag is kept is `inFlag`'s to say), the line and
 // paragraph separators, the other invisible fillers (U+034F, the Hangul
 // fillers, U+17B4-17B5, the Mongolian selectors) and the variation selectors
-// (whether one is kept is `keepsSelector`'s to say). A run of selectors can
-// carry a hidden text a byte a selector, as tag characters can.
+// (whether one is kept is `keepsSelector`'s to say). Selectors can carry a
+// hidden text a byte a selector, as tag characters can.
 const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\p{Cf}\u{2028}\u{2029}\u{34f}\u{115f}\u{1160}\u{17b4}\u{17b5}\u{180b}-\u{180f}\u{3164}\u{ffa0}\u{e0000}-\u{e007f}\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu
 
 // The same, or a backslash: what `showHidden` writes anew, in one pass.
@@ -158,30 +158,40 @@ const isTag = (c: string) => {
 
 const SELECTOR = /^[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]$/u
 const HIDDEN_ONE = new RegExp(`^${HIDDEN.source}$`, 'u')
+const PRESENTATION = /^[\u{fe0e}\u{fe0f}]$/u
+const EMOJI = /^\p{Emoji}$/u
+const IDEOGRAPHIC = /^\p{Ideographic}$/u
 
 /**
  * Whether the variation selector at `at` is kept: one selector right after a
- * character that is neither hidden nor a selector (☀️, 葛󠄀). A selector
- * opening the text, or following another, is escaped, so a run of them can
- * hide nothing.
+ * base it can vary, and nothing else. U+FE0E / U+FE0F (text or emoji
+ * presentation) only on an emoji character (☀️, the `#` of a keycap); the
+ * other selectors, U+FE00-FE0D and U+E0100-E01EF, only on an ideograph (葛󠄀,
+ * an ideographic variation sequence). A selector on a letter, a space, a line
+ * break or the like varies nothing and draws nothing, so it is escaped, as is
+ * one opening the text or following another: a selector slipped in after each
+ * letter of a sentence hides nothing. What still rides unseen is one selector
+ * on each emoji (a bit) or ideograph (a byte), which a pane cannot tell from a
+ * real variant.
  */
-function keepsSelector(s: string, at: number): boolean {
+function keepsSelector(s: string, c: string, at: number): boolean {
   const before = codePointBefore(s, at)
-  return before !== undefined && !HIDDEN_ONE.test(before.char)
+  if (before === undefined || HIDDEN_ONE.test(before.char)) return false
+  return PRESENTATION.test(c) ? EMOJI.test(before.char) : IDEOGRAPHIC.test(before.char)
 }
 
 /**
  * Whether the hidden character `c` at `at` in `s` is to be escaped: all but a
  * ZWJ joining emoji, a tag inside a flag emoji (`flags`, from flagsIn) and a
- * variation selector on a visible character.
+ * variation selector on a base it can vary.
  */
 const escapes = (s: string, c: string, at: number, flags: readonly [number, number][]) =>
-  c === '\u{200d}' ? !joinsEmoji(s, at) : SELECTOR.test(c) ? !keepsSelector(s, at) : !isTag(c) || !inFlag(flags, at)
+  c === '\u{200d}' ? !joinsEmoji(s, at) : SELECTOR.test(c) ? !keepsSelector(s, c, at) : !isTag(c) || !inFlag(flags, at)
 
 /**
- * One hidden character as `\u202e`; one past the BMP (a tag character) as its
- * UTF-16 surrogate pair, `\udb40\udc41`, which a JSON string reads as the
- * same character.
+ * One hidden character as `\u202e`; one past U+FFFF (a tag character, or a
+ * variation selector from U+E0100) as its UTF-16 surrogate pair,
+ * `\udb40\udc41`, which a JSON string reads as the same character.
  */
 const escapeOne = (c: string) => {
   let out = ''

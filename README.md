@@ -26,7 +26,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds. This is for a hint line shown by a selection alone; one opened with `/quick-actions hint` closes as [described below](#opening-the-hint-line-without-a-selection-quick-actions-hint)
 3. Press an icon and the result is added at the top of the "Quick Actions" tab of the right pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
    - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command or on the argument screen ("standalone" when there was none)
-   - For an action on a selection inside one transcript row, the row stays highlighted, and the result has "Go to selection" and "Clear highlight" buttons (see [Finding the selection again](#finding-the-selection-again-highlight-and-the-two-buttons))
+   - For an action on a selection inside one transcript row, the result has a "Go to selection" button that scrolls back to that row (see [Going back to the selection](#going-back-to-the-selection))
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
    - The pane always has two tabs, "Quick Actions" (the results) and "Select an action" (the ⋯ dialog), and one Esc closes both (see [The right pane's two tabs](#the-right-panes-two-tabs))
    - A standalone action that takes an argument (`{⏳}` the timer, say), pressed on the hint line, does not run at once: it opens the pane on its "Select an action" tab, on the action's [argument screen](#the-argument-screen). Enter with the field empty runs it on its default, Enter after typing runs it with what you typed. One that takes no argument (`{🏃}` the stopwatch, say) still runs as soon as it is pressed
@@ -113,23 +113,20 @@ The limits, set by Claude Code:
 - While the question is up, Claude Code gives the pane no keyboard focus, and Esc goes to the question (it does not close the pane). Whether clicking in the pane or ctrl+x tab moves the keyboard to it during a question is not documented and not confirmed; use clicks
 - Should Claude Code refuse the button drawn over the question, the question is drawn alone, without the button. A pane opened before the question can still be clicked
 
-### Finding the selection again (highlight and the two buttons)
+### Going back to the selection
 
-Once the pane opens, Claude Code no longer shows what was selected. So that you can tell which text a result is about, an action run on a selection inside one transcript row keeps that row highlighted, and its result gets two buttons:
+Once the pane opens, Claude Code no longer shows what was selected. So that you can get back to the text a result is about, an action run on a selection inside one transcript row gives its result a **Go to selection** button: it scrolls the transcript back to that row (to the middle of the view). The rows it works for are your messages, Claude's answers, tool calls and their results, groups of tool calls, tool progress, command output, notices, the turn duration line and question dialogs (`AskUserQuestion`).
 
-- **The highlight**: the whole row the selection was in gets a background (the theme's `subtle` color, so it follows the light or dark theme), not just the selected words. The row is drawn as usual inside it (Markdown and tool output are left as they are). The rows that can be highlighted are your messages, Claude's answers, tool calls and their results, groups of tool calls, tool progress, command output, notices, the turn duration line and question dialogs (`AskUserQuestion`)
-  - A tool call and its result are one unit: a selection in either highlights both, and the progress shown under the call too. A group of tool calls is highlighted whether the selection names the group or one of the calls in it
-- **Go to selection**: scrolls the transcript back to that row (to the middle of the view)
-- **Clear highlight**: takes that result's highlight away, and the Clear highlight button with it. Only that button goes: Go to selection stays, so you can still go back to the row after the highlight is gone. Other results' highlights stay, and a row stays highlighted while any result on it still holds one (two commands run on one selection give two results, each with its own pair of buttons)
+- The transcript itself is left as Claude Code draws it: neither the row nor the selected words are marked. Claude Code tells the plugin which row a selection lies in, but not where in that row, and a plugin cannot color part of a row Claude Code draws (an answer's Markdown, a tool's output, your prompt) without drawing the row itself and so losing that drawing. Highlighting the whole row instead did not show which words were picked, so it is not done
+- Each result has its own button (two commands run on one selection give two results, each with one). The button stays while the result is in the pane: closing the pane, running other actions and a plugin reload keep it, and it goes when its result is pushed out of the pane's 20
+- When the row is no longer kept in the transcript, pressing the button does nothing
 
-The highlight stays until you press Clear highlight: closing the pane, running other actions and a plugin reload keep it. It goes, too, when its result is pushed out of the pane's 20.
-
-No highlight and no buttons are shown, and the action runs as before, when:
+No button is shown, and the action runs as before, when:
 
 - the selection spans more than one row, or lies outside the transcript (in the pane, the prompt, the hint line or a dialog): Claude Code reports no row for it
 - the result is from a context action or a standalone action (they work on no selection)
 
-Highlighting and the buttons happen inside Claude Code and send nothing.
+The button works inside Claude Code and sends nothing.
 
 #### The argument screen
 

@@ -39,14 +39,14 @@ export type Result = {
 }
 
 /**
- * The transcript row a selection action's entry ran on, and whether that row
- * still shows it highlighted.
+ * The transcript row a selection action's entry ran on: where its "Go to
+ * selection" scrolls back to. An entry kept by an earlier version may also
+ * carry `highlighted` (from when the row was drawn highlighted); nothing reads
+ * it any more, so it does no harm.
  */
 export type ResultOrigin = {
   /** The row, by the id its `ui.render` hook reads as `e.requestId` and `$.ui.scroll` takes. */
   requestId: string
-  /** True until the entry's "Clear highlight" is pressed. */
-  highlighted: boolean
 }
 
 /**
@@ -70,14 +70,6 @@ declare module 'claude-code' {
       selection: string | null
       dismissed: string | null
       results: Result[]
-      /**
-       * The transcript rows drawn highlighted now (by requestId, sorted, each
-       * once): what `results` says (an entry's origin, not cleared), kept
-       * apart so that the transcript rows read this alone while they draw,
-       * and are drawn again when it changes, not on every write of `results`
-       * (a run over time writes it every tick). Written only when it changes.
-       */
-      highlightedRows: string[]
       /**
        * The ⋯ dialog's tab ("Select an action"), open beside the result pane's
        * whenever either is: null while they are closed; open, the text it runs

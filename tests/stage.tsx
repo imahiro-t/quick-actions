@@ -259,7 +259,7 @@ export type Stage = {
   // The transcript row the selection lies in, as $.ui.selection() names it
   // (UiSelection.requestId); null, as by default: none named (a selection
   // over several rows, in a pane or the prompt), which every test before the
-  // highlights assumed.
+  // "Go to selection" button assumed.
   selectedRow: string | null
   models: { model: string; system?: string; prompt: string }[]
   registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string }[]
@@ -306,8 +306,8 @@ export type Stage = {
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
   // How many times the engine drew each site beneath the plugin, by
-  // `<component>:<requestId>`: a transcript row's hook drawing it again
-  // (highlighted or not) asks the engine's drawing again.
+  // `<component>:<requestId>`: a transcript row drawn again asks the engine's
+  // drawing again.
   drawn: Record<string, number>
 }
 

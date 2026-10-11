@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, DEFAULT_ACTION_IDS, markedIcon } from '../hooks/actions'
+import { ACTIONS, DEFAULT_ACTION_IDS, isContext, isStandalone, markedIcon, needsSelection } from '../hooks/actions'
 import {
   HALF_LIFE_MS,
   arrange,
@@ -10,6 +10,9 @@ import {
   orderActions,
   parsePins,
   parseUsage,
+  pickerKindFor,
+  pickerList,
+  pickerOrder,
   recordUse,
   settleIn,
 } from '../hooks/order'
@@ -325,4 +328,60 @@ test('a settling an earlier load started never becomes a later load\'s order', a
   await oldOrder
   expect(await settleIn(newSlot, async () => ['explain', 'translate-ja', 'mine'])).toEqual(['explain', 'translate-ja', 'mine'])
   expect(await oldOrder).toEqual(['explain', 'translate-ja'])
+})
+
+// ---------------------------------------------------------------------------
+// The ⋯ dialog's order (SELM-00068): the settled order as it is, the most used
+// first whatever their kind (no arrange), the default set aside; one kind at a
+// time when its kind buttons switch it.
+
+test('pickerOrder: the settled order as it is; the order of definition while the default set leads it', () => {
+  const usage: Usage = { 'recap': at(5), 'timer': at(3), 'explain': at(3), 'translate-en': at(1) }
+  const ordered = orderActions(ACTIONS, [], usage, NOW)
+  const order = pickerOrder(ordered, ACTIONS, defaultsLead(ACTIONS, [], usage, NOW))
+  // Highest first, whatever the kind (a context, a standalone and a selection action mixed); ties in the order of definition.
+  expect(ids(order.slice(0, 4))).toEqual(['recap', 'explain', 'timer', 'translate-en'])
+  expect(ACTIONS.findIndex(a => a.id === 'explain')).toBeLessThan(ACTIONS.findIndex(a => a.id === 'timer'))
+  // The unused after them, in the order of definition.
+  const rest = order.slice(4)
+  expect(ids(rest)).toEqual(ids(ACTIONS.filter(a => !(a.id in usage))))
+  // Pins first, then the scores.
+  const pins = parsePins(ACTIONS, 'why,timer')
+  const pinned = pickerOrder(orderActions(ACTIONS, pins, usage, NOW), ACTIONS, defaultsLead(ACTIONS, pins, usage, NOW))
+  expect(ids(pinned.slice(0, 5))).toEqual(['why', 'timer', 'recap', 'explain', 'translate-en'])
+  // No pin and no usage: the order of definition, the default set not led.
+  expect(defaultsLead(ACTIONS, [], {}, NOW)).toBe(true)
+  const fresh = pickerOrder(orderActions(ACTIONS, [], {}, NOW), ACTIONS, true)
+  expect(ids(fresh)).toEqual(ids(ACTIONS))
+  expect(ids(fresh.slice(0, DEFAULT_ACTION_IDS.length))).not.toEqual([...DEFAULT_ACTION_IDS])
+  // A copy, never the array handed in.
+  expect(fresh).not.toBe(ACTIONS)
+})
+
+test('pickerKindFor: the kind switched to, every kind (undefined) as it opens; the selection\'s needs text', () => {
+  expect(pickerKindFor(undefined, true)).toBeUndefined()
+  expect(pickerKindFor(undefined, false)).toBeUndefined()
+  expect(pickerKindFor('selection', true)).toBe('selection')
+  expect(pickerKindFor('selection', false)).toBeUndefined()
+  expect(pickerKindFor('context', false)).toBe('context')
+  expect(pickerKindFor('standalone', true)).toBe('standalone')
+})
+
+test('pickerList: without text the selection\'s left out; a kind switched to, that kind alone; the order kept', () => {
+  const usage: Usage = { 'recap': at(5), 'timer': at(3), 'explain': at(3) }
+  const order = pickerOrder(orderActions(ACTIONS, [], usage, NOW), ACTIONS, false)
+  expect(ids(pickerList(order, true, undefined))).toEqual(ids(order))
+  expect(ids(pickerList(order, false, undefined))).toEqual(ids(order.filter(a => !needsSelection(a))))
+  expect(ids(pickerList(order, true, 'selection'))).toEqual(ids(order.filter(a => needsSelection(a))))
+  expect(ids(pickerList(order, true, 'context'))).toEqual(ids(order.filter(isContext)))
+  expect(ids(pickerList(order, false, 'standalone'))).toEqual(ids(order.filter(isStandalone)))
+  // Each kind keeps the one order: the most used of it first.
+  expect(pickerList(order, true, 'selection')[0]?.id).toBe('explain')
+  expect(pickerList(order, true, 'context')[0]?.id).toBe('recap')
+  expect(pickerList(order, true, 'standalone')[0]?.id).toBe('timer')
+  // The selection's without text: pickerKindFor makes it every kind there is (no selection action).
+  expect(ids(pickerList(order, false, pickerKindFor('selection', false)))).toEqual(ids(order.filter(a => !needsSelection(a))))
+  // Not arranged: a context action used most comes before the selection's.
+  expect(pickerList(order, true, undefined)[0]?.id).toBe('recap')
+  expect(ids(arrange(order, [], true)).indexOf('recap')).toBeGreaterThan(0)
 })

@@ -8,9 +8,11 @@
 // highest first, a tie or an unused one keeping the order of definition
 // (built-ins on the selection, built-ins on the conversation, built-in
 // standalone ones, then custom ones). With no pin and no usage of any action
-// that exists, the default set leads instead. arrange then lays that order out
-// for the moment: with a selection, the actions on it come before the others
-// (the pins still first); with none, they are left out.
+// that exists, the default set leads instead. On the hint line, arrange then
+// lays that order out for the moment: with a selection, the actions on it come
+// before the others (the pins still first); with none, they are left out. The
+// ⋯ dialog lists it as it is, the default set aside (pickerOrder), one kind at
+// a time when its kind buttons switch it (pickerList).
 // Each use adds 1 to the action's score, and a score halves every 30 days, so
 // the order follows what the person uses lately.
 
@@ -194,4 +196,37 @@ export const ofKind = <D extends { target?: Target }>(defs: readonly D[], kind: 
 export function hintKindFor(chosen: HintKind | null, hasText: boolean): HintKind {
   const kind = chosen ?? (hasText ? 'selection' : 'context')
   return kind === 'selection' && !hasText ? 'context' : kind
+}
+
+/**
+ * The order the ⋯ dialog lists every action in: the settled order (`ordered`:
+ * the pins, then by usage score, ties in the order of definition) as it is,
+ * not laid out by arrange, so the most used come first whatever their kind.
+ * While the default set leads it (`defaultsLed`: no pins and no usage yet),
+ * the order of definition (`defined`) instead: the dialog follows the usage
+ * alone, and an action unused keeps its place in the definitions. The hint
+ * line keeps arrange and the default set (see there).
+ */
+export function pickerOrder<D extends { id: string }>(ordered: readonly D[], defined: readonly D[], defaultsLed: boolean): D[] {
+  return [...(defaultsLed ? defined : ordered)]
+}
+
+/**
+ * The kind the ⋯ dialog lists: the one its kind buttons switched to
+ * (`chosen`), or every kind (undefined). The selection's needs text: without
+ * it, every kind.
+ */
+export function pickerKindFor(chosen: HintKind | undefined, hasSelection: boolean): HintKind | undefined {
+  return chosen === 'selection' && !hasSelection ? undefined : chosen
+}
+
+/**
+ * What the ⋯ dialog lists of `order` (pickerOrder), in that order: without a
+ * selection, the actions on it left out; with a kind (`kind`, as pickerKindFor
+ * gives it: the caller has already dropped the selection's without text),
+ * that kind alone. The filter then searches what is left.
+ */
+export function pickerList<D extends { target?: Target }>(order: readonly D[], hasSelection: boolean, kind: HintKind | undefined): D[] {
+  const listable = hasSelection ? [...order] : order.filter(d => !needsSelection(d))
+  return kind === undefined ? listable : ofKind(listable, kind)
 }

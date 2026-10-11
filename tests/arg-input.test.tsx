@@ -22,9 +22,11 @@ import {
   listBox,
   listedActions,
   pickAction,
+  pickerKindButtons,
   SURFACES,
   runCommand,
   showKind,
+  showPickerKind,
   stage,
   start,
   storedUsage,
@@ -300,7 +302,8 @@ for (const [options, t] of LANGS) {
     await picker.input({ key: PICKER_ARG, text: ' 99h ' })
     await picker.unmount()
 
-    expect(written.at(-1)).toEqual({ text: null, filter: '', arg: { action: 'timer', value: ' 99h ', invalid: '99h' } })
+    // Reached through the filter (pickAction types its ID: the list leads with the most used, the timer past it).
+    expect(written.at(-1)).toEqual({ text: null, filter: 'timer', arg: { action: 'timer', value: ' 99h ', invalid: '99h' } })
     expect(JSON.stringify(written)).not.toContain(t.invalidArg('timer', '99h', hintOf('timer', l)))
   })
 
@@ -310,6 +313,8 @@ for (const [options, t] of LANGS) {
     await start($)
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+    // Switched to the standalone actions first: the kind is kept through the argument screen.
+    await showPickerKind(picker, 'standalone')
     await picker.input({ key: PICKER_FILTER, text: 'timer', kind: 'change' })
     await pickAction(picker, 'timer')
     expect(await picker.find({ key: PICKER_ARG })).toBeDefined()
@@ -317,7 +322,11 @@ for (const [options, t] of LANGS) {
     expect(await picker.find({ key: PICKER_ARG })).toBeUndefined()
     expect(await listedActions(picker)).toContain('timer')
     expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('timer')
-    expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()
+    // The kind buttons, no selection's with no text, the standalone one still listed.
+    const kinds = await pickerKindButtons(picker)
+    expect(kinds.map(k => k.kind)).toEqual(['context', 'standalone'])
+    expect(kinds.map(k => k.bold)).toEqual([false, true])
+    expect(kinds[1]?.label).toBe(t.hintKindShown(t.hintKindTips.standalone))
     await picker.unmount()
     expect(s.closed).toEqual([])
     ranNothing(s)
@@ -358,8 +367,8 @@ for (const paneTheme of ['light', 'dark'] as const) {
     await start($)
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    // A palette lists buttons, not a Select.
-    await picker.press({ key: 'timer' })
+    // A palette lists buttons, not a Select (the timer reached through the filter).
+    await pickAction(picker, 'timer')
     expect(await picker.find({ key: PICKER_ARG })).toBeDefined()
     const back = (await picker.findAll({ text: MESSAGES.en.argBack })).filter(f => f.type === 'Text')
     expect(back.map(f => f.props.color)).toEqual([paneStyle(paneTheme, 'dock').muted])

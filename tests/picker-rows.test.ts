@@ -2,13 +2,33 @@ import { expect, test } from 'claude-code/testing'
 
 import { textWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
-import { BUTTON_FRAME, EMOJI_SLACK, FIXED_ROWS, MIN_SHOWN, buttonLines, linesOf, pickerShownCount, wrappedRows } from '../hooks/picker-rows'
+import {
+  BUTTON_FRAME,
+  EMOJI_SLACK,
+  FIXED_ROWS,
+  MIN_SHOWN,
+  buttonLines,
+  kindRowLines,
+  linesOf,
+  pickerKindLabels,
+  pickerShownCount,
+  wrappedRows,
+} from '../hooks/picker-rows'
+
+/** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
+const pickerKindRow = (t: (typeof MESSAGES)['en'], hasSelection: boolean): string =>
+  pickerKindLabels(t, hasSelection)
+    .map(label => `[ ${label} ]`)
+    .join('')
 
 // How many actions the ⋯ dialog lists (SELM-00059): as many buttons as the
 // pane's rows hold once the lines around the list are taken off, each button
 // and each line wrapped at the pane's columns.
 
 const more = MESSAGES.en.pickerMore
+// A sentence of English that wraps as words do (the notice the dialog once
+// drew above its list, kept here as a text to count).
+const SENTENCE = 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.'
 const short = (n: number) => Array.from({ length: n }, (_, i) => `[💡] Action ${i}`)
 
 test('a line takes the rows its width wraps to at the columns, one at least', () => {
@@ -19,9 +39,8 @@ test('a line takes the rows its width wraps to at the columns, one at least', ()
   expect(linesOf('あ'.repeat(17), 34)).toBe(1)
   expect(linesOf('あ'.repeat(18), 34)).toBe(2)
   expect(linesOf('x' + 'あ'.repeat(17), 34)).toBe(2)
-  // The notice wraps onto several rows in a docked pane's 34 columns.
-  expect(linesOf(MESSAGES.en.pickerNoFocus, 34)).toBeGreaterThanOrEqual(3)
-  expect(linesOf(MESSAGES.ja.pickerNoFocus, 34)).toBeGreaterThanOrEqual(3)
+  // A sentence wraps onto several rows at 34 columns.
+  expect(linesOf(SENTENCE, 34)).toBeGreaterThanOrEqual(3)
   // Columns below 1 do not divide by zero.
   expect(linesOf('abc', 0)).toBe(3)
   // Each line of several counts on its own.
@@ -46,8 +65,8 @@ test('lines wrap at their spaces: a word that does not fit goes whole onto the n
   expect(wrappedRows('あ'.repeat(40), 34)).toBe(3)
 })
 
-test('the English notice is counted as the words wrap, where the width over the columns comes out a row short (SELM-00059 QA)', () => {
-  const notice = MESSAGES.en.pickerNoFocus
+test('an English sentence is counted as the words wrap, where the width over the columns comes out a row short (SELM-00059 QA)', () => {
+  const notice = SENTENCE
   // 108 cells: ceil(108 / 54) is 2, but "keyboard." does not fit on the second row.
   expect(textWidth(notice)).toBe(108)
   expect(Math.ceil(textWidth(notice) / 54)).toBe(2)
@@ -76,42 +95,83 @@ test('a button takes its label and its frame, wrapped a cell narrower: a long En
 })
 
 test('every action fits: all of them, with no "n more" line taken off', () => {
-  // 20 rows: the legend, the filter row and the close button leave 17, for 17 one-row buttons.
-  const chrome = ['< > context  { } standalone']
+  // 20 rows: the kind buttons, the filter row and the close button leave 17, for 17 one-row buttons.
+  const buttons = pickerKindLabels(MESSAGES.en, false)
   expect(FIXED_ROWS).toBe(2)
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome, labels: short(17), more })).toBe(17)
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome, labels: short(5), more })).toBe(5)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome: [], buttons, labels: short(17), more })).toBe(17)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome: [], buttons, labels: short(5), more })).toBe(5)
+  // A line handed in as chrome is a row more taken off.
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome: ['x'], buttons, labels: short(17), more })).toBe(15)
 })
 
 test('cut short: the "n more" line is taken off too, then as many as fit', () => {
-  const chrome = ['< > context  { } standalone']
+  const chrome: string[] = []
+  const buttons = pickerKindLabels(MESSAGES.en, false)
   // 17 rows left; 18 do not fit, so one row goes to the line: 16.
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome, labels: short(18), more })).toBe(16)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, chrome, buttons, labels: short(18), more })).toBe(16)
   // The English line wraps at 34 columns: two rows go to it.
   expect(linesOf(more(300), 34)).toBe(2)
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, chrome, labels: short(300), more })).toBe(15)
+  expect(kindRowLines(buttons, 34)).toBe(1)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, chrome, buttons, labels: short(300), more })).toBe(15)
   // The Japanese one does not.
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, chrome, labels: short(300), more: MESSAGES.ja.pickerMore })).toBe(16)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, chrome, buttons, labels: short(300), more: MESSAGES.ja.pickerMore })).toBe(16)
 })
 
-test('the notice is taken off as the rows it wraps to', () => {
-  const legend = MESSAGES.en.pickerLegend(true)
-  const without = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome: [legend], labels: short(300), more })
-  const withNotice = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome: [MESSAGES.en.pickerNoFocus, legend], labels: short(300), more })
-  expect(without - withNotice).toBe(linesOf(MESSAGES.en.pickerNoFocus, 34))
+test('the kind buttons: their labels and the row they draw, every kind with text, the selection\'s left out without', () => {
+  expect(pickerKindLabels(MESSAGES.en, true)).toEqual(['[ ] selection', '< > context', '{ } standalone'])
+  expect(pickerKindLabels(MESSAGES.en, false)).toEqual(['< > context', '{ } standalone'])
+  expect(pickerKindLabels(MESSAGES.ja, true)).toEqual(['[ ] 選択', '< > 会話', '{ } 単独'])
+  expect(pickerKindLabels(MESSAGES.ja, false)).toEqual(['< > 会話', '{ } 単独'])
+  expect(pickerKindRow(MESSAGES.en, true)).toBe('[ [ ] selection ][ < > context ][ { } standalone ]')
+  expect(pickerKindRow(MESSAGES.ja, false)).toBe('[ < > 会話 ][ { } 単独 ]')
+})
+
+test('the kind buttons\' row: one row in a docked pane\'s 56 columns, wrapped button by button when narrower', () => {
+  for (const lang of ['en', 'ja'] as const) {
+    for (const hasSelection of [true, false]) {
+      const labels = pickerKindLabels(MESSAGES[lang], hasSelection)
+      expect([lang, hasSelection, kindRowLines(labels, 56)]).toEqual([lang, hasSelection, 1])
+      // Never fewer rows than the drawn row's width over the columns (a cell kept for an emoji).
+      for (let columns = 8; columns <= 80; columns++) {
+        expect(kindRowLines(labels, columns)).toBeGreaterThanOrEqual(Math.ceil(textWidth(pickerKindRow(MESSAGES[lang], hasSelection)) / (columns - EMOJI_SLACK)))
+      }
+    }
+  }
+  // The English row with text is 50 cells: at 34 columns, two buttons on the first row, one on the second.
+  const en = pickerKindLabels(MESSAGES.en, true)
+  expect(textWidth(pickerKindRow(MESSAGES.en, true))).toBe(50)
+  expect(kindRowLines(en, 34)).toBe(2)
+  // At 20, a button a row: "[ { } standalone ]" is 18 cells, within the 19 counted.
+  expect(kindRowLines(en, 20)).toBe(3)
+  // A button wider than the row takes the rows its own label wraps to.
+  expect(kindRowLines(['x'.repeat(30)], 20)).toBe(buttonLines('x'.repeat(30), 20))
+  expect(kindRowLines(['ab', 'x'.repeat(30)], 20)).toBe(1 + buttonLines('x'.repeat(30), 20))
+  // None: no row.
+  expect(kindRowLines([], 56)).toBe(0)
+})
+
+test('the kind buttons\' row is taken off as the rows it wraps to', () => {
+  const buttons = pickerKindLabels(MESSAGES.en, true)
+  const without = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome: [], labels: short(300), more })
+  const withRow = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome: [], buttons, labels: short(300), more })
+  expect(without - withRow).toBe(kindRowLines(buttons, 34))
+  expect(without - withRow).toBe(2)
+  const docked = pickerShownCount({ bodyRows: 30, bodyColumns: 56, chrome: [], buttons, labels: short(300), more })
+  expect(pickerShownCount({ bodyRows: 30, bodyColumns: 56, chrome: [], labels: short(300), more }) - docked).toBe(1)
 })
 
 test('long labels wrap, so fewer are listed, and the rows they take never pass the pane\'s', () => {
-  const chrome = [MESSAGES.en.pickerLegend(true)]
+  const chrome: string[] = []
+  const buttons = pickerKindLabels(MESSAGES.en, true)
   const long = Array.from({ length: 40 }, (_, i) => `[🌐] Translate this into language number ${i}`)
   const mixed = short(40).map((label, i) => (i % 2 === 0 ? label : long[i] ?? label))
-  const shortCount = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome, labels: short(40), more })
+  const shortCount = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome, buttons, labels: short(40), more })
   for (const labels of [long, mixed]) {
-    const n = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome, labels, more })
+    const n = pickerShownCount({ bodyRows: 30, bodyColumns: 34, chrome, buttons, labels, more })
     expect(n).toBeLessThan(shortCount)
     const used =
       FIXED_ROWS +
-      chrome.reduce((sum, line) => sum + linesOf(line, 34), 0) +
+      kindRowLines(buttons, 34) +
       linesOf(more(labels.length), 34) +
       labels.slice(0, n).reduce((sum, label) => sum + buttonLines(label, 34), 0)
     expect(used).toBeLessThanOrEqual(30)
@@ -122,11 +182,12 @@ test('long labels wrap, so fewer are listed, and the rows they take never pass t
 
 test('never fewer than three, however short the pane; fewer only when there are fewer', () => {
   expect(MIN_SHOWN).toBe(3)
-  const chrome = [MESSAGES.en.pickerNoFocus, MESSAGES.en.pickerLegend(true)]
-  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, labels: short(300), more })).toBe(3)
-  expect(pickerShownCount({ bodyRows: 0, bodyColumns: 0, chrome, labels: short(300), more })).toBe(3)
-  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, labels: short(2), more })).toBe(2)
-  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, labels: [], more })).toBe(0)
+  const chrome = [SENTENCE]
+  const buttons = pickerKindLabels(MESSAGES.en, true)
+  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, buttons, labels: short(300), more })).toBe(3)
+  expect(pickerShownCount({ bodyRows: 0, bodyColumns: 0, chrome, buttons, labels: short(300), more })).toBe(3)
+  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, buttons, labels: short(2), more })).toBe(2)
+  expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, buttons, labels: [], more })).toBe(0)
 })
 
 // SELM-00058: the rows of a label with an emoji, counted word by word as the

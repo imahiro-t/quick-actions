@@ -4,16 +4,19 @@
 // As many as fit beside the kind buttons, ✕ and ⋯, never more than there
 // are; UNMEASURED_COUNT where the width is not known.
 //
-// The line sits under the prompt, which shares the transcript's column: its
-// width is the viewport's columns as the engine hands them to PromptHint. On
-// the terminal those are the transcript's column, so while a pane is docked
-// beside it (the terminal in fullscreen from 110 columns), any plugin's, they
-// are already the terminal's width less the dock's, and nothing more comes off
-// for it. (SELM-00066: seen in a pseudo-terminal, 180 columns with this
-// plugin's pane docked give a viewport of 123, the dock's 57 already off. The
-// dock was once taken off again, leaving 123 − 59 − 30 = 34 cells for the
-// buttons: past ✕ and ⋯ and the kind buttons, room for one action at most, and
-// at 160 columns none.)
+// The line sits under the prompt, and like the prompt it is drawn across the
+// terminal's whole width, under a docked pane too (the terminal in fullscreen
+// from 110 columns): the dock stands beside the transcript alone. The engine
+// hands PromptHint the viewport's columns, which on the terminal are the
+// transcript's column, the dock already off (SELM-00066: seen in a
+// pseudo-terminal, 180 columns with this plugin's pane docked give a viewport
+// of 123, the pane's body 56 and its rule 1 off). So while this plugin's pane
+// is docked, the line's width is the viewport's columns with that dock given
+// back (dockReturn, the dock as the pane measures it where it is drawn): the
+// pane takes nothing off the line, and its opening or closing leaves the count
+// of actions as it was (SELM-00068). Another plugin's dock cannot be seen from
+// here and is not given back: beside it the line may come out narrower than
+// it is, never wider.
 //
 // The row also holds, at its left, the permission mode the engine draws there
 // (`⏵⏵ auto mode on ·`, shift+tab cycles it), and the footer keeps two
@@ -33,6 +36,14 @@ export const UNMEASURED_COUNT = 6
 
 /** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
 export const BUTTON_FRAME = 4
+
+/**
+ * What a docked pane takes off the transcript's column beyond its body: the
+ * rule between them (SELM-00066: 180 columns docked give a viewport of 123
+ * with a body of 56, so 57 in all). Counted at what was seen, never more: a
+ * dock given back too wide would hand the line more than it holds.
+ */
+export const DOCK_GUTTER = 1
 
 /** The cells between one button and the next: none, the terminal draws them flush (`[ a ][ b ]`). */
 export const BUTTON_GAP = 0
@@ -142,13 +153,17 @@ export function leadFor(surface: string): number {
   return LEAD_SURFACES.includes(surface) ? LEAD_RESERVE : 0
 }
 
+/** The columns this plugin's pane docked with a body `bodyColumns` wide took off the viewport, given back to the hint line. */
+export const dockReturn = (bodyColumns: number) => Math.max(0, bodyColumns) + DOCK_GUTTER
+
 /**
  * The columns the hint line has for its buttons: the viewport's (on the
- * terminal the transcript's column, a docked pane's already off) less the rest
- * of the row (leadFor; 0: none).
+ * terminal the transcript's column, a docked pane's already off) with this
+ * plugin's dock given back (`dock`, dockReturn; 0: none), less the rest of the
+ * row (leadFor; 0: none).
  */
-export function hintLineColumns(viewportColumns: number, lead = 0): number {
-  return Math.max(0, viewportColumns - Math.max(0, lead))
+export function hintLineColumns(viewportColumns: number, lead = 0, dock = 0): number {
+  return Math.max(0, viewportColumns + Math.max(0, dock) - Math.max(0, lead))
 }
 
 /**

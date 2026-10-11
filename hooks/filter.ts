@@ -23,7 +23,7 @@ const KIND_WORDS: Record<Target, readonly string[]> = {
   none: ['単独', 'コンテキストなし', 'standalone', 'none'],
 }
 
-// The marks of the kinds, as the dialog's legend shows them: a word that is
+// The marks of the kinds, as the dialog's kind buttons show them: a word that is
 // one of these narrows to that kind rather than matching text.
 const KIND_MARKS: Readonly<Record<string, Target>> = {
   '[': 'selection',

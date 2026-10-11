@@ -5,10 +5,12 @@ import {
   BASE_COLUMNS,
   BUTTON_FRAME,
   BUTTON_GAP,
+  DOCK_GUTTER,
   EMOJI_EXTRA,
   LEAD_RESERVE,
   MIN_LABELED_ACTIONS,
   buttonWidth,
+  dockReturn,
   LEAD_SURFACES,
   hasEmoji,
   hintLayout,
@@ -41,13 +43,28 @@ test('the cells a label takes: wide characters and emoji count two, joiners and 
   expect(buttonWidth('[💡]')).toBe(4 + BUTTON_FRAME + BUTTON_GAP + EMOJI_EXTRA)
 })
 
-test('the line is the viewport\'s columns: no dock comes off them again (SELM-00066)', () => {
+test('the line is the viewport\'s columns with this plugin\'s dock given back: no dock comes off them again (SELM-00066, SELM-00068)', () => {
   expect(hintLineColumns(160)).toBe(160)
   // 180 columns with this plugin's pane docked, as seen in a pseudo-terminal:
-  // the engine hands PromptHint a viewport of 123, the dock already off.
+  // the engine hands PromptHint a viewport of 123, the dock (a body of 56 and
+  // its rule) already off; the line runs under the dock, so it is given back.
+  expect(DOCK_GUTTER).toBe(1)
+  expect(dockReturn(56)).toBe(57)
+  expect(dockReturn(0)).toBe(1)
+  expect(dockReturn(-5)).toBe(1)
+  expect(hintLineColumns(123, 0, dockReturn(56))).toBe(180)
+  for (const [terminal, viewport] of [[160, 103], [180, 123], [200, 143]] as const) {
+    expect(hintLineColumns(viewport, 0, dockReturn(56))).toBe(terminal)
+    expect(hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))).toBe(terminal - LEAD_RESERVE)
+    // As the same terminal undocked: the same line.
+    expect(hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))).toBe(hintLineColumns(terminal, LEAD_RESERVE))
+  }
+  // No dock given: the viewport's columns alone.
   expect(hintLineColumns(123)).toBe(123)
+  expect(hintLineColumns(123, 0, 0)).toBe(123)
+  expect(hintLineColumns(123, 0, -10)).toBe(123)
   expect(hintLineColumns(0)).toBe(0)
-  // The dock is neither measured nor taken off here any more.
+  // The dock is never taken off: the old measure of what comes off is gone.
   expect('dockWidth' in hintWidth).toBe(false)
   expect('DOCK_FRAME' in hintWidth).toBe(false)
 })
@@ -278,12 +295,23 @@ test('not measured: named kinds and the setting\'s count as it always was', () =
   expect(hintLayout({ line: undefined, target: 6, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
 })
 
-// SELM-00066: with this plugin's pane docked, the line is what the engine hands
-// PromptHint, the terminal's columns less the dock (seen in a pseudo-terminal:
-// 160, 180 and 200 columns with a body of 56 give 103, 123 and 143). Taking the
-// dock off again (56 + 3) left 14, 34 and 54 cells for the buttons: at 160 and
-// 180 columns no action, ✕ and ⋯ alone, as the person saw.
+// SELM-00066: with this plugin's pane docked, the engine hands PromptHint the
+// terminal's columns less the dock (seen in a pseudo-terminal: 160, 180 and 200
+// columns with a body of 56 give 103, 123 and 143). Taking the dock off again
+// (56 + 3) left 14, 34 and 54 cells for the buttons: at 160 and 180 columns no
+// action, ✕ and ⋯ alone, as the person saw. Those viewports alone (another
+// plugin's dock, or this one's before it is measured) still hold one action.
 const DOCKED = [[160, 103], [180, 123], [200, 143]] as const
+
+test('docked, this plugin\'s dock given back: the line as the whole terminal\'s (SELM-00068)', () => {
+  for (const lang of ['ja', 'en'] as const) {
+    for (const [terminal, viewport] of DOCKED) {
+      const given = hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))
+      expect(given).toBe(hintLineColumns(terminal, LEAD_RESERVE))
+      expect(layoutAt(viewport + dockReturn(56), lang, LEAD_RESERVE)).toEqual(layoutAt(terminal, lang, LEAD_RESERVE))
+    }
+  }
+})
 
 test('docked: the line the engine hands over holds at least one action, never more than it holds (SELM-00066)', () => {
   for (const lang of ['ja', 'en'] as const) {

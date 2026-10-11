@@ -78,19 +78,21 @@ The selection taken in when the command ran is not one of these: its going (whic
 
 Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID, to open a dialog of every action. It is the "Select an action" tab of the right pane, shown in front of the "Quick Actions" tab (see [The right pane's two tabs](#the-right-panes-two-tabs)).
 
-- The actions are listed in the hint line's order, as `[icon] label`, `<icon> label` or `{icon} label`, under a legend of the marks (`[ ] selection  < > context  { } standalone`)
-- Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and the legend reads `< > context  { } standalone`
+- The actions are listed most used first, as `[icon] label`, `<icon> label` or `{icon} label`, every kind mixed: the actions pinned in [`actions`](#actions) first, then the rest by their usage score (see [Usage counts](#usage-counts)), those used equally or not yet in definition order. Unlike the hint line, the default set does not lead the first time: with no pin and no use yet, the list is in definition order
+- Above the list are three kind buttons, `[ ] selection`, `< > context` and `{ } standalone`. When the dialog opens it lists every kind, and no button stands out. Press one to list that kind alone (the same order, the most used of it first): that button is drawn bold and the others dim. Press it again to list every kind again. Each time the dialog opens it starts on every kind; a run picked in it keeps the kind while the dialog stays open behind the result
+- Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and there is no `[ ] selection` button
 - The list is a column of buttons, shown as soon as the dialog opens (nothing to open first)
 - The list fills the pane's height: it shows as many actions as fit from the top of the order (a long label that wraps onto two rows takes two), and lists them again when the terminal is resized (shrunk and grown back, it fills the height again). When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
 - An action on the selection picked runs on the text that was selected when the dialog opened, or on the one selected since if you select again while the pane is open; a context action runs on the conversation. A standalone action that takes an argument turns the list into its [argument screen](#the-argument-screen); one that takes none runs at once. The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
 - Tab or ↓ moves from the filter to the first action; ↑ / ↓ (or Tab / Shift+Tab) move between the actions, and Enter runs the one with the focus. ↓ on the last action goes on to the Close button, and Shift+Tab on the first back to the filter. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
-- While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app): click your pick, or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
+- While the prompt holds text you are typing, the dialog does not get the keyboard: click your pick (or a kind button), or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
 **The filter**: above the list is a field, "Filter (ID, name, kind)", which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
 
 - **What it searches**: each action's ID, its label (in both English and Japanese, whatever the display language), and the names of its kind (`selection`, `context`, `standalone`, `none`, and the Japanese `選択`, `会話`, `コンテキスト`, `単独`, `コンテキストなし`)
 - **How it matches**: anywhere in the text. Words split by spaces (half- or full-width) must all match (AND). Full- and half-width characters, upper and lower case, and katakana and hiragana count as the same (`ＴＩＭＥＲ`, `ﾀｲﾏｰ` or `たいまー` find `timer`)
 - **Narrowing by kind**: `[` (or `[]`), `<` (or `<>`) and `{` (or `{}`), written as a word of their own, keep the actions on the selection, the context actions or the standalone actions alone (e.g. `{ clock`). Marks of two different kinds match nothing
+- It narrows the kind listed: with a kind button pressed, only the actions of that kind that match are left (and Enter runs the first of them)
 - The order stays as it was, except that the action whose ID is the whole query comes first
 - **Enter** runs the first action left (the field says "run first"; when nothing matches it says "no match" and Enter runs nothing)
 - While the field holds text, a Clear button beside it empties it and lists everything again (as deleting the text does)
@@ -164,7 +166,7 @@ What goes out depends on the kind of action and how it runs.
 
 ### Usage counts
 
-- For the hint line's order, the plugin keeps a usage score per action in the local store Claude Code gives the plugin (`$.store`, a file in Claude Code's configuration directory). It is not sent anywhere
+- For the order of the hint line and the ⋯ dialog, the plugin keeps a usage score per action in the local store Claude Code gives the plugin (`$.store`, a file in Claude Code's configuration directory). It is not sent anywhere
 - Only each action ID's score and the time it was last used are kept, never the selected text, an argument or a result
 - A use adds 1 to the score, and a score halves every 30 days, so actions you used a lot long ago do not stay in front for good
 - The score of a custom action you removed does not affect the order (it is kept for when the definition comes back). There is no screen to reset or view the counts
@@ -231,7 +233,7 @@ The number shown follows the width of the hint line:
 - **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left, so the line never runs over and no button is split across two rows. Where they do not fit, fewer are shown; when not even one fits, none is; ✕ and ⋯ always stay, and every action can be picked from ⋯. Should the row still be narrower than counted, only the end of the actions is cut: the kind buttons, ✕ and ⋯ stay whole
 - **Each button as drawn**: a button is drawn `[ label ]`, flush against the next, so each counts its label and the four cells of its frame
 - **What that comes to** (with the default 6, a selection, each icon a single emoji): 2 at 80 columns (the kind buttons as their marks alone), 3 at 100 (4 in English, the kind buttons as their marks) and 10 at 160 (8 in English). At 60 columns, 2 with no kind buttons; at 45, none: only ✕ and ⋯
-- **Beside a docked pane**: while a pane docks on the right (this plugin's or another's), the hint line takes the transcript's width, the pane's taken off
+- **Beside a docked pane**: the hint line runs under this plugin's docked pane across the whole terminal, so this plugin's pane docking on the right takes nothing off it: the line shows as many icons with the pane open as with it closed. (For a moment as the pane opens, before it is first drawn, the line may count the transcript's width alone.) Another plugin's docked pane cannot be seen from here, so beside it the line counts the transcript's width, that pane's taken off, and may show fewer
 - **Beside the permission mode**: Claude Code draws the permission mode at the line's left (the one shift+tab cycles: `⏵⏵ auto mode on ·`, `⏵⏵ accept edits on ·`, `⏸ plan mode on ·` and the like), with two columns clear at each side of the row. The plugin cannot tell which mode is up, so 30 cells are always kept for it, enough for the longest, `⏵⏵ bypass permissions on ·`
 - Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
 - Where the width is not known, `hintCount` icons are shown as before

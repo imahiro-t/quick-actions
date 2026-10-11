@@ -70,8 +70,6 @@ export type Messages = {
   allActions: string
   /** The title of the ⋯ dialog's pane. */
   pickerTitle: string
-  /** Shown in the ⋯ dialog while it does not hold the keyboard. */
-  pickerNoFocus: string
   /** The ⋯ dialog's close button. */
   pickerClose: string
   /** Drawn dim in the ⋯ dialog's empty filter field. */
@@ -122,8 +120,11 @@ export type Messages = {
   argsNotAccepted: (id: string, arg: string) => string
   /** The command's result when an argument does not parse: `hint` says how to write one. */
   invalidArg: (id: string, arg: string, hint: string) => string
-  /** The legend above the ⋯ dialog's list: the marks of the kinds it lists. */
-  pickerLegend: (hasSelection: boolean) => string
+  /**
+   * The ⋯ dialog's kind buttons above its list, by kind: the kind's mark and
+   * name. A press lists that kind alone.
+   */
+  pickerKinds: { selection: string; context: string; standalone: string }
   /** Ends a local action's result cut at its limit. */
   truncated: string
   /** A local action that answered with a promise rather than at once. */
@@ -194,7 +195,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     close: '閉じる',
     allActions: 'すべてのアクション',
     pickerTitle: 'アクションを選択',
-    pickerNoFocus: '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
     pickerClose: '閉じる',
     pickerFilterPlaceholder: '絞り込み（ID・名前・種類）',
     pickerFilterClear: 'クリア',
@@ -251,7 +251,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     standalone: '単独',
     argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
     invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
-    pickerLegend: hasSelection => (hasSelection ? '[ ] 選択  < > 会話  { } 単独' : '< > 会話  { } 単独'),
+    pickerKinds: { selection: '[ ] 選択', context: '< > 会話', standalone: '{ } 単独' },
     hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
     hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
     hintKindShown: name => `${name}（表示中）`,
@@ -293,7 +293,6 @@ export const MESSAGES: Record<Lang, Messages> = {
     close: 'Close',
     allActions: 'All actions',
     pickerTitle: 'Select an action',
-    pickerNoFocus: 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
     pickerClose: 'Close',
     pickerFilterPlaceholder: 'Filter (ID, name, kind)',
     pickerFilterClear: 'Clear',
@@ -350,7 +349,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     standalone: 'standalone',
     argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
     invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
-    pickerLegend: hasSelection => (hasSelection ? '[ ] selection  < > context  { } standalone' : '< > context  { } standalone'),
+    pickerKinds: { selection: '[ ] selection', context: '< > context', standalone: '{ } standalone' },
     hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
     hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
     hintKindShown: name => `${name} (shown)`,

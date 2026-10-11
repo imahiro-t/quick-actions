@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, SURFACES, listedActions, pickAction, reselect, stage, start } from './stage'
+import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_PANE, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -49,6 +49,35 @@ async function results($: Engine, s: Stage, clock: Clock, surface: (typeof SURFA
   await reselect(s, clock)
   const held = band.press({ key: 'explain' })
   return { band, settle: async () => (release(), await held) }
+}
+
+// The notice the ⋯ dialog drew without the keyboard, gone since SELM-00068.
+const NOTICE = /キーボードで選べます|pick with the keyboard/
+
+/** A mounted ⋯ dialog, as the kind button helpers take it. */
+type PickerMount = Parameters<typeof pickerKindButtons>[0]
+
+/**
+ * The ⋯ dialog's kind buttons where the style leaves the colours to core (auto
+ * docked, and inline whatever the setting): every kind listed, none stands
+ * out; one listed, it is bold with no colour of its own, the others dimColor.
+ */
+async function kindsLeftToCore(picker: PickerMount) {
+  const before = await pickerKindButtons(picker)
+  expect(before.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
+  expect(before.map(k => [k.bold, k.dimColor, k.color])).toEqual(before.map(() => [false, false, undefined]))
+  expect(before.map(k => k.label)).toEqual([t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
+  await showPickerKind(picker, 'context')
+  const after = await pickerKindButtons(picker)
+  expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color])).toEqual([
+    ['selection', false, true, undefined],
+    ['context', true, false, undefined],
+    ['standalone', false, true, undefined],
+  ])
+  expect(after[1]?.label).toBe(t.hintKindShown(t.hintKindTips.context))
+  // Pressed again: every kind, none standing out.
+  await showPickerKind(picker, 'context')
+  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
 }
 
 async function openPicker($: Engine, s: Stage, clock: Clock, surface: 'terminal' | 'desktop' | 'mobile') {
@@ -181,7 +210,9 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
       expect(b?.props.color).toBeUndefined()
       expect(b?.props.dimColor).toBeUndefined()
     }
-    expect((await texts(picker, t.pickerNoFocus)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
+    // No notice without the keyboard (SELM-00068).
+    expect(await texts(picker, NOTICE)).toEqual([])
+    await kindsLeftToCore(picker)
     const close = await picker.find({ key: PICKER_CLOSE })
     expect(close?.props.dimColor).toBe(true)
     await picker.unmount()
@@ -239,11 +270,29 @@ for (const theme of THEMES) {
       const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, isFocused: false } })
       expect((await outer(picker))?.props.backgroundColor).toBe(p.background)
       expect(await picker.find({ type: 'Select' })).toBeUndefined()
-      // Without the keyboard, the line says how, in the muted colour (never on mobile).
-      const notice = await texts(picker, t.pickerNoFocus)
-      expect(notice.map(f => [f.props.color, f.props.dimColor])).toEqual(surface === 'mobile' ? [] : [[p.muted, undefined]])
+      // Without the keyboard, no notice (SELM-00068).
+      expect(await texts(picker, NOTICE)).toEqual([])
 
-      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE)
+      // The kind buttons: every kind listed as the dialog opens, none standing
+      // out, each in the body colour; one listed, it is bold in the heading
+      // colour, the others in the muted colour (the palette's dim), never dimColor.
+      const kinds = await pickerKindButtons(picker, p.muted)
+      expect(kinds.map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual(
+        ['selection', 'context', 'standalone'].map(k => [k, false, false, p.body, false]),
+      )
+      for (const b of (await picker.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(PICKER_KIND))) expect(b.props.autoFocus).toBeUndefined()
+      await showPickerKind(picker, 'selection')
+      expect((await pickerKindButtons(picker, p.muted)).map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual([
+        ['selection', true, false, p.heading, false],
+        ['context', false, true, p.muted, false],
+        ['standalone', false, true, p.muted, false],
+      ])
+      expect(contrastRatio(p.heading, p.background)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.muted, p.background)).toBeGreaterThanOrEqual(4.5)
+      await showPickerKind(picker, 'selection')
+      expect((await pickerKindButtons(picker, p.muted)).map(k => [k.bold, k.dim])).toEqual([[false, false], [false, false], [false, false]])
+
+      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE && !String(b.key).startsWith(PICKER_KIND))
       // Every action on mobile, which draws no filter field; elsewhere as many as the pane's height holds.
       expect(buttons.map(b => b.key)).toEqual(await listedActions(picker))
       if (surface === 'mobile') expect(buttons).toHaveLength(ACTIONS.length)
@@ -339,7 +388,8 @@ for (const theme of THEMES) {
       expect(b?.props.color).toBeUndefined()
       expect(b?.props.dimColor).toBeUndefined()
     }
-    expect((await texts(picker, t.pickerNoFocus)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
+    expect(await texts(picker, NOTICE)).toEqual([])
+    await kindsLeftToCore(picker)
     expect((await picker.find({ key: PICKER_CLOSE }))?.props.dimColor).toBe(true)
     await picker.unmount()
   })

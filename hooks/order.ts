@@ -22,9 +22,6 @@ import type { Target } from './actions'
 /** A score halves over this long (30 days). */
 export const HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000
 
-/** How many actions the hint line shows when `hintCount` is unset or not usable. */
-export const DEFAULT_HINT_COUNT = 6
-
 /** The key in `$.store` the usage scores are kept under. */
 export const USAGE_KEY = 'usage'
 
@@ -158,15 +155,6 @@ export function arrange<D extends { id: string; target?: Target }>(
   const leadDefaults = lead.slice(pinned.length)
   if (!hasSelection) return [...pinned.filter(free), ...leadDefaults.filter(free), ...rest.filter(free)]
   return [...pinned, ...byKind(leadDefaults), ...byKind(rest)]
-}
-
-/** The `hintCount` setting: a whole number of 1 or more (a number or its digits), else the default. */
-export function parseHintCount(value: unknown): number {
-  let n: number
-  if (typeof value === 'number') n = value
-  else if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) n = Number(value.trim())
-  else return DEFAULT_HINT_COUNT
-  return Number.isSafeInteger(n) && n >= 1 ? n : DEFAULT_HINT_COUNT
 }
 
 /** Where one load keeps the order it settles: register makes a fresh one per load. */

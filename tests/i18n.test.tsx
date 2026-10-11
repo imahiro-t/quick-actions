@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, isContext, isStandalone, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
-import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EVERY_ACTION_FITS, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] every action asks for an answer in ${name}, translations aside`,
-    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
+    { options: { language, actions: everyId }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -239,7 +239,7 @@ for (const language of ['en', 'ja'] as const) {
       s.selected = 'const x = 1'
       await clock.advance(400)
 
-      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
       for (const a of ACTIONS) {
         await reselect(s, clock)
         // One kind at a time on the line (SELM-00050): the action's own first.

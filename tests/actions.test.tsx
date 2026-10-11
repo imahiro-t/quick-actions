@@ -37,7 +37,7 @@ import { ofKind, parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, showKind, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EVERY_ACTION_FITS, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, showKind, stage, start, submitArg } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, writing, code,
 // evidence, research, data, learning, checks.
@@ -1563,7 +1563,7 @@ for (const language of ['ja', 'en'] as const) {
   const defs = actionsFor(language)
   test(
     `[${language}] every definition is drawn in order and runs by its kind`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(',') }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -1572,7 +1572,7 @@ for (const language of ['ja', 'en'] as const) {
       await clock.advance(400)
 
       // One kind at a time (since SELM-00050): each kind's, in the order pinned.
-      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
       for (const kind of ['selection', 'context', 'standalone'] as const) {
         await showKind(band, kind)
         expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])

@@ -33,7 +33,7 @@ import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { pickerKindLabels, pickerKindsShown, pickerShownCount } from './picker-rows'
-import { buttonWidth, dockReturn, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
+import { buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
 import {
   HINT_KINDS,
   USAGE_KEY,
@@ -42,7 +42,6 @@ import {
   hintKindFor,
   ofKind,
   orderActions,
-  parseHintCount,
   parsePins,
   parseUsage,
   pickerKindFor,
@@ -925,9 +924,8 @@ export const register: Register = (on, options) => {
   const problems = custom.problems
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
-  // The pins and the count alone are read here: they do not depend on the language.
+  // The pins alone are read here: they do not depend on the language.
   const pins = parsePins(allSpecs, options.actions)
-  const hintCount = parseHintCount(options.hintCount)
   // Tall enough for every action in the ⋯ dialog, its kind buttons, its
   // filter field and its close button, with rows to spare, up to
   // PICKER_MAX_ROWS: with hundreds of actions the pane scrolls rather than
@@ -962,7 +960,7 @@ export const register: Register = (on, options) => {
   const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
   const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
 
-  /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first hintCount, the hint line's. */
+  /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first that fit, the hint line's. */
   const inOrder = (ids: readonly string[], l: Lang): ActionDef[] => {
     const defs = defsFor(l)
     return ids.flatMap(id => findAction(defs, id) ?? [])
@@ -1147,10 +1145,9 @@ export const register: Register = (on, options) => {
   // only with text. A line left up after the highlight went is still of use:
   // switched to the conversation's or the standalone ones.
   //
-  // How many icons: the `hintCount` setting is the count on an 80-column line;
-  // the line's width (the transcript's column, with this plugin's docked pane
-  // given back: the line runs under it) moves it in proportion, never past what
-  // fits beside the permission mode the engine draws at the row's left
+  // How many icons: as many as fit in the line's width (the transcript's
+  // column, with this plugin's docked pane given back: the line runs under it)
+  // beside the permission mode the engine draws at the row's left
   // (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
@@ -1182,14 +1179,11 @@ export const register: Register = (on, options) => {
     // only while the tabs are open by the engine's record: a tab unloaded
     // unheard (its drawing threw) leaves its measure behind, given back to nothing.
     const viewport = e.viewport
-    // `width`: the line's, what hintCount is in proportion to; `columns`: that
-    // less the rest of the row (the mode at its left), what the buttons have.
-    let width: number | undefined
+    // `columns`: the line's less the rest of the row (the mode at its left), what the buttons have.
     let columns: number | undefined
     if (viewport !== undefined) {
       const isOpen = (await openPicking($)) !== null
       const dock = isOpen ? (measuredDock.get(e.surface) ?? 0) : 0
-      width = hintLineColumns(viewport.columns, 0, dock)
       columns = hintLineColumns(viewport.columns, leadFor(e.surface), dock)
     }
     const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
@@ -1204,10 +1198,9 @@ export const register: Register = (on, options) => {
     const ends = buttonWidth('✕') + buttonWidth('⋯')
     const kindsWidth = (compact: boolean) => kinds.reduce((sum, k) => sum + buttonWidth(kindMark(k, compact)), 0)
     // Widths measured for as many as the line could take at most, not every candidate.
-    const most = width === undefined ? hintCount : hintTarget(width, hintCount)
+    const most = hintMost(columns)
     const layout = hintLayout({
       line: columns,
-      target: most,
       kindsLabeled: kindsWidth(false),
       kindsMarks: kindsWidth(true),
       ends,

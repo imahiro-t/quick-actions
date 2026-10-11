@@ -3,13 +3,11 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, DEFAULT_ACTION_IDS, isContext, isStandalone, markedIcon, needsSelection } from '../hooks/actions'
 import {
-  DEFAULT_HINT_COUNT,
   HALF_LIFE_MS,
   arrange,
   decayed,
   defaultsLead,
   orderActions,
-  parseHintCount,
   parsePins,
   parseUsage,
   pickerKindFor,
@@ -183,18 +181,6 @@ test('defaultsLead: only with no pins and no usage of an action that exists', ()
   expect(defaultsLead(ACTIONS, parsePins(ACTIONS, 'why'), {}, NOW)).toBe(false)
 })
 
-test('parseHintCount: a whole number of 1 or more, else 6', () => {
-  expect(DEFAULT_HINT_COUNT).toBe(6)
-  expect(parseHintCount(undefined)).toBe(6)
-  expect(parseHintCount('3')).toBe(3)
-  expect(parseHintCount(' 3 ')).toBe(3)
-  expect(parseHintCount(3)).toBe(3)
-  expect(parseHintCount('12')).toBe(12)
-  for (const bad of ['0', '-1', '2.5', 'abc', '', 0, -2, 2.5, Number.NaN, Number.POSITIVE_INFINITY, null, {}]) {
-    expect(parseHintCount(bad)).toBe(6)
-  }
-})
-
 // ---------------------------------------------------------------------------
 // On the hint line
 
@@ -228,26 +214,16 @@ test('a broken store still shows the default order', async ($, on) => {
   expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
 })
 
-for (const [hintCount, shown] of [['3', 3], ['1', 1], ['20', 20], ['30', Math.min(30, ACTIONS.length)], ['0', 6], ['many', 6]] as const) {
-  test(`hintCount ${hintCount}: ${shown} actions on the hint line`, { options: { hintCount } }, async ($, on) => {
-    const clock = mock.clock(on)
-    const s = stage(on)
-    await start($)
-    s.selected = 'some text'
-    await clock.advance(400)
-    const icons = await iconsOf($)
-    expect(icons).toHaveLength(shown + 2)
-    expect(icons.slice(-2)).toEqual(['✕', '⋯'])
-  })
-}
-
-test('pins beyond hintCount wait under ⋯', { options: { actions: 'why,tldr,ask,code', hintCount: '2' } }, async ($, on) => {
+test('pins beyond what fits wait under ⋯', { options: { actions: 'why,tldr,ask,code' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await iconsOf($)).toEqual([iconOf('why'), iconOf('tldr'), '✕', '⋯'])
+  // Two fit on an 80-column line beside the permission mode.
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 80, rows: 40, isFullscreen: false } })
+  expect(await hintIcons(band)).toEqual([iconOf('why'), iconOf('tldr'), '✕', '⋯'])
+  await band.unmount()
 })
 
 test('uses during the session are recorded but do not move the hint line', async ($, on) => {

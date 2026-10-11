@@ -91,8 +91,9 @@ declare module 'claude-code' {
        */
       hintKind: 'selection' | 'context' | 'standalone' | null
       /**
-       * How many AskUserQuestion dialogs are up now (0: none): the ⋯ dialog
-       * then lists its actions as buttons to click, since the dialog holds the keys.
+       * How many AskUserQuestion dialogs are up now (0: none): Quick Actions
+       * is put away meanwhile (the right pane closed, no hint line, the command
+       * running nothing), since the dialog holds the keys.
        */
       asking: number
     }

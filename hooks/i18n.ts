@@ -101,10 +101,8 @@ export type Messages = {
    * as the one shown, since bold and dim alone do not reach a name.
    */
   hintKindShown: (name: string) => string
-  /** Shown in the ⋯ dialog while an AskUserQuestion dialog holds the keys: the actions are buttons to click. */
-  pickerAsking: string
-  /** The button above an AskUserQuestion dialog that opens the panes on the ⋯ dialog's tab. */
-  askOpen: string
+  /** The command's result while an AskUserQuestion dialog is up: nothing runs. */
+  askingUnavailable: string
   /** The language's name in English, for instructions to the model such as "explain the changes in …". */
   languageName: string
   agentDescription: (label: string) => string
@@ -257,8 +255,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     hintKinds: { selection: '選択', context: '会話', standalone: '単独' },
     hintKindTips: { selection: '選択範囲へのアクション', context: '会話へのアクション', standalone: '単独で使うアクション' },
     hintKindShown: name => `${name}（表示中）`,
-    pickerAsking: '質問ダイアログの表示中は、クリックでアクションを選べます。',
-    askOpen: '⚡ Quick Actions',
+    askingUnavailable: '質問ダイアログの表示中は Quick Actions を使えません。',
     truncated: '（以下省略）',
     localAsync: '結果をすぐに返しませんでした',
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
@@ -357,8 +354,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     hintKinds: { selection: 'selection', context: 'context', standalone: 'standalone' },
     hintKindTips: { selection: 'Actions on the selection', context: 'Actions on the conversation', standalone: 'Standalone actions' },
     hintKindShown: name => `${name} (shown)`,
-    pickerAsking: 'While a question dialog is up, click an action to run it.',
-    askOpen: '⚡ Quick Actions',
+    askingUnavailable: 'Quick Actions cannot be used while a question dialog is up.',
     truncated: '(truncated)',
     localAsync: 'the result did not come at once',
     localTickerOnSelection: 'an action on the selection cannot run over time',

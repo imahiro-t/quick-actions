@@ -49,7 +49,7 @@ The hint line starts with a button per kind: `[selection]`, `<context>` and `{st
 
 The right pane (above the prompt on a narrow terminal) always opens with two tabs: **"Quick Actions"**, the results, and **"Select an action"**, the [⋯ dialog](#the--dialog-and-its-filter).
 
-- **Which tab is in front**: pressing an icon on the hint line shows "Quick Actions". The ⋯ on the hint line, `/quick-actions` without an ID, and the [⚡ Quick Actions button over a question](#while-claude-asks-you-a-question-askuserquestion) show "Select an action", with the keyboard in its filter (when Claude Code lets it have the keyboard)
+- **Which tab is in front**: pressing an icon on the hint line shows "Quick Actions". The ⋯ on the hint line, and `/quick-actions` without an ID show "Select an action", with the keyboard in its filter (when Claude Code lets it have the keyboard)
 - **Picking an action** in "Select an action" brings "Quick Actions" to the front with the result; "Select an action" stays open behind it, its filter emptied, ready for the next pick
 - **Closing**: one action closes the whole pane, both tabs at once: Esc, the close mark on either tab (ctrl+x x), or the Close button in "Select an action"
   - Esc closes the pane while you type in the filter too, rather than emptying the filter: use the Clear button beside the field (or delete the text) to empty it
@@ -97,21 +97,15 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Move the keyboard from the field to the list (Tab or ↓) and ↑ / ↓ and Enter pick from it
 - **In the mobile app** there is no filter field: every action is listed as a button, with no limit, to tap
 - With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter and the list work the same, the buttons drawn in the palette's colours
-- **While Claude asks a question** (AskUserQuestion), there is no filter field: every action is listed as a button to click (see below)
+- **While Claude asks a question** (AskUserQuestion), the pane is closed and cannot be opened (see below)
 
 ### While Claude asks you a question (AskUserQuestion)
 
-While Claude's question dialog (AskUserQuestion) is up, it holds the keyboard and the prompt is gone, so `/quick-actions` cannot be typed and the pane's keys do not work. Quick Actions stays usable with clicks, so you can look something up before you answer:
+While Claude's question dialog (AskUserQuestion) is up, it holds the keyboard and the prompt is gone. Claude Code gives the pane neither the keyboard nor its tab switch meanwhile, so Quick Actions is put away:
 
-- **A ⚡ Quick Actions button over the question**: press it to open the right pane on its "Select an action" tab (an action on the selection runs on the text selected at that moment). It sits above the question, since Claude Code draws nothing below it
-- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, which needs the keyboard). Click one to run it; its result shows in "Quick Actions"
-- **A pane already open when the question comes up** works the same way: the action buttons in "Select an action" and the Stop button of a run in "Quick Actions" answer clicks
-- **After you answer or cancel the question**, the usual list and filter come back, and the keys (scrolling, typing in the filter, Esc to close) work again
-
-The limits, set by Claude Code:
-
-- While the question is up, Claude Code gives the pane no keyboard focus, and Esc goes to the question (it does not close the pane). Whether clicking in the pane or ctrl+x tab moves the keyboard to it during a question is not documented and not confirmed; use clicks
-- Should Claude Code refuse the button drawn over the question, the question is drawn alone, without the button. A pane opened before the question can still be clicked
+- **When the question comes up**: the right pane closes, both tabs. As with its close button, a run over time (a timer and the like) stops
+- **While the question is up**: there is no hint line, and `/quick-actions` runs nothing (it answers `Quick Actions cannot be used while a question dialog is up.`)
+- **After you answer or cancel the question**: everything works as usual. The pane closed by the question is not reopened by itself
 
 ### Going back to the selection
 

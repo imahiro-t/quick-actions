@@ -56,7 +56,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // sequence (an emoji, at most one U+FE0F or skin tone modifier, the ZWJ, an
 // emoji: man ZWJ woman, white flag U+FE0F ZWJ rainbow): there it only joins
 // the emoji into one, which can disguise nothing, and escaping it would break
-// the emoji.
+// the emoji. U+180E, the Mongolian vowel separator, is kept likewise between
+// two Mongolian letters, where Mongolian spelling puts it (`keepsMvs`).
 //
 // Tag characters (U+E0000 to U+E007F) show as nothing at all, yet each stands
 // for an ASCII character: a whole sentence can ride hidden after a word
@@ -93,9 +94,11 @@ export const hasControls = (s: string) => s.search(CONTROLS) >= 0
 // among them, whether a ZWJ is kept is `joinsEmoji`'s to say, and the tag
 // characters, whether a tag is kept is `inFlag`'s to say), the line and
 // paragraph separators, the other invisible fillers (U+034F, the Hangul
-// fillers, U+17B4-17B5, the Mongolian selectors) and the variation selectors
-// (whether one is kept is `keepsSelector`'s to say). Selectors can carry a
-// hidden text a byte a selector, as tag characters can.
+// fillers, U+17B4-17B5, the Mongolian free variation selectors U+180B-180D and
+// U+180F, whether one is kept is `keepsFvs`'s to say, and the vowel separator
+// U+180E, a format character, whether it is kept is `keepsMvs`'s to say) and
+// the variation selectors (whether one is kept is `keepsSelector`'s to say).
+// Selectors can carry a hidden text a byte a selector, as tag characters can.
 const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\p{Cf}\u{2028}\u{2029}\u{34f}\u{115f}\u{1160}\u{17b4}\u{17b5}\u{180b}-\u{180f}\u{3164}\u{ffa0}\u{e0000}-\u{e007f}\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu
 
 // The same, or a backslash: what `showHidden` writes anew, in one pass.
@@ -180,13 +183,55 @@ function keepsSelector(s: string, c: string, at: number): boolean {
   return PRESENTATION.test(c) ? EMOJI.test(before.char) : IDEOGRAPHIC.test(before.char)
 }
 
+const MONGOLIAN_FVS = /^[\u{180b}-\u{180d}\u{180f}]$/u
+const MVS = '\u{180e}'
+const MONGOLIAN_LETTER = /^(?=\p{Script=Mongolian})\p{L}$/u
+
+/**
+ * Whether the Mongolian free variation selector (FVS1-4: U+180B-180D, U+180F)
+ * at `at` is kept: one selector right after a Mongolian letter, which it
+ * gives one of its positional forms, and nothing else. One opening the text,
+ * following another selector or hidden character, or after a letter of
+ * another script, a space or a line break varies nothing, so it is escaped,
+ * as `keepsSelector` escapes a stray variation selector. What still rides
+ * unseen is one FVS on each Mongolian letter (four kinds: two bits), which a
+ * pane cannot tell from a real variant.
+ */
+function keepsFvs(s: string, at: number): boolean {
+  const before = codePointBefore(s, at)
+  return before !== undefined && MONGOLIAN_LETTER.test(before.char)
+}
+
+/**
+ * Whether the Mongolian vowel separator (MVS, U+180E) at `at` is kept: only
+ * between a Mongolian letter (or one FVS kept on it) and a Mongolian letter,
+ * where Mongolian spelling puts it (before a final a or e). One at the start
+ * or the end, after or before anything else, or in a run is escaped. What
+ * still rides unseen is one MVS between two Mongolian letters.
+ */
+function keepsMvs(s: string, at: number): boolean {
+  const next = s.codePointAt(at + 1)
+  if (next === undefined || !MONGOLIAN_LETTER.test(String.fromCodePoint(next))) return false
+  const before = codePointBefore(s, at)
+  if (before === undefined) return false
+  if (MONGOLIAN_LETTER.test(before.char)) return true
+  return MONGOLIAN_FVS.test(before.char) && keepsFvs(s, before.start)
+}
+
 /**
  * Whether the hidden character `c` at `at` in `s` is to be escaped: all but a
- * ZWJ joining emoji, a tag inside a flag emoji (`flags`, from flagsIn) and a
- * variation selector on a base it can vary.
+ * ZWJ joining emoji, a tag inside a flag emoji (`flags`, from flagsIn), a
+ * variation selector on a base it can vary, a Mongolian free variation
+ * selector on a Mongolian letter and a Mongolian vowel separator between
+ * Mongolian letters.
  */
-const escapes = (s: string, c: string, at: number, flags: readonly [number, number][]) =>
-  c === '\u{200d}' ? !joinsEmoji(s, at) : SELECTOR.test(c) ? !keepsSelector(s, c, at) : !isTag(c) || !inFlag(flags, at)
+function escapes(s: string, c: string, at: number, flags: readonly [number, number][]): boolean {
+  if (c === '\u{200d}') return !joinsEmoji(s, at)
+  if (SELECTOR.test(c)) return !keepsSelector(s, c, at)
+  if (MONGOLIAN_FVS.test(c)) return !keepsFvs(s, at)
+  if (c === MVS) return !keepsMvs(s, at)
+  return !isTag(c) || !inFlag(flags, at)
+}
 
 /**
  * One hidden character as `\u202e`; one past U+FFFF (a tag character, or a

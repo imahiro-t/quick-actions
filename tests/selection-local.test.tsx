@@ -847,6 +847,76 @@ test('variation selectors: one on a base it can vary is kept; any other is escap
   }
 })
 
+test('Mongolian free variation selectors: one on a Mongolian letter is kept; any other is escaped', () => {
+  // Kept: FVS1-4 each on a letter, one in the middle of a word, one on a modifier letter (Lm).
+  for (const s of ['\u{1820}\u{180b}', '\u{1820}\u{180c}', '\u{1820}\u{180d}', '\u{1820}\u{180f}', '\u{1828}\u{180b}\u{1822}', '\u{1843}\u{180b}']) {
+    expect(hasHidden(s)).toBe(false)
+    expect(escapeHidden(s)).toBe(s)
+    expect(showHidden(s)).toEqual({ shown: s, escaped: false })
+  }
+  // Escaped: one opening the text, the second of a run, one after a letter of another script or a kanji.
+  expect(escapeHidden('\u{180b}\u{1820}')).toBe('\\u180b\u{1820}')
+  expect(escapeHidden('\u{1820}\u{180b}\u{180c}')).toBe('\u{1820}\u{180b}\\u180c')
+  expect(escapeHidden('\u{1820}\u{180b}\u{180c}\u{180d}\u{180f}')).toBe('\u{1820}\u{180b}\\u180c\\u180d\\u180f')
+  expect(escapeHidden('a\u{180b}')).toBe('a\\u180b')
+  expect(escapeHidden('\u{845b}\u{180c}')).toBe('\u{845b}\\u180c')
+  // After a Mongolian digit or punctuation mark (no letter), a hidden character or a variation selector.
+  expect(escapeHidden('\u{1810}\u{180b}')).toBe('\u{1810}\\u180b')
+  expect(escapeHidden('\u{1803}\u{180b}')).toBe('\u{1803}\\u180b')
+  expect(escapeHidden('\u{1820}\u{200b}\u{180b}')).toBe('\u{1820}\\u200b\\u180b')
+  expect(escapeHidden('\u{845b}\u{fe00}\u{180b}')).toBe('\u{845b}\u{fe00}\\u180b')
+  // After a space, a line break, a tab or a punctuation mark.
+  for (const base of [' ', '\n', '\t', '"', '.']) {
+    expect(escapeHidden(`\u{1820}${base}\u{180b}`)).toBe(`\u{1820}${base}\\u180b`)
+    expect(escapeHidden(`\u{1820}${base}\u{180f}`)).toBe(`\u{1820}${base}\\u180f`)
+  }
+  expect(showHidden('a\u{180b}\\')).toEqual({ shown: 'a\\u180b\\\\', escaped: true })
+})
+
+test('Mongolian vowel separator: kept between Mongolian letters alone; escaped anywhere else', () => {
+  // Kept: between two letters, and between a letter's one kept FVS and a letter.
+  for (const s of ['\u{1828}\u{180e}\u{1820}', '\u{1828}\u{180b}\u{180e}\u{1820}', '\u{1834}\u{1823}\u{1828}\u{180e}\u{1821}']) {
+    expect(hasHidden(s)).toBe(false)
+    expect(escapeHidden(s)).toBe(s)
+    expect(showHidden(s)).toEqual({ shown: s, escaped: false })
+  }
+  // Escaped: alone, at the start or the end, after or before a letter of another script.
+  expect(escapeHidden('\u{180e}')).toBe('\\u180e')
+  expect(escapeHidden('\u{180e}\u{1820}')).toBe('\\u180e\u{1820}')
+  expect(escapeHidden('\u{1820}\u{180e}')).toBe('\u{1820}\\u180e')
+  expect(escapeHidden('a\u{180e}b')).toBe('a\\u180eb')
+  expect(escapeHidden('\u{1820}\u{180e}a')).toBe('\u{1820}\\u180ea')
+  expect(escapeHidden('a\u{180e}\u{1820}')).toBe('a\\u180e\u{1820}')
+  expect(escapeHidden('\u{1820}\u{180e} \u{1820}')).toBe('\u{1820}\\u180e \u{1820}')
+  // A run: both escaped.
+  expect(escapeHidden('\u{1820}\u{180e}\u{180e}\u{1820}')).toBe('\u{1820}\\u180e\\u180e\u{1820}')
+  // After a second FVS (itself escaped), after an FVS not on a letter, before an FVS.
+  expect(escapeHidden('\u{1828}\u{180b}\u{180c}\u{180e}\u{1820}')).toBe('\u{1828}\u{180b}\\u180c\\u180e\u{1820}')
+  expect(escapeHidden('a\u{180b}\u{180e}\u{1820}')).toBe('a\\u180b\\u180e\u{1820}')
+  expect(escapeHidden('\u{1828}\u{180e}\u{180b}')).toBe('\u{1828}\\u180e\\u180b')
+  // After another hidden character.
+  expect(escapeHidden('\u{1828}\u{200b}\u{180e}\u{1820}')).toBe('\u{1828}\\u200b\\u180e\u{1820}')
+})
+
+test('Mongolian selectors: a hidden text in a run of them after one letter is shown escaped, with the note', () => {
+  // Two bits a selector: FVS1-4 for 0-3.
+  const fvs = ['\u{180b}', '\u{180c}', '\u{180d}', '\u{180f}']
+  const bits = Array.from(HIDDEN_TEXT, c => [6, 4, 2, 0].map(shift => fvs[(c.charCodeAt(0) >> shift) & 3]!)).flat()
+  const smuggled = `\u{1820}${bits.join('')}`
+  expect(hasHidden(smuggled)).toBe(true)
+  const shown = textOf(run(urlDecode, encodeURIComponent(smuggled)))
+  expect(shown.endsWith(NOTE_EN)).toBe(true)
+  // The first selector rides on the letter; every other one is shown escaped.
+  expect(shown.match(/\\u180[bcdf]/g)).toHaveLength(bits.length - 1)
+  expect(textOf(run(urlDecode, encodeURIComponent(smuggled), 'ja')).endsWith(NOTE_JA)).toBe(true)
+  // One after each letter of a Latin sentence: every one escaped.
+  const cover = 'Please review this sentence'
+  const interleaved = Array.from(cover, (c, i) => c + fvs[i % 4]).join('')
+  expect(escapeHidden(interleaved).match(/\\u180[bcdf]/g)).toHaveLength(cover.length)
+  // Vowel separators slipped in between Latin letters: every one escaped.
+  expect(escapeHidden(Array.from(cover).join('\u{180e}')).match(/\\u180e/g)).toHaveLength(cover.length - 1)
+})
+
 // A hidden text carried a byte a selector (U+FE00-FE0F for 0-15, U+E0100 on for the rest).
 const toSelectors = (text: string) =>
   Array.from(text, c => String.fromCodePoint(c.charCodeAt(0) < 16 ? 0xfe00 + c.charCodeAt(0) : 0xe0100 + c.charCodeAt(0) - 16))

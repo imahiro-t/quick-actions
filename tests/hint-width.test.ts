@@ -21,7 +21,7 @@ import {
 } from '../hooks/hint-width'
 import { BUTTON_FRAME as PICKER_BUTTON_FRAME } from '../hooks/picker-rows'
 import { HINT_KINDS, hintKindFor, isOfKind, ofKind } from '../hooks/order'
-import { ACTIONS, emojiIcon, markedIcon } from '../hooks/actions'
+import { ACTIONS, emojiIcon, markedIcon, TEXT_MARKS } from '../hooks/actions'
 import { filterActions } from '../hooks/filter'
 
 // How many icons the hint line shows for its width (SELM-00050): as many as
@@ -352,6 +352,23 @@ test('emojiIcon: a pictograph that is text by default takes VS16; emoji, ones wi
   expect(emojiIcon('❤\u200D🔥')).toBe('❤\uFE0F\u200D🔥')
   // The marks are drawn round the icon as drawn.
   expect(markedIcon({ icon: '🗂', target: 'context' })).toBe('<🗂\uFE0F>')
+})
+
+test('emojiIcon: ©, ® and ™ stay text marks, one cell each, without VS16; other text-default pictographs still take it', () => {
+  for (const mark of ['\u00A9', '\u00AE', '\u2122']) {
+    // Text-default pictographs, so only TEXT_MARKS keeps them from VS16.
+    expect(TEXT_PICTOGRAPH.test(mark)).toBe(true)
+    expect(TEXT_MARKS.has(mark)).toBe(true)
+    expect(emojiIcon(mark)).toBe(mark)
+    expect(textWidth(emojiIcon(mark))).toBe(1)
+    // Within an icon, beside a pictograph that does take VS16; one with a selector given keeps it.
+    expect(emojiIcon(`${mark}✂`)).toBe(`${mark}✂\uFE0F`)
+    expect(emojiIcon(`${mark}\uFE0F`)).toBe(`${mark}\uFE0F`)
+    expect(markedIcon({ icon: mark, target: 'none' })).toBe(`{${mark}}`)
+  }
+  expect(TEXT_MARKS.size).toBe(3)
+  expect(emojiIcon('✂')).toBe('✂\uFE0F')
+  expect(emojiIcon('‼')).toBe('‼\uFE0F')
 })
 
 test('every built-in icon is drawn as the emoji the terminal draws: none is a text-default pictograph without VS16', () => {

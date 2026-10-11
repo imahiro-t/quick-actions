@@ -220,6 +220,11 @@ async function settle($: EngineInterface, id: number, ok: boolean, text: string)
   await update($, results, list => list.map(r => (r.id === id ? { ...r, status, text } : r)))
 }
 
+// Every subagent is registered without the CLAUDE.md block (the person's, the
+// project's, the rules): its prompt and the selection or argument are all it
+// works from. With CLAUDE.md in its context, instructions hidden in the
+// selection could have a web subagent put what CLAUDE.md says (an address,
+// internal names) into a search query or a URL it fetches.
 async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
   if (registeredAgents.has(def.id)) return
   await $.agent.register({
@@ -228,6 +233,7 @@ async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
     prompt: def.prompt,
     tools: [...(def.tools ?? READ_ONLY_TOOLS)],
     model: def.model,
+    omitClaudeMd: true,
   })
   registeredAgents.add(def.id)
 }
@@ -1346,7 +1352,9 @@ export const register: Register = (on, options) => {
   // The list is a column of buttons, there from the start (no drop-down to
   // open). With the filter field it fills the pane's height: as many actions
   // as fit (./picker-rows: each button's rows as its label wraps at its words,
-  // less the rest of the dialog, the kind buttons' row included), then a line
+  // less the rest of the dialog, the kind buttons' row, the filter row and
+  // the close button counted as they wrap too, in a narrow pane onto two rows
+  // or more), then a line
   // saying how many more the filter reaches.
   // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
   // again lists as many as the new height holds. Without the field (mobile)
@@ -1373,6 +1381,13 @@ export const register: Register = (on, options) => {
     const shown = filterDefs(ordered, filter)
     const kinds = pickerKindsShown(hasSelection)
     const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
+    // The filter row as drawn below, and so as counted: one set of strings for both.
+    const filterRow = {
+      placeholder: t.pickerFilterPlaceholder,
+      value: filter,
+      submitLabel: shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit,
+      ...(filter !== '' && { clear: t.pickerFilterClear }),
+    }
     // As many as the pane's height holds (in the dialog's order, so the most
     // used come first), with the filter field there to reach the rest;
     // without it, all of them.
@@ -1383,6 +1398,8 @@ export const register: Register = (on, options) => {
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
             chrome: [],
+            filterRow,
+            close: t.pickerClose,
             // The kind buttons' row, drawn while the dialog is open alone
             // (not in the redraw as it closes).
             buttons: state === null ? [] : pickerKindLabels(t, hasSelection),
@@ -1524,9 +1541,9 @@ export const register: Register = (on, options) => {
           <Box flexDirection="row">
             <Input
               key={PICKER_FILTER_KEY}
-              placeholder={t.pickerFilterPlaceholder}
-              value={filter}
-              submitLabel={shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit}
+              placeholder={filterRow.placeholder}
+              value={filterRow.value}
+              submitLabel={filterRow.submitLabel}
               autoFocus
               onInput={value => {
                 void setFilter(value)
@@ -1535,7 +1552,7 @@ export const register: Register = (on, options) => {
                 void submit(value)
               }}
             />
-            {filter !== '' && mutedButton(elements, style, PICKER_FILTER_CLEAR_KEY, clear)}
+            {filterRow.clear !== undefined && mutedButton(elements, style, PICKER_FILTER_CLEAR_KEY, clear)}
           </Box>
         )}
         {state === null ? (

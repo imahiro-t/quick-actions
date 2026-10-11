@@ -131,6 +131,8 @@ export type Messages = {
   localAsync: string
   /** A local action on the selection that asked to run over time, which only a standalone one may. */
   localTickerOnSelection: string
+  /** A local action that needed random numbers where crypto could give none: nothing was made. */
+  randomUnavailable: string
   /** The stop button of a running timer (or anything else that runs over time). */
   stop: string
   /** The button of a result on a selection that scrolls the transcript back to where that selection lies. */
@@ -259,6 +261,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     truncated: '（以下省略）',
     localAsync: '結果をすぐに返しませんでした',
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
+    randomUnavailable: '安全な乱数（crypto.getRandomValues）が使えないため、生成しませんでした',
     stop: '停止',
     gotoSelection: '選択箇所に戻る',
     tickerStopped: elapsed => (elapsed === undefined ? '停止しました' : `停止しました（経過 ${elapsed}）`),
@@ -357,6 +360,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     truncated: '(truncated)',
     localAsync: 'the result did not come at once',
     localTickerOnSelection: 'an action on the selection cannot run over time',
+    randomUnavailable: 'no secure random numbers are available (crypto.getRandomValues), so nothing was generated',
     stop: 'Stop',
     gotoSelection: 'Go to selection',
     tickerStopped: elapsed => (elapsed === undefined ? 'Stopped' : `Stopped (after ${elapsed})`),

@@ -1,7 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { LocalInput, LocalOutput } from '../hooks/actions'
+import type { LocalAction, LocalInput, LocalOutput } from '../hooks/actions'
 import type { ArgValue } from '../hooks/args'
+import { MESSAGES } from '../hooks/i18n'
+import { runLocal } from '../hooks/local'
+import { RandomUnavailableError, randomBytesWith, unitFrom } from '../hooks/random'
 import {
   BREAK_IDEAS,
   CANDIDATES_MAX,
@@ -358,4 +361,79 @@ test('every one answers in both languages, an invalid argument with the usual wo
       expect(out.error.startsWith(lang === 'ja' ? '引数が正しくありません: ' : 'Invalid argument: ')).toBe(true)
     }
   }
+})
+
+// Where crypto gives no random numbers (randomBytes throws RandomUnavailableError),
+// every action that draws them fails with the message saying so, in the user's
+// language, and shows no value: none is made of Math.random or of the bytes
+// drawn before the throw.
+test('no crypto: every random action fails with the message saying so, and makes no value', () => {
+  const noCrypto = (n: number) =>
+    randomBytesWith(n, () => {
+      throw new Error('crypto.getRandomValues is not available')
+    })
+  const noCryptoUnit = (): [number, number, number, number] => {
+    const [a = 0, b = 0, c = 0, d = 0] = noCrypto(4)
+    return [a, b, c, d]
+  }
+  const cases: [string, Compute, unknown][] = [
+    ['password', password, 20],
+    ['passphrase', passphrase, 5],
+    ['random-token', randomToken, 32],
+    ['uuid v4', uuid, 'v4'],
+    ['uuid v7', uuid, 'v7'],
+    ['ulid', ulid, undefined],
+    ['nanoid', nanoid, 21],
+    ['dice', dice, '2d6+1'],
+    ['coin-flip', coinFlip, undefined],
+    ['random-number', randomNumber, 100],
+    ['pick-one', pickOneAction, 'a,b,c'],
+    ['pick-one (yes or no)', pickOneAction, ''],
+    ['shuffle', shuffle, 'a,b,c'],
+    ['random-color', randomColor, undefined],
+    ['lorem', lorem, 3],
+    ['dummy-ja', dummyJa, 3],
+    ['break-idea', breakIdea, undefined],
+  ]
+  for (const [name, compute, arg] of cases) {
+    for (const lang of ['ja', 'en'] as const) {
+      const out = runLocal(
+        { compute: compute as LocalAction['compute'] },
+        input({ arg: arg as ArgValue | undefined, lang, randomBytes: noCrypto, random: () => unitFrom(...noCryptoUnit()) }),
+        { selection: false, lang },
+      )
+      const expected = MESSAGES[lang].failed(MESSAGES[lang].randomUnavailable)
+      expect({ name, lang, out }).toEqual({ name, lang, out: { kind: 'settle', ok: false, text: expected } })
+    }
+  }
+})
+
+test('no crypto: the message names crypto.getRandomValues and says nothing was made, in both languages', () => {
+  expect(MESSAGES.en.failed(MESSAGES.en.randomUnavailable)).toBe(
+    'Failed: no secure random numbers are available (crypto.getRandomValues), so nothing was generated',
+  )
+  expect(MESSAGES.ja.failed(MESSAGES.ja.randomUnavailable)).toBe('失敗しました: 安全な乱数（crypto.getRandomValues）が使えないため、生成しませんでした')
+})
+
+test('no crypto: any other throw from a compute keeps its own message', () => {
+  const out = runLocal(
+    {
+      compute: () => {
+        throw new Error('boom')
+      },
+    },
+    BASE,
+    { selection: false, lang: 'en' },
+  )
+  expect(out).toEqual({ kind: 'settle', ok: false, text: 'Failed: boom' })
+  const direct = runLocal(
+    {
+      compute: () => {
+        throw new RandomUnavailableError()
+      },
+    },
+    BASE,
+    { selection: false, lang: 'en' },
+  )
+  expect(direct).toEqual({ kind: 'settle', ok: false, text: MESSAGES.en.failed(MESSAGES.en.randomUnavailable) })
 })

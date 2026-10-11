@@ -3,10 +3,10 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, needsSelection } from '../hooks/actions'
-import { FIXED_ROWS, MIN_SHOWN, buttonLines, kindRowLines, linesOf, pickerKindLabels } from '../hooks/picker-rows'
+import { MIN_SHOWN, buttonLines, kindRowLines, linesOf, pickerKindLabels } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 /** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
@@ -296,7 +296,7 @@ for (const surface of SURFACES) {
     // At 60 columns every label is one row: the pane's rows less the kind buttons' row,
     // the filter row, the close button and the "n more" line.
     expect(kindRowLines(pickerKindLabels(t, false), 60)).toBe(linesOf(pickerKindRow(t, false), 60))
-    const fits = (bodyRows: number) => bodyRows - FIXED_ROWS - kindRowLines(pickerKindLabels(t, false), 60) - linesOf(t.pickerMore(total), 60)
+    const fits = (bodyRows: number) => bodyRows - pickerFixedRows(t, 60) - kindRowLines(pickerKindLabels(t, false), 60) - linesOf(t.pickerMore(total), 60)
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: props(40) })
     for (const o of await listedOptions(picker)) expect(buttonLines(o.label, 60)).toBe(1)
     expect(await listedCount(picker)).toBe(fits(40))

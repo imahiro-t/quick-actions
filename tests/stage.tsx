@@ -2,6 +2,9 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { ActionDef, ActionSpec } from '../hooks/actions'
+import type { Messages } from '../hooks/i18n'
+import { fixedRows } from '../hooks/picker-rows'
+import type { FilterRow } from '../hooks/picker-rows'
 
 // Stands for the engine beneath the plugin in every test: records what the
 // plugin asks of the models and the agents and answers it.
@@ -295,7 +298,7 @@ export type Stage = {
   // "Go to selection" button assumed.
   selectedRow: string | null
   models: { model: string; system?: string; prompt: string }[]
-  registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string }[]
+  registered: { name: string; model?: string; tools?: readonly string[]; description: string; prompt: string; omitClaudeMd?: true }[]
   commands: { name: string; description: string }[]
   spawned: { subagentType: string; prompt: string }[]
   forks: string[]
@@ -422,7 +425,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('agent.register', async (_$, e) => {
     if (s.hold !== null) await s.hold
     if (s.refuse !== null) return { deny: s.refuse }
-    s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description, prompt: e.prompt })
+    s.registered.push({ name: e.name, model: e.model, tools: e.tools, description: e.description, prompt: e.prompt, ...(e.omitClaudeMd === undefined ? {} : { omitClaudeMd: e.omitClaudeMd }) })
     return { value: { agent: `${PLUGIN}:${e.name}` } }
   })
   // A fresh id per spawn, so several subagents in one test never share one.
@@ -511,3 +514,16 @@ export const kindButtons = async (band: Band) =>
   (await band.findAll({ type: 'Button' })).flatMap(b =>
     String(b.key).startsWith(KIND_KEY) ? [{ kind: String(b.key).slice(KIND_KEY.length), label: String(b.props.label), drawn: b.text }] : [],
   )
+
+/**
+ * The ⋯ dialog's filter row and close button as drawn in the language of `t`,
+ * the field holding `value` (Clear beside it once it does) and some action
+ * left to run (SELM-00070).
+ */
+export const pickerDialogRows = (t: Messages, value = ''): { filterRow: FilterRow; close: string } => ({
+  filterRow: { placeholder: t.pickerFilterPlaceholder, value, submitLabel: t.pickerFilterSubmit, ...(value !== '' && { clear: t.pickerFilterClear }) },
+  close: t.pickerClose,
+})
+
+/** The rows those take at `columns` (see pickerDialogRows). */
+export const pickerFixedRows = (t: Messages, columns: number, value = '') => fixedRows(columns, pickerDialogRows(t, value))

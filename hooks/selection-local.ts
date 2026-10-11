@@ -48,15 +48,31 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // Bidirectional controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to
 // U+2069) and zero-width or invisible format characters (U+200B, U+200C,
 // U+200D, U+2060 to U+2064, the deprecated U+206A to U+206F, U+FEFF, the
-// interlinear annotation marks U+FFF9 to U+FFFB, U+180E) work no terminal, but
-// they disguise what is shown: a host or a token read backwards, a word split
-// where none shows. A decoder's output is there to show what the text holds,
-// so they are escaped the same way (together with the controls, "hidden"
-// characters below). The one exception is a ZWJ (U+200D) inside an emoji
+// interlinear annotation marks U+FFF9 to U+FFFB, the Mongolian vowel
+// separator U+180E, save where kept as below) work no terminal, but they
+// disguise what is shown: a host or a token read backwards, a word split where
+// none shows. A decoder's output is there to show what the text holds, so they
+// are escaped the same way (together with the controls, "hidden" characters
+// below). There are two exceptions. One is a ZWJ (U+200D) inside an emoji
 // sequence (an emoji, at most one U+FE0F or skin tone modifier, the ZWJ, an
 // emoji: man ZWJ woman, white flag U+FE0F ZWJ rainbow): there it only joins
 // the emoji into one, which can disguise nothing, and escaping it would break
-// the emoji.
+// the emoji. The other is U+180E between two Mongolian letters, or between one
+// free variation selector kept on a letter and the next letter, where
+// Mongolian spelling puts it (`keepsMvs`): escaping it there would break the
+// word's shape.
+//
+// Tag characters (U+E0000 to U+E007F) show as nothing at all, yet each stands
+// for an ASCII character: a whole sentence can ride hidden after a word
+// ("ASCII smuggling"), read by a model though no one sees it. They are hidden
+// characters too, escaped as their UTF-16 surrogate pair (`\udb40\udc41` for
+// U+E0041), which is the same value in a JSON string. The one exception is a
+// flag emoji's tag sequence (`inFlag`): a black flag U+1F3F4, three to seven
+// tags of a lowercase letter or digit (a CLDR subdivision ID, such as gbeng
+// for England), and CANCEL TAG U+E007F. There the tags only pick the flag
+// shown, and escaping them would break it; anything longer, of other tags, or
+// not so closed is escaped whole (the flag's own U+1F3F4 is no hidden
+// character and stays).
 //
 // Two ways to show them, by what the output is:
 // - JSON (format-json, minify-json, decode-jwt, a JSON error's token):
@@ -76,10 +92,17 @@ const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 /** Whether the text holds a control character the pane must not show raw. */
 export const hasControls = (s: string) => s.search(CONTROLS) >= 0
 
-// The hidden characters: the controls above, the bidirectional controls and
-// the zero-width and invisible format characters (U+200D among them: whether
-// a ZWJ is kept is `joinsEmoji`'s to say).
-const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\u{61c}\u{180e}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{206f}\u{feff}\u{fff9}-\u{fffb}]/gu
+// The hidden characters: the controls above, every format character (Cf: the
+// bidirectional controls, the zero-width ones, U+00AD and the like; U+200D
+// among them, whether a ZWJ is kept is `joinsEmoji`'s to say, and the tag
+// characters, whether a tag is kept is `inFlag`'s to say), the line and
+// paragraph separators, the other invisible fillers (U+034F, the Hangul
+// fillers, U+17B4-17B5, the Mongolian free variation selectors U+180B-180D and
+// U+180F, whether one is kept is `keepsFvs`'s to say, and the vowel separator
+// U+180E, a format character, whether it is kept is `keepsMvs`'s to say) and
+// the variation selectors (whether one is kept is `keepsSelector`'s to say).
+// Selectors can carry a hidden text a byte a selector, as tag characters can.
+const HIDDEN = /[\u{0}-\u{8}\u{b}\u{c}\u{e}-\u{1f}\u{7f}-\u{9f}\p{Cf}\u{2028}\u{2029}\u{34f}\u{115f}\u{1160}\u{17b4}\u{17b5}\u{180b}-\u{180f}\u{3164}\u{ffa0}\u{e0000}-\u{e007f}\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu
 
 // The same, or a backslash: what `showHidden` writes anew, in one pass.
 const SHOWN = new RegExp(`\\\\|${HIDDEN.source}`, 'gu')
@@ -105,20 +128,137 @@ function joinsEmoji(s: string, at: number): boolean {
   return before !== undefined && PICTOGRAPHIC.test(before.char)
 }
 
-/** Whether the hidden character `c` at `at` in `s` is to be escaped: all but a ZWJ joining emoji. */
-const escapes = (s: string, c: string, at: number) => c !== '\u{200d}' || !joinsEmoji(s, at)
+/**
+ * A flag emoji's tag sequence: a black flag, three to seven tags of a
+ * lowercase letter or digit (a CLDR subdivision ID: a region of two letters or
+ * three digits and one to four more), CANCEL TAG. Kept that short so a flag
+ * can carry no hidden sentence.
+ */
+const FLAG = /\u{1f3f4}(?:[\u{e0030}-\u{e0039}\u{e0061}-\u{e007a}]){3,7}\u{e007f}/gu
 
-/** One hidden character (all in the BMP) as `\u202e`. */
-const escapeOne = (c: string) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`
+/** Where `s`'s flag emoji are, as [start, end) in UTF-16 units: none without a black flag. */
+const flagsIn = (s: string): [number, number][] =>
+  s.includes('\u{1f3f4}') ? Array.from(s.matchAll(FLAG), m => [m.index!, m.index! + m[0].length] as [number, number]) : []
+
+/**
+ * Whether the tag character at `at` belongs to one of `flags` (in order, apart):
+ * found by halving, so a text of many flags is not read once a tag.
+ */
+function inFlag(flags: readonly [number, number][], at: number): boolean {
+  let lo = 0
+  let hi = flags.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const [start, end] = flags[mid]!
+    if (at <= start) hi = mid - 1
+    else if (at >= end) lo = mid + 1
+    else return true
+  }
+  return false
+}
+
+const isTag = (c: string) => {
+  const cp = c.codePointAt(0) ?? 0
+  return cp >= 0xe0000 && cp <= 0xe007f
+}
+
+const SELECTOR = /^[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]$/u
+const HIDDEN_ONE = new RegExp(`^${HIDDEN.source}$`, 'u')
+const PRESENTATION = /^[\u{fe0e}\u{fe0f}]$/u
+const EMOJI = /^\p{Emoji}$/u
+const IDEOGRAPHIC = /^\p{Ideographic}$/u
+
+/**
+ * Whether the variation selector at `at` is kept: one selector right after a
+ * base it can vary, and nothing else. U+FE0E / U+FE0F (text or emoji
+ * presentation) only on an emoji character (☀️, the `#` of a keycap); the
+ * other selectors, U+FE00-FE0D and U+E0100-E01EF, only on an ideograph (葛󠄀,
+ * an ideographic variation sequence). A selector on a letter, a space, a line
+ * break or the like varies nothing and draws nothing, so it is escaped, as is
+ * one opening the text or following another: a selector slipped in after each
+ * letter of a sentence hides nothing. What still rides unseen is one selector
+ * on each emoji (a bit) or ideograph (a byte), which a pane cannot tell from a
+ * real variant.
+ */
+function keepsSelector(s: string, c: string, at: number): boolean {
+  const before = codePointBefore(s, at)
+  if (before === undefined || HIDDEN_ONE.test(before.char)) return false
+  return PRESENTATION.test(c) ? EMOJI.test(before.char) : IDEOGRAPHIC.test(before.char)
+}
+
+const MONGOLIAN_FVS = /^[\u{180b}-\u{180d}\u{180f}]$/u
+const MVS = '\u{180e}'
+const MONGOLIAN_LETTER = /^(?=\p{Script=Mongolian})\p{L}$/u
+
+/**
+ * Whether the Mongolian free variation selector (FVS1-4: U+180B-180D, U+180F)
+ * at `at` is kept: one selector right after a Mongolian letter, which it
+ * gives one of its positional forms, and nothing else. One opening the text,
+ * following another selector or hidden character, or after a letter of
+ * another script, a space or a line break varies nothing, so it is escaped,
+ * as `keepsSelector` escapes a stray variation selector. What still rides
+ * unseen is one FVS on each Mongolian letter (four kinds: two bits), which a
+ * pane cannot tell from a real variant.
+ */
+function keepsFvs(s: string, at: number): boolean {
+  const before = codePointBefore(s, at)
+  return before !== undefined && MONGOLIAN_LETTER.test(before.char)
+}
+
+/**
+ * Whether the Mongolian vowel separator (MVS, U+180E) at `at` is kept: only
+ * between a Mongolian letter (or one FVS kept on it) and a Mongolian letter,
+ * where Mongolian spelling puts it (before a final a or e). One at the start
+ * or the end, after or before anything else, or in a run is escaped. What
+ * still rides unseen is one MVS between two Mongolian letters.
+ */
+function keepsMvs(s: string, at: number): boolean {
+  const next = s.codePointAt(at + 1)
+  if (next === undefined || !MONGOLIAN_LETTER.test(String.fromCodePoint(next))) return false
+  const before = codePointBefore(s, at)
+  if (before === undefined) return false
+  if (MONGOLIAN_LETTER.test(before.char)) return true
+  return MONGOLIAN_FVS.test(before.char) && keepsFvs(s, before.start)
+}
+
+/**
+ * Whether the hidden character `c` at `at` in `s` is to be escaped: all but a
+ * ZWJ joining emoji, a tag inside a flag emoji (`flags`, from flagsIn), a
+ * variation selector on a base it can vary, a Mongolian free variation
+ * selector on a Mongolian letter and a Mongolian vowel separator between
+ * Mongolian letters.
+ */
+function escapes(s: string, c: string, at: number, flags: readonly [number, number][]): boolean {
+  if (c === '\u{200d}') return !joinsEmoji(s, at)
+  if (SELECTOR.test(c)) return !keepsSelector(s, c, at)
+  if (MONGOLIAN_FVS.test(c)) return !keepsFvs(s, at)
+  if (c === MVS) return !keepsMvs(s, at)
+  return !isTag(c) || !inFlag(flags, at)
+}
+
+/**
+ * One hidden character as `\u202e`; one past U+FFFF (a tag character, or a
+ * variation selector from U+E0100) as its UTF-16 surrogate pair,
+ * `\udb40\udc41`, which a JSON string reads as the same character.
+ */
+const escapeOne = (c: string) => {
+  let out = ''
+  for (let i = 0; i < c.length; i++) out += `\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`
+  return out
+}
 
 /** Whether the text holds a hidden character the pane must not show raw. */
 export function hasHidden(s: string): boolean {
-  for (const m of s.matchAll(HIDDEN)) if (escapes(s, m[0], m.index!)) return true
+  const flags = flagsIn(s)
+  for (const m of s.matchAll(HIDDEN)) if (escapes(s, m[0], m.index!, flags)) return true
   return false
 }
 
 /** The text with each hidden character written as `\u202e`, backslashes left alone: the same in a JSON string. For JSON. */
-export const escapeHidden = (s: string) => s.replace(HIDDEN, (c: string, at: number) => (escapes(s, c, at) ? escapeOne(c) : c))
+export function escapeHidden(s: string): string {
+  const flags = flagsIn(s)
+  return s.replace(HIDDEN, (c: string, at: number) => (escapes(s, c, at, flags) ? escapeOne(c) : c))
+}
 
 /**
  * For what is not JSON: the text as it is when nothing in it is hidden;
@@ -128,13 +268,14 @@ export const escapeHidden = (s: string) => s.replace(HIDDEN, (c: string, at: num
  */
 export function showHidden(s: string): { shown: string; escaped: boolean } {
   if (!hasHidden(s)) return { shown: s, escaped: false }
-  const shown = s.replace(SHOWN, (c: string, at: number) => (c === '\\' ? '\\\\' : escapes(s, c, at) ? escapeOne(c) : c))
+  const flags = flagsIn(s)
+  const shown = s.replace(SHOWN, (c: string, at: number) => (c === '\\' ? '\\\\' : escapes(s, c, at, flags) ? escapeOne(c) : c))
   return { shown, escaped: true }
 }
 
 const HIDDEN_NOTE: Texts = {
-  ja: '（制御文字・双方向制御文字・ゼロ幅文字は \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）',
-  en: '(Control, bidirectional and zero-width characters are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)',
+  ja: '（制御文字・双方向制御文字・ゼロ幅文字などの不可視文字・タグ文字・余分な異体字セレクタは \\u001b のような形で、元のテキストのバックスラッシュは \\\\ と表示しています）',
+  en: '(Control, bidirectional, zero-width and other invisible characters, tag characters and stray variation selectors are shown escaped, as \\u001b; a backslash in the text is shown as \\\\.)',
 }
 
 /** The decoded text with its hidden characters (and then its backslashes) escaped, and a note saying so when there were any. */

@@ -28,7 +28,7 @@
     "paneTheme": {
       "type": "string",
       "title": "Pane theme",
-      "description": "Colours of the docked result pane and the ⋯ dialog: auto (follow Claude Code's theme, as before), light or dark (a fixed palette with its own background, whatever the theme; the ⋯ dialog then lists the actions as buttons). The inline pane on a narrow terminal is not affected.",
+      "description": "Colours of the docked result pane and the ⋯ dialog: auto (follow Claude Code's theme), light or dark (a fixed palette with its own background, whatever the theme). The inline pane on a narrow terminal is not affected.",
       "options": ["auto", "light", "dark"],
       "default": "auto"
     }

@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { buttonWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PICKER_SELECT, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The hint line under the prompt (SELM-00050).
@@ -381,7 +381,7 @@ test('tabs the engine unloaded unheard take nothing off the line, and a run neve
   await band.unmount()
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   await picker.unmount()
   expect(s.models.at(-1)?.prompt).toContain('exit 137')
   expect(s.models.at(-1)?.prompt).not.toContain(SELECTED)

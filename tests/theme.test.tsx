@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, SURFACES, reselect, stage, start } from './stage'
+import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, SURFACES, listedActions, pickAction, reselect, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -171,7 +171,16 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
     await openPicker($, s, clock, 'terminal')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
     expect((await outer(picker))?.props.backgroundColor).toBeUndefined()
-    expect(await picker.find({ type: 'Select' })).toBeDefined()
+    // No Select: the list is buttons, drawn as before with no palette (no child Text, no colour of their own).
+    expect(await picker.find({ type: 'Select' })).toBeUndefined()
+    const listed = await listedActions(picker)
+    expect(listed.length).toBeGreaterThan(0)
+    for (const id of listed) {
+      const b = await picker.find({ key: id })
+      expect(b?.children.filter(c => typeof c === 'object')).toEqual([])
+      expect(b?.props.color).toBeUndefined()
+      expect(b?.props.dimColor).toBeUndefined()
+    }
     expect((await texts(picker, t.pickerNoFocus)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
     const close = await picker.find({ key: PICKER_CLOSE })
     expect(close?.props.dimColor).toBe(true)
@@ -235,7 +244,10 @@ for (const theme of THEMES) {
       expect(notice.map(f => [f.props.color, f.props.dimColor])).toEqual(surface === 'mobile' ? [] : [[p.muted, undefined]])
 
       const buttons = (await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE)
-      expect(buttons).toHaveLength(ACTIONS.length)
+      // Every action on mobile, which draws no filter field; elsewhere as many as the pane's height holds.
+      expect(buttons.map(b => b.key)).toEqual(await listedActions(picker))
+      if (surface === 'mobile') expect(buttons).toHaveLength(ACTIONS.length)
+      else expect(buttons.length).toBeLessThan(ACTIONS.length)
       for (const b of buttons) {
         // Its label still names it; its text is drawn in the body colour.
         const label = String(b.props.label)
@@ -261,7 +273,7 @@ for (const theme of THEMES) {
       expect((await texts(picker, t.pickerClose)).map(f => f.props.color)).toEqual([p.muted])
 
       // A press runs that action on the text the dialog opened on, and closes it.
-      await picker.press({ key: 'tldr' })
+      await pickAction(picker, 'tldr')
       await picker.unmount()
       // A pick keeps the dialog's tab and shows the results' (SELM-00050).
       expect(s.closed).toEqual([])
@@ -317,7 +329,16 @@ for (const theme of THEMES) {
     await openPicker($, s, clock, 'terminal')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, placement: 'inline', isFocused: false } })
     expect((await outer(picker))?.props.backgroundColor).toBeUndefined()
-    expect(await picker.find({ type: 'Select' })).toBeDefined()
+    // No Select: the list is buttons, drawn as before with no palette (no child Text, no colour of their own).
+    expect(await picker.find({ type: 'Select' })).toBeUndefined()
+    const listed = await listedActions(picker)
+    expect(listed.length).toBeGreaterThan(0)
+    for (const id of listed) {
+      const b = await picker.find({ key: id })
+      expect(b?.children.filter(c => typeof c === 'object')).toEqual([])
+      expect(b?.props.color).toBeUndefined()
+      expect(b?.props.dimColor).toBeUndefined()
+    }
     expect((await texts(picker, t.pickerNoFocus)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
     expect((await picker.find({ key: PICKER_CLOSE }))?.props.dimColor).toBe(true)
     await picker.unmount()

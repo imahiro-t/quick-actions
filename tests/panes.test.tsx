@@ -1,10 +1,11 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS } from '../hooks/actions'
+import { ACTIONS, needsSelection } from '../hooks/actions'
+import { FIXED_ROWS, MIN_SHOWN, buttonLines, linesOf } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, PICKER_SELECT, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The right pane (SELM-00050): always two tabs, "Quick Actions" (the
@@ -85,13 +86,13 @@ test('a pick in the dialog keeps its tab, its text and an empty filter, and show
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   await picker.input({ key: PICKER_FILTER, text: 'explain', kind: 'change' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   expect(s.closed).toEqual([])
   expect(s.shown).toBe(PANE.requestId)
   expect(s.models.at(-1)?.prompt).toContain(SELECTED)
   // Still the dialog, its filter emptied, on the same text: a second pick runs on it too.
   expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('')
-  await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+  await pickAction(picker, 'tldr')
   expect(s.models.at(-1)?.prompt).toContain(SELECTED)
   await picker.unmount()
 })
@@ -113,7 +114,7 @@ test('a tab an open leaves behind the other is closed and opened afresh, so it s
   expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+  await pickAction(picker, 'tldr')
   await picker.unmount()
   expect(s.shown).toBe(PANE.requestId)
   expect(s.closed).toEqual([PICKER, PANE.requestId])
@@ -160,30 +161,37 @@ test('the dialog\'s close button closes both tabs and stops a timer', { options:
 // ---------------------------------------------------------------------------
 // The dialog's list as tall as the pane
 
-/** The rows the dialog's list is drawn for: the key of the Box around it. */
-async function listRows(m: { findAll: (q: { type: string }) => Promise<{ key: string | undefined }[]> }) {
-  const box = (await m.findAll({ type: 'Box' })).find(b => String(b.key).startsWith('_picker-list-'))
-  return box === undefined ? undefined : Number(String(box.key).slice('_picker-list-'.length))
-}
-
 for (const surface of SURFACES) {
-  test(`[${surface}] the list is sized to the pane's rows, and drawn anew when they change: shrunk and grown again, it fills the pane`, async ($, on) => {
+  test(`[${surface}] the list holds as many as the pane's rows, and is drawn anew when they change: shrunk and grown again, it fills the pane`, async ($, on) => {
     const s = stage(on)
     await start($)
     await runCommand($, '')
     void s
 
+    const t = MESSAGES.en
+    const total = ACTIONS.filter(a => !needsSelection(a)).length
     const props = (bodyRows: number) => ({ ...PICKER_PANE.props, scroll: { offset: 0, bodyRows } })
+    // At 60 columns every label is one row: the pane's rows less the legend,
+    // the filter row, the close button and the "n more" line.
+    const fits = (bodyRows: number) => bodyRows - FIXED_ROWS - linesOf(t.pickerLegend(false), 60) - linesOf(t.pickerMore(total), 60)
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: props(40) })
-    expect(await listRows(picker)).toBe(35)
-    // Shrunk: a list for the rows left, never under three.
+    for (const o of await listedOptions(picker)) expect(buttonLines(o.label, 60)).toBe(1)
+    expect(await listedCount(picker)).toBe(fits(40))
+    expect(await listedActions(picker)).toHaveLength(fits(40))
+    expect(await picker.find({ text: t.pickerMore(total - fits(40)) })).toBeDefined()
+    // Shrunk: as many as the rows left hold, never under three.
     await picker.redraw(props(8))
-    expect(await listRows(picker)).toBe(3)
+    expect(await listedCount(picker)).toBe(fits(8))
+    expect(await listedActions(picker)).toHaveLength(fits(8))
+    await picker.redraw(props(4))
+    expect(await listedActions(picker)).toHaveLength(MIN_SHOWN)
     // Grown again: the list is drawn anew for the full height, not left at the small one.
     await picker.redraw(props(40))
-    expect(await listRows(picker)).toBe(35)
-    // The Select keeps its key, so a pick still reaches it.
-    expect((await picker.find({ type: 'Select' }))?.key).toBe(PICKER_SELECT)
+    expect(await listedCount(picker)).toBe(fits(40))
+    expect(await listedActions(picker)).toHaveLength(fits(40))
+    // Its buttons keep their keys, so a pick still reaches them.
+    await pickAction(picker, (await listedActions(picker))[0] ?? '')
+    expect(s.shown).toBe(PANE.requestId)
     await picker.unmount()
   })
 }
@@ -237,9 +245,12 @@ test('while a question is up, the dialog lists its actions as buttons, and a cli
   await clock.settle()
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
-  // No Select and no field, which want the keys the question holds; a line says to click.
+  // No field, which wants the keys the question holds; a line says to click.
   expect(await picker.find({ type: 'Select' })).toBeUndefined()
   expect(await picker.find({ key: PICKER_FILTER })).toBeUndefined()
+  // Every action is listed (nothing else would reach the rest), with no "n more" line.
+  expect((await listedActions(picker)).length).toBe(ACTIONS.length)
+  expect(await picker.find({ text: /more: type in the filter/ })).toBeUndefined()
   expect(await picker.find({ text: MESSAGES.en.pickerAsking })).toBeDefined()
   expect(await picker.find({ text: MESSAGES.en.pickerNoFocus })).toBeUndefined()
   expect(await picker.find({ key: 'tldr' })).toBeDefined()
@@ -253,9 +264,9 @@ test('while a question is up, the dialog lists its actions as buttons, and a cli
   await asked
   await clock.settle()
   await picker.redraw()
-  // The question answered: the Select and the field again.
-  expect(await picker.find({ type: 'Select' })).toBeDefined()
+  // The question answered: the field again, and the list as many as the pane holds.
   expect(await picker.find({ key: PICKER_FILTER })).toBeDefined()
+  expect((await listedActions(picker)).length).toBeLessThan(ACTIONS.length)
   expect(await picker.find({ text: MESSAGES.en.pickerAsking })).toBeUndefined()
   await picker.unmount()
 })

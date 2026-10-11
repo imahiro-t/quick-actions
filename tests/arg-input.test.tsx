@@ -19,7 +19,9 @@ import {
   PICKER_CLOSE,
   PICKER_FILTER,
   PICKER_PANE,
-  PICKER_SELECT,
+  listBox,
+  listedActions,
+  pickAction,
   SURFACES,
   runCommand,
   showKind,
@@ -82,10 +84,10 @@ async function pickerNow($: Engine, surface: (typeof SURFACES)[number] = 'termin
   const texts = (await picker.findAll({ type: 'Text' })).map(t => t.text)
   const field = await picker.find({ key: PICKER_ARG })
   const filter = await picker.find({ key: PICKER_FILTER })
-  const select = await picker.find({ type: 'Select' })
+  const list = await listBox(picker)
   const buttons = (await picker.findAll({ type: 'Button' })).map(b => ({ key: String(b.key), label: b.props.label }))
   await picker.unmount()
-  return { texts, field, filter, select, buttons }
+  return { texts, field, filter, list, buttons }
 }
 
 /**
@@ -163,7 +165,7 @@ for (const surface of SURFACES) {
       await band.press({ key: '_more' })
       await band.unmount()
       const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-      await picker.select({ key: PICKER_SELECT, value: 'timer' })
+      await pickAction(picker, 'timer')
       await picker.unmount()
 
       const now = await pickerNow($, surface)
@@ -176,7 +178,7 @@ for (const surface of SURFACES) {
       expect(now.field?.props.submitLabel).toBe(t.argSubmit)
       expect(now.field?.props.autoFocus).toBe(true)
       // The list and its filter are not drawn meanwhile.
-      expect(now.select).toBeUndefined()
+      expect(now.list).toBeUndefined()
       expect(now.filter).toBeUndefined()
       expect(now.buttons).toEqual([
         { key: PICKER_ARG_BACK, label: t.argBack },
@@ -196,7 +198,7 @@ for (const surface of SURFACES) {
     await band.press({ key: '_more' })
     await band.unmount()
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await pickAction(picker, 'timer')
     await picker.input({ key: PICKER_ARG, text: '' })
     await picker.unmount()
 
@@ -222,7 +224,7 @@ for (const [options, t] of LANGS) {
     await start($)
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await pickAction(picker, 'timer')
     expect(s.closed).toEqual([])
     await picker.input({ key: PICKER_ARG, text: ' 5m ' })
     await picker.unmount()
@@ -240,7 +242,7 @@ for (const [options, t] of LANGS) {
     await start($)
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await pickAction(picker, 'timer')
     await picker.input({ key: PICKER_ARG, text: '99h' })
     await picker.unmount()
 
@@ -294,7 +296,7 @@ for (const [options, t] of LANGS) {
     await start($)
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await pickAction(picker, 'timer')
     await picker.input({ key: PICKER_ARG, text: ' 99h ' })
     await picker.unmount()
 
@@ -309,11 +311,11 @@ for (const [options, t] of LANGS) {
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     await picker.input({ key: PICKER_FILTER, text: 'timer', kind: 'change' })
-    await picker.select({ key: PICKER_SELECT, value: 'timer' })
+    await pickAction(picker, 'timer')
     expect(await picker.find({ key: PICKER_ARG })).toBeDefined()
     await picker.press({ key: PICKER_ARG_BACK })
     expect(await picker.find({ key: PICKER_ARG })).toBeUndefined()
-    expect(await picker.find({ type: 'Select' })).toBeDefined()
+    expect(await listedActions(picker)).toContain('timer')
     expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('timer')
     expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()
     await picker.unmount()
@@ -341,7 +343,7 @@ test('an action that takes no argument still runs as it is picked', { options: E
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
   await picker.input({ key: PICKER_FILTER, text: 'stopwatch', kind: 'change' })
-  await picker.select({ key: PICKER_SELECT, value: 'stopwatch' })
+  await pickAction(picker, 'stopwatch')
   await picker.unmount()
   // A run keeps the dialog's tab and shows the results' (SELM-00050).
   expect(s.closed).toEqual([])
@@ -437,7 +439,7 @@ for (const [options, t] of LANGS) {
 
     await runCommand($, '')
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    await picker.select({ key: PICKER_SELECT, value: 'ideas' })
+    await pickAction(picker, 'ideas')
     await picker.input({ key: PICKER_ARG, text: ' Tea Ceremony ' })
     await picker.unmount()
     expect(s.models.at(-1)?.prompt).toBe('<input>\nTea Ceremony\n</input>')

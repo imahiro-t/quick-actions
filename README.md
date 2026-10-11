@@ -4,7 +4,7 @@ English | [日本語](README.ja.md)
 
 A Claude Code plugin of icon actions for the text you select in the conversation (the transcript), for the conversation itself, and for small jobs that need neither. Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate, explain, summarize, proofread, read code, find the evidence, convert data and more), on the conversation (recap it, list the decisions, the next steps, restate the last answer, draft a commit message and more), or on neither (a timer, a calendar, a calculator, a password, a template, a repository overview and more), and read the result in a pane. There are 311 built-in actions of three kinds; the hint line shows one kind at a time, switched by the buttons at its start. With nothing selected, `/quick-actions hint` brings up the hint line, and `/quick-actions <id> [argument]` runs an action by its ID (e.g. `/quick-actions timer 5m`). An action that takes an argument asks for it on an argument screen when pressed on the hint line or in the ⋯ dialog too, and a timer's result has buttons to run it again with the same argument. The actions you use most come first, and you can pin your own to the front in settings; every action, shown on the hint line or not, can be picked from the ⋯ at its end, and its dialog finds one by its ID or name as you type. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
 
-Every built-in action can be browsed and searched in the **[action catalog](https://imahiro-t.github.io/quick-actions/)**, by category, in English and Japanese (the address works once the repository is public and GitHub Pages is turned on; until then, open [docs/index.html](docs/index.html) from a clone in a browser).
+Every built-in action can be browsed and searched in the **[action catalog](https://imahiro-t.github.io/quick-actions/)**, by category, in English and Japanese.
 
 ## How it works
 
@@ -1005,7 +1005,6 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 - When adding or changing a built-in action in `ACTIONS`, give it a `category` (the ID of one of `CATEGORIES` in `hooks/catalog.ts`, of the same kind as the action) and a `summary` (its one-line description, `{ ja, en }`, as in the tables above)
 - Then regenerate the data with `node scripts/gen-catalog.mjs` at the root of the repository and commit `docs/actions-data.js`. The script needs Node 24 or later (it imports the TypeScript sources as they are); with asdf, for one: `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - `tests/catalog.test.ts` (run by `claude plugin test .`) fails when the data was not regenerated, and when a built-in has no category or summary, or one of another kind
-- To publish the page: once the repository is public, Settings → Pages → Build and deployment → Deploy from a branch, branch `main`, folder `/docs`. It is then served at https://imahiro-t.github.io/quick-actions/ (`docs/.nojekyll` makes Pages serve the files as they are)
 
 ## Roadmap
 

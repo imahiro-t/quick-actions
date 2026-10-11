@@ -80,10 +80,10 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 
 - The actions are listed in the hint line's order, as `[icon] label`, `<icon> label` or `{icon} label`, under a legend of the marks (`[ ] selection  < > context  { } standalone`)
 - Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and the legend reads `< > context  { } standalone`
-- The list fills the pane's height, and is laid out again when the terminal is resized (shrunk and grown back, it fills the height again)
-- The list shows the first 64 of the order. When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
+- The list is a column of buttons, shown as soon as the dialog opens (nothing to open first)
+- The list fills the pane's height: it shows as many actions as fit from the top of the order (a long label that wraps onto two rows takes two), and lists them again when the terminal is resized (shrunk and grown back, it fills the height again). When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
 - An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation. A standalone action that takes an argument turns the list into its [argument screen](#the-argument-screen); one that takes none runs at once. The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
-- ↑ / ↓ move, Enter runs. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
+- Tab or ↓ moves from the filter to the first action; ↑ / ↓ (or Tab / Shift+Tab) move between the actions, and Enter runs the one with the focus. ↓ on the last action goes on to the Close button, and Shift+Tab on the first back to the filter. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app): click your pick, or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
 **The filter**: above the list is a field, "Filter (ID, name, kind)", which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
@@ -94,9 +94,9 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - The order stays as it was, except that the action whose ID is the whole query comes first
 - **Enter** runs the first action left (the field says "run first"; when nothing matches it says "no match" and Enter runs nothing)
 - While the field holds text, a Clear button beside it empties it and lists everything again (as deleting the text does)
-- Move the keyboard from the field to the list (with Tab, for one) and ↑ / ↓ and Enter pick from it
+- Move the keyboard from the field to the list (Tab or ↓) and ↑ / ↓ and Enter pick from it
 - **In the mobile app** there is no filter field: every action is listed as a button, with no limit, to tap
-- With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter stays, and the list is a row of buttons instead of a selection list, every action on it with no limit
+- With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter and the list work the same, the buttons drawn in the palette's colours
 - **While Claude asks a question** (AskUserQuestion), there is no filter field: every action is listed as a button to click (see below)
 
 ### While Claude asks you a question (AskUserQuestion)
@@ -104,7 +104,7 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 While Claude's question dialog (AskUserQuestion) is up, it holds the keyboard and the prompt is gone, so `/quick-actions` cannot be typed and the pane's keys do not work. Quick Actions stays usable with clicks, so you can look something up before you answer:
 
 - **A ⚡ Quick Actions button over the question**: press it to open the right pane on its "Select an action" tab (an action on the selection runs on the text selected at that moment). It sits above the question, since Claude Code draws nothing below it
-- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, no selection list, which need the keyboard). Click one to run it; its result shows in "Quick Actions"
+- **"Select an action" while the question is up**: a line says `While a question dialog is up, click an action to run it.`, and every action is listed as a button (no filter field, which needs the keyboard). Click one to run it; its result shows in "Quick Actions"
 - **A pane already open when the question comes up** works the same way: the action buttons in "Select an action" and the Stop button of a run in "Quick Actions" answer clicks
 - **After you answer or cancel the question**, the usual list and filter come back, and the keys (scrolling, typing in the filter, Esc to close) work again
 
@@ -306,7 +306,7 @@ The colours of the docked result pane (on the right) and the ⋯ dialog.
 
 - Use `light` or `dark` when the terminal and the theme disagree (a dark terminal on the light theme, or the other way round), or to see the pane in the brightness you like
 - Every text colour of both palettes (heading, body, failures and the secondary texts) has a contrast ratio of at least 4.5:1 against its background (WCAG AA), also when a 256-colour terminal (Terminal.app, for one) rounds them to its nearest colours. A 16-colour terminal draws a rougher approximation, which may lower it
-- With `light` or `dark`, the ⋯ dialog lists the actions as buttons instead of a selection list, since a selection list cannot take the palette's colours. The buttons show every action (a selection list shows the first 64). The filter field is there as usual and has the keyboard when the dialog opens; Tab moves from it to the buttons and between them, and Enter runs one
+- With `light` or `dark`, the ⋯ dialog's action buttons are drawn in the palette's body colour. The filter field and the list work as without a palette
 - The Stop button of an action that runs over time is drawn in the palette too
 - The inline pane (a terminal narrower than 110 columns) is not affected: it keeps the terminal's own colours whatever the setting
 - Unknown or empty values count as `auto`
@@ -322,7 +322,7 @@ Like the other settings, a change in `/config` takes effect at once; after `clau
 
 ### `customActions`
 
-Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
+Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
 
 In `/config`, under `quick-actions`, enter the array on one line in `customActions`, for example:
 
@@ -876,7 +876,7 @@ They use neither the selected text nor the conversation (105 of them). The Argum
 
 ## Adding an action
 
-The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past the first 64 listed, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
+The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
 
 ### From the settings (customActions)
 

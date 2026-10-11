@@ -5,8 +5,7 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
-import { SELECT_MAX_OPTIONS } from '../hooks/register'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, PICKER_SELECT, SURFACES, promptOf, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, PICKER_LIST, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, in the hint line's order, picked with the
@@ -61,7 +60,7 @@ for (const surface of SURFACES) {
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+    await pickAction(picker, 'tldr')
     await picker.unmount()
 
     const dialog = s.opened.find(o => o.id === PICKER)
@@ -80,14 +79,13 @@ for (const surface of SURFACES) {
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    const select = await picker.find({ type: 'Select' })
-    const options = select?.props.options as { value: string; label: string }[]
+    const options = await listedOptions(picker)
     const defs = actionsFor('ja')
-    // A Select takes 64 options at most: the first 64, and a line saying how many more the filter reaches.
+    // As many as the pane's height holds, and a line saying how many more the filter reaches.
     const total = ACTIONS.length + 1
-    expect(total).toBeGreaterThan(SELECT_MAX_OPTIONS)
-    expect(options).toHaveLength(SELECT_MAX_OPTIONS)
-    expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - SELECT_MAX_OPTIONS) })).toBeDefined()
+    expect(options.length).toBeLessThan(total)
+    expect(options.length).toBeGreaterThan(10)
+    expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - options.length) })).toBeDefined()
     // The hint line is the dialog's first few of the kind it shows (on the selection).
     const onSelection = options.map(o => o.value).filter(v => needsSelection(defs.find(d => d.id === v) ?? {}))
     expect(onSelection.slice(0, hint.length)).toEqual(hint)
@@ -97,13 +95,13 @@ for (const surface of SURFACES) {
     }
     expect(options.find(o => o.value === 'translate-ja')?.label).toBe('[🌐] 日本語訳')
     expect(options.find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
-    // The custom one is in the list too, past the first 64: the filter reaches it.
+    // The custom one is in the list too, past those listed: the filter reaches it.
     expect(options.map(o => o.value)).not.toContain('mine')
     await picker.input({ key: PICKER_FILTER, text: 'mine', kind: 'change' })
-    const reached = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
+    const reached = await listedOptions(picker)
     expect(reached.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
     // The filter field above the list takes the focus, so the list does not.
-    expect(select?.props.autoFocus).toBeUndefined()
+    for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
     await picker.unmount()
   })
@@ -116,7 +114,7 @@ for (const surface of SURFACES) {
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    await picker.select({ key: PICKER_SELECT, value: 'tldr' })
+    await pickAction(picker, 'tldr')
     await picker.unmount()
 
     // A pick keeps the dialog's tab and shows the results' (SELM-00050).
@@ -151,7 +149,7 @@ test('the text selected as the dialog opened is the one run on, though the selec
   await clock.advance(400)
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'explain' })
+  await pickAction(picker, 'explain')
   expect(s.models).toHaveLength(1)
   expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
   expect(s.models[0]?.prompt).not.toContain('something else')
@@ -180,7 +178,7 @@ test('the close button runs nothing and leaves no text behind', async ($, on) =>
   await picker.unmount()
   // The text it held went with it: drawn again, it has none to run on.
   const again = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  expect(await again.find({ type: 'Select' })).toBeUndefined()
+  expect(await listedActions(again)).toEqual([])
   expect(await again.find({ text: MESSAGES.en.noSelection })).toBeDefined()
   await again.unmount()
 })
@@ -199,7 +197,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
     const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
     expect(await unfocused.find({ text: t.pickerNoFocus })).toBeDefined()
-    expect(await unfocused.find({ type: 'Select' })).toBeDefined()
+    expect((await listedActions(unfocused)).length).toBeGreaterThan(0)
     const close = await unfocused.find({ key: PICKER_CLOSE })
     expect(close?.props.label).toBe(t.pickerClose)
     await unfocused.press({ key: PICKER_CLOSE })
@@ -285,14 +283,15 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(s.opened).toEqual(pickerOpens(t))
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    const listed = (await picker.find({ type: 'Select' }))?.props.options as { value: string; label: string }[]
+    const listed = await listedOptions(picker)
     const free = actionsFor(options.language).filter(d => !needsSelection(d))
-    // A Select takes 64 options at most: past that, the first 64 and a line saying how many more the filter reaches.
+    // As many as the pane's height holds; past that, a line saying how many more the filter reaches.
     const ids = free.map(d => d.id)
     for (const o of listed) expect(ids).toContain(o.value)
-    expect(listed).toHaveLength(Math.min(free.length, SELECT_MAX_OPTIONS))
-    if (free.length > SELECT_MAX_OPTIONS) {
-      expect(await picker.find({ text: t.pickerMore(free.length - SELECT_MAX_OPTIONS) })).toBeDefined()
+    expect(listed.length).toBeGreaterThan(0)
+    expect(listed.length).toBeLessThanOrEqual(free.length)
+    if (free.length > listed.length) {
+      expect(await picker.find({ text: t.pickerMore(free.length - listed.length) })).toBeDefined()
     }
     expect(free.filter(isContext).length).toBeGreaterThan(0)
     expect(free.filter(isStandalone).map(d => d.id)).toEqual(ACTIONS.filter(isStandalone).map(a => a.id))
@@ -300,7 +299,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     // The legend names the kinds listed: no [ ] with no selection.
     expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()
     // Picked, a context action runs on the conversation: a fork with no selection in it.
-    await picker.select({ key: PICKER_SELECT, value: 'recap' })
+    await pickAction(picker, 'recap')
     await picker.unmount()
     // A pick keeps the dialog's tab and shows the results' (SELM-00050).
     expect(s.closed).toEqual([])
@@ -322,7 +321,7 @@ test('a pick after /quick-actions runs on the text selected when the command ran
   s.selected = null
   await clock.advance(400)
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'translate-ja' })
+  await pickAction(picker, 'translate-ja')
   expect(s.models.map(m => m.model)).toEqual(['haiku'])
   expect(s.models[0]?.prompt).toContain('Bonjour')
   // A pick keeps the dialog's tab and shows the results' (SELM-00050).
@@ -400,7 +399,7 @@ for (const surface of [...SURFACES, 'mobile'] as const) {
     expect(s.models).toEqual([])
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    const keys = [...(await picker.findAll({ type: 'Button' })), ...(await picker.findAll({ type: 'Select' }))].map(b => b.key)
+    const keys = (await picker.findAll({ type: 'Button' })).map(b => b.key)
     expect(unique(keys)).toBe(true)
     // The close button closes, running nothing.
     await picker.press({ key: PICKER_CLOSE })
@@ -435,7 +434,7 @@ test('a custom action with the ID picker runs from the dialog list', { options: 
   await band.unmount()
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  await picker.select({ key: PICKER_SELECT, value: 'picker' })
+  await pickAction(picker, 'picker')
   await picker.unmount()
   expect(s.models.map(m => m.system)).toEqual([expect.stringContaining('Answer as picker.')])
 })
@@ -466,10 +465,9 @@ for (const lang of ['ja', 'en'] as const) {
 // label in either language, kind name or mark; ./filter has the rules), and
 // Enter in it runs the first action left.
 
-/** The values the dialog's Select lists now; undefined when it draws none. */
-async function listed(picker: { find: (q: { type: string }) => Promise<{ props: Record<string, unknown> } | undefined> }) {
-  const select = await picker.find({ type: 'Select' })
-  return select === undefined ? undefined : (select.props.options as { value: string }[]).map(o => o.value)
+/** The IDs the dialog's list holds now; undefined when it draws none. */
+async function listed(picker: Parameters<typeof listedActions>[0]) {
+  return (await listBox(picker)) === undefined ? undefined : listedActions(picker)
 }
 
 /** The spec of a built-in, to match as the dialog does. */
@@ -513,10 +511,10 @@ for (const surface of SURFACES) {
       expect((await picker.find({ key: PICKER_FILTER }))?.props.submitLabel).toBe(t.pickerFilterSubmitNone)
       await picker.input({ key: PICKER_FILTER, text: '', kind: 'change' })
       expect((await picker.find({ key: PICKER_FILTER }))?.props.submitLabel).toBe(t.pickerFilterSubmit)
-      expect((await picker.find({ type: 'Select' }))?.props.autoFocus).toBeUndefined()
+      for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
       expect(await picker.find({ key: PICKER_FILTER_CLEAR })).toBeUndefined()
       // Drawn after the legend and before the list.
-      const order = (await picker.findAll({})).map(f => (f.key === PICKER_FILTER ? 'field' : f.type === 'Select' ? 'list' : f.text === t.pickerLegend(true) ? 'legend' : null)).filter(x => x !== null)
+      const order = (await picker.findAll({})).map(f => (f.key === PICKER_FILTER ? 'field' : String(f.key).startsWith(PICKER_LIST) ? 'list' : f.text === t.pickerLegend(true) ? 'legend' : null)).filter(x => x !== null)
       expect(order).toEqual(['legend', 'field', 'list'])
       await picker.unmount()
     })
@@ -530,20 +528,21 @@ for (const surface of SURFACES) {
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    // The first 64 of the dialog's order: a Select takes no more.
+    // The first of the dialog's order, as many as the pane's height holds.
     const all = (await listed(picker)) ?? []
-    expect(all).toHaveLength(Math.min(ACTIONS.length, SELECT_MAX_OPTIONS))
+    const max = all.length
+    expect(max).toBeLessThan(ACTIONS.length)
     for (const query of ['要約', 'japanese', '< 要約', 'ﾀｲﾏｰ', 'context']) {
       await picker.input({ key: PICKER_FILTER, text: query, kind: 'change' })
       const narrowed = (await listed(picker)) ?? []
-      // Every action that matches (up to the 64 a Select takes), and nothing else: those among the
-      // first 64 first, in their order, then the ones past them.
+      // Every action that matches (up to as many as fit), and nothing else: those among the
+      // first listed first, in their order, then the ones past them.
       const matching = ACTIONS.filter(a => matchesFilter(a, query)).map(a => a.id)
       const head = all.filter(id => matchesFilter(specOf(id), query))
-      expect(narrowed).toHaveLength(Math.min(matching.length, SELECT_MAX_OPTIONS))
+      if (matching.length <= max) expect([...narrowed].sort()).toEqual([...matching].sort())
+      else expect(narrowed.length).toBeLessThan(matching.length)
       for (const id of narrowed) expect(matching).toContain(id)
-      if (matching.length <= SELECT_MAX_OPTIONS) expect([...narrowed].sort()).toEqual([...matching].sort())
-      expect(narrowed.slice(0, head.length)).toEqual(head)
+      expect(narrowed.slice(0, head.length)).toEqual(head.slice(0, narrowed.length))
       expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe(query)
     }
     // An exact ID leads, whatever the order.
@@ -555,7 +554,7 @@ for (const surface of SURFACES) {
     await picker.unmount()
   })
 
-  test(`[${surface}] nothing matches: a line says so, and no Select is drawn`, { options: EN }, async ($, on) => {
+  test(`[${surface}] nothing matches: a line says so, and no list is drawn`, { options: EN }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -564,7 +563,7 @@ for (const surface of SURFACES) {
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
     await picker.input({ key: PICKER_FILTER, text: 'zzzz', kind: 'change' })
-    expect(await picker.find({ type: 'Select' })).toBeUndefined()
+    expect(await listBox(picker)).toBeUndefined()
     expect(await picker.find({ text: MESSAGES.en.pickerNoMatch })).toBeDefined()
     // The field and the close button stay.
     expect(await picker.find({ key: PICKER_FILTER })).toBeDefined()
@@ -708,12 +707,18 @@ for (const surface of SURFACES) {
       (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== PICKER_CLOSE && k !== PICKER_FILTER_CLEAR)
     expect(await picker.find({ type: 'Select' })).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
+    // With the field there, as many as the pane's height holds, as without a palette.
     const all = await actionButtons()
-    expect(all).toHaveLength(ACTIONS.length)
+    expect(all).toEqual(await listedActions(picker))
+    expect(all.length).toBeLessThan(ACTIONS.length)
 
     await picker.input({ key: PICKER_FILTER, text: '要約', kind: 'change' })
     const narrowed = await actionButtons()
-    expect(narrowed).toEqual(all.filter(id => matchesFilter(specOf(id), '要約')))
+    const matching = ACTIONS.filter(a => matchesFilter(a, '要約')).map(a => a.id)
+    expect(narrowed.length).toBeGreaterThan(0)
+    for (const id of narrowed) expect(matching).toContain(id)
+    const head = all.filter(id => matchesFilter(specOf(id), '要約'))
+    expect(narrowed.slice(0, head.length)).toEqual(head.slice(0, narrowed.length))
     // Clear, in the palette's muted colour; pressed, it lists every action again.
     const clear = await picker.find({ key: PICKER_FILTER_CLEAR })
     expect(clear).toBeDefined()

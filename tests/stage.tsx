@@ -151,12 +151,76 @@ export const ASK_ROW = {
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
-/** The keys of the dialog's list and its close button: never an action's ID. */
-export const PICKER_SELECT = '_picker'
+/** The key of the dialog's close button: never an action's ID. */
 export const PICKER_CLOSE = '_picker-close'
+/** The Box the dialog's list is drawn in is keyed by this and how many it lists. */
+export const PICKER_LIST = '_picker-list-'
 /** The dialog's filter field and the button that empties it. */
 export const PICKER_FILTER = '_filter'
 export const PICKER_FILTER_CLEAR = '_filter-clear'
+
+/** What the helpers below need of a mounted ⋯ dialog. */
+type PickerView = {
+  findAll: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined; children: unknown[] }[]>
+  find: (query: { type?: string; key?: string }) => Promise<{ key: string | undefined } | undefined>
+  press: (target: { key: string }) => Promise<unknown>
+  // Absent where the surface draws no Input (mobile).
+  input?: (target: { key: string; text: string; kind?: 'change' | 'submit' }) => Promise<unknown>
+}
+
+/** The key a child of a drawn element carries, as a description or as a tree node. */
+const keyOf = (child: unknown): string | undefined => {
+  if (typeof child !== 'object' || child === null) return undefined
+  const c = child as { key?: unknown; props?: { key?: unknown } }
+  const key = c.key ?? c.props?.key
+  return typeof key === 'string' ? key : undefined
+}
+
+/** The Box the ⋯ dialog's list is drawn in, or undefined when it lists none. */
+export const listBox = async (picker: PickerView) =>
+  (await picker.findAll({ type: 'Box' })).find(b => String(b.key).startsWith(PICKER_LIST))
+
+/** The IDs of the actions the ⋯ dialog lists (its list's buttons' keys), in the order drawn. */
+export const listedActions = async (picker: PickerView): Promise<string[]> => {
+  const box = await listBox(picker)
+  return box === undefined ? [] : box.children.flatMap(c => keyOf(c) ?? [])
+}
+
+/** The ⋯ dialog's list as `{ value: ID, label: what its button says }`, in the order drawn. */
+export const listedOptions = async (picker: PickerView): Promise<{ value: string; label: string }[]> => {
+  const box = await listBox(picker)
+  return box === undefined
+    ? []
+    : box.children.flatMap(c => {
+        const value = keyOf(c)
+        const label = (c as { props?: { label?: unknown } }).props?.label
+        return value === undefined ? [] : [{ value, label: String(label) }]
+      })
+}
+
+/** How many actions the ⋯ dialog lists, as the key of the Box it lists them in says; undefined when it lists none. */
+export const listedCount = async (picker: PickerView) => {
+  const box = await listBox(picker)
+  return box === undefined ? undefined : Number(String(box.key).slice(PICKER_LIST.length))
+}
+
+/**
+ * Picks the action `id` in the ⋯ dialog, as a press on its button. Listed: its
+ * button is pressed. Not listed and the filter field drawn: `id` is typed in
+ * it (an edit, not Enter), then the button keyed `id` is pressed, whatever
+ * else the filter leaves. The filter is left as typed. Not reached either way
+ * (no field: every action is listed): the test fails here, never silently.
+ */
+export async function pickAction(picker: PickerView, id: string) {
+  if ((await listedActions(picker)).includes(id)) return picker.press({ key: id })
+  if (picker.input === undefined || (await picker.find({ key: PICKER_FILTER })) === undefined) {
+    throw new Error(`pickAction: "${id}" is not listed and there is no filter field; listed: ${(await listedActions(picker)).join(', ')}`)
+  }
+  await picker.input({ key: PICKER_FILTER, text: id, kind: 'change' })
+  const listed = await listedActions(picker)
+  if (!listed.includes(id)) throw new Error(`pickAction: "${id}" is not listed after filtering by it; listed: ${listed.join(', ')}`)
+  return picker.press({ key: id })
+}
 
 export const PICKER_PANE = {
   ...PANE,

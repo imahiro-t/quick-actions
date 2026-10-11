@@ -31,6 +31,7 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
+import { pickerShownCount } from './picker-rows'
 import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
@@ -62,11 +63,8 @@ const KEEP = 20
 // hyphens), so no custom action's element ever shares one.
 const PICKER = `${PLUGIN}-picker`
 const MORE_KEY = '_more'
-const PICKER_SELECT_KEY = '_picker'
-/** The most options the engine takes in one Select. */
-export const SELECT_MAX_OPTIONS = 64
 const PICKER_CLOSE_KEY = '_picker-close'
-// The Box the list is drawn in, keyed by its rows as well (see the dialog).
+// The Box the list is drawn in, keyed by how many it lists as well (see the dialog).
 const PICKER_LIST_KEY = '_picker-list'
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
@@ -79,11 +77,6 @@ const PICKER_MAX_ROWS = 30
 // an AskUserQuestion dialog that opens the panes.
 const kindKey = (kind: HintKind) => `_kind-${kind}`
 const ASK_OPEN_KEY = '_ask-open'
-// The rows the ⋯ dialog's list leaves for the rest of the dialog at most: the
-// notice, the legend, the filter row, the "n more" row and the close button.
-const PICKER_CHROME_ROWS = 5
-// The fewest rows the list is sized to, however short the pane.
-const PICKER_MIN_LIST_ROWS = 3
 // What the dock is taken to be before this plugin's pane has been drawn
 // docked: the width every open asks for, and its frame.
 const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
@@ -1284,9 +1277,9 @@ export const register: Register = (on, options) => {
   // ID, labels in both languages, kind names, kind marks), and Enter in it runs
   // the first action left; Clear beside it, or deleting its text, lists them
   // all again. The field takes the focus as the dialog opens; the focus ring
-  // moves on to the list, where a Select takes the keys (arrows move, Enter
-  // runs). Escape closes the whole pane through closeOnEscape (both tabs; the
-  // filter too, rather than emptying it), as the close button does.
+  // moves on to the list's buttons (Enter runs the one it is on). Escape
+  // closes the whole pane through closeOnEscape (both tabs; the filter too,
+  // rather than emptying it), as the close button does.
   // Focus is a request the engine refuses while the composer holds text: then
   // a line says how to get the keys, and the list and the close button still
   // answer a click. The mobile app draws no field and gets no such line: its
@@ -1294,12 +1287,17 @@ export const register: Register = (on, options) => {
   //
   // While an AskUserQuestion dialog is up it holds the keys, and the engine
   // refuses the pane any focus asked for: the list is buttons to click then
-  // (no field, no Select, which want the keys), under a line saying so.
+  // (no field, which wants the keys), under a line saying so.
   //
-  // The list fills the pane's height: it is drawn in a Box keyed by the rows it
-  // has (scroll.bodyRows less the rest of the dialog), so a terminal shrunk and
-  // grown again draws the Select anew at the new height rather than keeping
-  // the rows it was first laid out in.
+  // The list is a column of buttons, there from the start (no drop-down to
+  // open). With the filter field it fills the pane's height: as many actions
+  // as fit (./picker-rows: each button's rows as its label wraps at its words,
+  // less the rest of the dialog), then a line saying how many more the filter
+  // reaches.
+  // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
+  // again lists as many as the new height holds. Without the field (mobile, a
+  // question dialog up) nothing would reach the rest: every action is listed,
+  // and the pane scrolls.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -1311,28 +1309,32 @@ export const register: Register = (on, options) => {
     const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
-    // The mobile app draws no Select (though its table names one): there the
-    // actions are buttons.
-    // A palette draws buttons too: a Select takes no colour, and core's (the
-    // theme's) need not read on the palette's background.
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
-    const Select = e.surface !== 'mobile' && !fixed && !isAsking && 'Select' in elements ? elements.Select : undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
     const Input = !isAsking && canInput(e.surface, elements) ? elements.Input : undefined
     const input = Input !== undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
-    // A Select takes 64 options at most: past that it lists the first 64 (in
-    // the dialog's order, so the most used come first) and a line under it says
-    // how many more the filter reaches. Every surface that draws a Select draws
-    // an Input too (all but mobile carry both, and a table handed out is
-    // completed to every name), so wherever a Select is drawn the filter field
-    // is there to reach the rest; buttons (mobile, a palette) list them all.
-    const listed = Select === undefined ? shown : shown.slice(0, SELECT_MAX_OPTIONS)
     const keyboardNotice = e.surface !== 'mobile' && !isAsking && !e.props.isFocused
-    // The rows the list has: the pane's, less the rest of the dialog.
-    const listRows = Math.max(PICKER_MIN_LIST_ROWS, e.props.scroll.bodyRows - PICKER_CHROME_ROWS)
+    const askingNotice = isAsking && e.surface !== 'mobile'
+    const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
+    // As many as the pane's height holds (in the dialog's order, so the most
+    // used come first), with the filter field there to reach the rest;
+    // without it, all of them.
+    const count =
+      Input === undefined
+        ? shown.length
+        : pickerShownCount({
+            bodyRows: e.props.scroll.bodyRows,
+            bodyColumns: e.props.bodyColumns,
+            // A question dialog's line is never among them: it is up only
+            // with no field, when every action is listed and none counted.
+            chrome: [...(keyboardNotice ? [t.pickerNoFocus] : []), t.pickerLegend(hasSelection)],
+            labels: shown.map(labelOf),
+            more: t.pickerMore,
+          })
+    const listed = shown.slice(0, count)
     // The close button's props; it is drawn dimColor as before, or in the
     // palette's muted colour. It closes the whole pane, both tabs.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closeAll($) }
@@ -1424,7 +1426,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
-        {isAsking && e.surface !== 'mobile' && <Text {...muted(style)}>{t.pickerAsking}</Text>}
+        {askingNotice && <Text {...muted(style)}>{t.pickerAsking}</Text>}
         {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
         {state !== null && Input !== undefined && (
           <Box flexDirection="row">
@@ -1447,27 +1449,15 @@ export const register: Register = (on, options) => {
         {state === null ? (
           <Text {...muted(style)}>{t.noSelection}</Text>
         ) : shown.length === 0 ? (
-          // A Select takes one option at least: with none, this line instead.
           <Text {...muted(style)}>{t.pickerNoMatch}</Text>
-        ) : Select !== undefined ? (
-          <Box key={`${PICKER_LIST_KEY}-${listRows}`} flexDirection="column">
-            <Select
-              key={PICKER_SELECT_KEY}
-              label={t.pickerLabel}
-              options={listed.map(a => ({ value: a.id, label: `${markedIcon(a)} ${a.label}` }))}
-              onSelect={value => pick($, l, findAction(listed, value), input)}
-            />
-            {shown.length > listed.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
-          </Box>
         ) : (
-          <Box flexDirection="column">
-            {shown.map((a, i) => {
-              const label = `${markedIcon(a)} ${a.label}`
+          <Box key={`${PICKER_LIST_KEY}-${listed.length}`} flexDirection="column">
+            {listed.map((a, i) => {
+              const label = labelOf(a)
               const button = { label, onPress: () => pick($, l, a, input) }
               // With a palette the label is a child Text in its colour, and,
               // with no filter field to take it, the first takes the focus ring
-              // as the dialog takes the keys, as the Select would; otherwise
-              // the button stays as it always was.
+              // as the dialog takes the keys; otherwise the button is its label.
               return fixed ? (
                 <Button key={a.id} {...button} {...(i === 0 && Input === undefined && { autoFocus: true as const })}>
                   <Text color={style.body}>{label}</Text>
@@ -1478,6 +1468,7 @@ export const register: Register = (on, options) => {
             })}
           </Box>
         )}
+        {state !== null && listed.length < shown.length && <Text {...muted(style)}>{t.pickerMore(shown.length - listed.length)}</Text>}
         {closeButton}
       </Box>
     )

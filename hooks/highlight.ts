@@ -1,4 +1,6 @@
-import type { Result, ResultOrigin } from '../types'
+import type { RenderPropsOf } from 'claude-code'
+
+import type { Result } from '../types'
 
 // Which transcript rows are drawn highlighted, worked out from the results
 // alone: a highlight lives on the entry it belongs to (Result.origin), so it
@@ -11,15 +13,65 @@ import type { Result, ResultOrigin } from '../types'
 // with its mark and background) cannot be drawn over with a span of colour
 // without the plugin drawing the row itself, and so losing that drawing.
 
-/** The transcript rows a selection can lie in and that are drawn highlighted (UiSelection.requestId names one). */
-export const HIGHLIGHT_ROWS = ['UserMessage', 'AssistantMessage', 'ToolUse', 'ToolResult', 'CommandOutput'] as const
+/**
+ * The transcript rows a selection can lie in (UiSelection.requestId names
+ * one) and that are drawn highlighted: every component the transcript draws
+ * as a row of its own. Left out are the components drawn outside the
+ * transcript (SessionMode, PromptHint, AbovePrompt, Pane) and the Spinner,
+ * the live line that goes as the turn ends: a selection there names no row,
+ * so its entry gets no origin, and so no buttons.
+ */
+export const HIGHLIGHT_ROWS = [
+  'UserMessage',
+  'AssistantMessage',
+  'ToolUse',
+  'ToolResult',
+  'ToolGroup',
+  'ToolProgress',
+  'CommandOutput',
+  'InfoNotice',
+  'TurnDuration',
+  'AskUserQuestion',
+] as const
+
+type HighlightRow = (typeof HIGHLIGHT_ROWS)[number]
+
+/** A drawing of one of HIGHLIGHT_ROWS, as its `ui.render` hook sees it (the part read here). */
+export type RowDrawing = { [C in HighlightRow]: { component: C; requestId: string; props: RenderPropsOf[C] } }[HighlightRow]
 
 /**
- * The origins of the entries whose highlight is on row `requestId`, newest
- * first: those not cleared. A row with one or more is drawn highlighted.
+ * The ids a selection's row may be named by that this drawing shows: its own,
+ * and for a folded group of tool calls, each call's (the engine may name the
+ * call a selection lies in); for a progress row, the call it is under (drawn
+ * with that call, as a call's result block is).
  */
-export function highlightsFor(results: readonly Result[], requestId: string): ResultOrigin[] {
-  return results.flatMap(r => (r.origin !== undefined && r.origin.highlighted && r.origin.requestId === requestId ? [r.origin] : []))
+export function rowIdsOf(e: RowDrawing): string[] {
+  if (e.component === 'ToolGroup') {
+    return [e.requestId, ...e.props.calls.flatMap(c => (typeof c.tool_use_id === 'string' && c.tool_use_id !== '' ? [c.tool_use_id] : []))]
+  }
+  if (e.component === 'ToolProgress') return [e.requestId, e.props.tool_use_id]
+  return [e.requestId]
+}
+
+/** Whether a drawing is of a row in `rows` (highlightedRowsOf's): drawn highlighted. */
+export function isHighlighted(rows: readonly string[], e: RowDrawing): boolean {
+  return rowIdsOf(e).some(id => rows.includes(id))
+}
+
+/**
+ * The rows drawn highlighted, as `results` says: the row of every entry whose
+ * highlight is on, each once, sorted (so two lists of the same rows are equal,
+ * whatever order the entries came in).
+ */
+export function highlightedRowsOf(results: readonly Result[]): string[] {
+  const rows = new Set<string>()
+  for (const r of results) if (r.origin !== undefined && r.origin.highlighted) rows.add(r.origin.requestId)
+  return [...rows].sort()
+}
+
+/** Whether two lists of rows (highlightedRowsOf's) are the same. */
+export function sameRows(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i])
 }
 
 /** `results` with the highlight of entry `id` off; every other entry as it was. */

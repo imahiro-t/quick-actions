@@ -2,13 +2,15 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import type { Result } from '../types'
-import { clearHighlight, highlightsFor, nextEntryId } from '../hooks/highlight'
+import { HIGHLIGHT_ROWS, clearHighlight, highlightedRowsOf, isHighlighted as drawsHighlighted, nextEntryId, rowIdsOf, sameRows } from '../hooks/highlight'
 import { MESSAGES } from '../hooks/i18n'
 import { HIGHLIGHT, paneStyle } from '../hooks/palette'
 import { settleQuietly, toRow } from '../hooks/scroll'
 import {
+  ASK_ROW,
   ASSISTANT_ROW,
   BAND,
+  INFO_NOTICE_ROW,
   EN,
   JA,
   JAPANESE,
@@ -17,8 +19,11 @@ import {
   PICKER_PANE,
   PICKER_SELECT,
   SURFACES,
+  TOOL_GROUP_ROW,
+  TOOL_PROGRESS_ROW,
   TOOL_RESULT_ROW,
   TOOL_USE_ROW,
+  TURN_DURATION_ROW,
   USER_ROW,
   reselect,
   runCommand,
@@ -36,7 +41,16 @@ import type { Clock, Stage } from './stage'
 const GOTO = (id: number) => `_goto-${id}`
 const UNMARK = (id: number) => `_unmark-${id}`
 
-type Row = typeof USER_ROW | typeof ASSISTANT_ROW | typeof OTHER_ASSISTANT_ROW | typeof TOOL_USE_ROW | typeof TOOL_RESULT_ROW
+type Row =
+  | typeof USER_ROW
+  | typeof ASSISTANT_ROW
+  | typeof OTHER_ASSISTANT_ROW
+  | typeof TOOL_USE_ROW
+  | typeof TOOL_RESULT_ROW
+  | typeof TOOL_GROUP_ROW
+  | typeof TOOL_PROGRESS_ROW
+  | typeof INFO_NOTICE_ROW
+  | typeof TURN_DURATION_ROW
 
 /** Whether `row`, drawn now, is highlighted: its drawing is the engine's, inside the highlight Box. */
 async function isHighlighted($: Engine, row: Row, surface: (typeof SURFACES)[number] = 'terminal'): Promise<boolean> {
@@ -85,29 +99,51 @@ const entry = (id: number, origin?: Result['origin']): Result => ({
   ...(origin === undefined ? {} : { origin }),
 })
 
-test('highlightsFor: the entries on that row whose highlight is on, newest first', () => {
+test('highlightedRowsOf: the row of every entry whose highlight is on, each once, sorted', () => {
   const list = [
-    entry(4, { requestId: 'a', text: 'two', highlighted: true }),
-    entry(3, { requestId: 'b', text: 'other row', highlighted: true }),
-    entry(2, { requestId: 'a', text: 'cleared', highlighted: false }),
+    entry(4, { requestId: 'b', highlighted: true }),
+    entry(3, { requestId: 'c', highlighted: false }),
+    entry(2, { requestId: 'a', highlighted: true }),
     entry(1),
-    entry(0, { requestId: 'a', text: 'one', highlighted: true }),
+    entry(0, { requestId: 'b', highlighted: true }),
   ]
-  expect(highlightsFor(list, 'a').map(o => o.text)).toEqual(['two', 'one'])
-  expect(highlightsFor(list, 'b').map(o => o.text)).toEqual(['other row'])
-  expect(highlightsFor(list, 'none')).toEqual([])
-  expect(highlightsFor([], 'a')).toEqual([])
+  expect(highlightedRowsOf(list)).toEqual(['a', 'b'])
+  expect(highlightedRowsOf([entry(1)])).toEqual([])
+  expect(highlightedRowsOf([])).toEqual([])
+  // The order the entries came in makes no difference.
+  expect(sameRows(highlightedRowsOf([...list].reverse()), highlightedRowsOf(list))).toBe(true)
+  expect(sameRows(['a'], ['a', 'b'])).toBe(false)
+  expect(sameRows(['a'], ['b'])).toBe(false)
+})
+
+test('rowIdsOf: a row by its own id; a group by its calls too; a progress row by its call too', () => {
+  expect(rowIdsOf(ASSISTANT_ROW)).toEqual([ASSISTANT_ROW.requestId])
+  expect(rowIdsOf(TOOL_GROUP_ROW)).toEqual(['group-1', 'toolu_g1', 'toolu_g2'])
+  expect(rowIdsOf({ ...TOOL_GROUP_ROW, props: { ...TOOL_GROUP_ROW.props, calls: [{ tool: 'Read', input: {}, isRunning: false, isErrored: false, isInterrupted: false }] } })).toEqual(['group-1'])
+  expect(rowIdsOf(TOOL_PROGRESS_ROW)).toEqual(['progress-1', 'toolu_1'])
+  expect(rowIdsOf(ASK_ROW)).toEqual([ASK_ROW.requestId])
+  expect(drawsHighlighted([ASK_ROW.requestId], ASK_ROW)).toBe(true)
+  expect(drawsHighlighted(['toolu_g2'], TOOL_GROUP_ROW)).toBe(true)
+  expect(drawsHighlighted(['toolu_1'], TOOL_GROUP_ROW)).toBe(false)
+  expect(drawsHighlighted([], ASSISTANT_ROW)).toBe(false)
+})
+
+test('the rows hooked: every row the transcript draws, none drawn outside it', () => {
+  expect([...HIGHLIGHT_ROWS].sort()).toEqual(
+    ['AskUserQuestion', 'AssistantMessage', 'CommandOutput', 'InfoNotice', 'ToolGroup', 'ToolProgress', 'ToolResult', 'ToolUse', 'TurnDuration', 'UserMessage'],
+  )
 })
 
 test('clearHighlight: that entry alone loses it; the others, on the same row or not, keep theirs', () => {
   const list = [
-    entry(3, { requestId: 'a', text: 'x', highlighted: true }),
-    entry(2, { requestId: 'a', text: 'x', highlighted: true }),
+    entry(3, { requestId: 'a', highlighted: true }),
+    entry(2, { requestId: 'a', highlighted: true }),
     entry(1),
   ]
   const cleared = clearHighlight(list, 3)
   expect(cleared.map(r => r.origin?.highlighted)).toEqual([false, true, undefined])
-  expect(highlightsFor(cleared, 'a')).toHaveLength(1)
+  expect(highlightedRowsOf(cleared)).toEqual(['a'])
+  expect(highlightedRowsOf(clearHighlight(cleared, 2))).toEqual([])
   // An entry with no origin is left as it was, as is an unknown ID.
   expect(clearHighlight(list, 1)).toEqual(list)
   expect(clearHighlight(list, 99)).toEqual(list)
@@ -226,6 +262,93 @@ test('clearing one row leaves another row highlighted', { options: EN }, async (
   await pane.unmount()
   expect(await isHighlighted($, ASSISTANT_ROW)).toBe(false)
   expect(await isHighlighted($, OTHER_ASSISTANT_ROW)).toBe(true)
+})
+
+// The other rows the transcript draws: a selection in one highlights it, and
+// its result carries both buttons, as for a message. The AskUserQuestion
+// dialog is hooked the same way, but the kit cannot draw it (it must hold the
+// engine's own dialog, which nothing beneath the plugin here can be): its
+// part is checked through rowIdsOf below.
+for (const [name, row, selected] of [
+  ['a folded group of tool calls, by its own id', TOOL_GROUP_ROW, TOOL_GROUP_ROW.requestId],
+  ['a folded group of tool calls, by the id of a call in it', TOOL_GROUP_ROW, 'toolu_g2'],
+  ['a progress row', TOOL_PROGRESS_ROW, TOOL_PROGRESS_ROW.requestId],
+  ['an info notice', INFO_NOTICE_ROW, INFO_NOTICE_ROW.requestId],
+  ['the line that closes a turn', TURN_DURATION_ROW, TURN_DURATION_ROW.requestId],
+] as const) {
+  for (const surface of SURFACES) {
+    test(`[${surface}] a selection in ${name} highlights that row, and the result gets both buttons`, { options: EN }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      expect(await isHighlighted($, row, surface)).toBe(false)
+      await select(s, clock, 'some words', selected)
+      await pressIcon($, 'explain')
+      expect(await isHighlighted($, row, surface)).toBe(true)
+      expect(await isHighlighted($, ASSISTANT_ROW, surface)).toBe(false)
+      expect(await paneKeys($)).toEqual([GOTO(1), UNMARK(1)])
+      const pane = await $.ui.mount({ ...PANE, surface })
+      await pane.press({ key: UNMARK(1) })
+      await pane.unmount()
+      expect(await isHighlighted($, row, surface)).toBe(false)
+    })
+  }
+}
+
+test('a selection in a tool call highlights the progress row under it too', { options: EN }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, 'dmesg', TOOL_USE_ROW.requestId)
+  await pressIcon($, 'explain')
+  expect(await isHighlighted($, TOOL_PROGRESS_ROW)).toBe(true)
+  // A group holds other calls: left as it is.
+  expect(await isHighlighted($, TOOL_GROUP_ROW)).toBe(false)
+})
+
+// The transcript rows read the highlighted rows alone while they draw, never
+// the results: a run over time writes the results every tick, and settles
+// write them too, and none of that may draw a transcript row again. Counted
+// as the engine's drawings beneath the plugin's hook.
+test('a run over time ticking, and other writes of the results, draw no transcript row again; a highlight change does', { options: EN }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const lit = await $.ui.mount({ ...ASSISTANT_ROW, surface: 'terminal' })
+  const plain = await $.ui.mount({ ...USER_ROW, surface: 'terminal' })
+  await select(s, clock, 'exit 137', ASSISTANT_ROW.requestId)
+  await pressIcon($, 'explain')
+  expect(((await lit.drawn()) as unknown as { props: Record<string, unknown> }).props['backgroundColor']).toBe(HIGHLIGHT)
+  const LIT = `AssistantMessage:${ASSISTANT_ROW.requestId}`
+  const PLAIN = `UserMessage:${USER_ROW.requestId}`
+  const before = { lit: s.drawn[LIT], plain: s.drawn[PLAIN] }
+  expect(before.lit).toBeGreaterThan(0)
+  expect(before.plain).toBeGreaterThan(0)
+
+  // A timer added, then ticking for 5 seconds: the results written each time.
+  await runCommand($, 'timer 10s')
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const frame = async () => (await pane.findAll({ type: 'Text' })).map(x => x.text).join('|')
+  const first = await frame()
+  await clock.advance(5000)
+  expect(await frame()).not.toBe(first)
+  // Another action on the row already highlighted: its rows are as they were.
+  await reselect(s, clock)
+  await pressIcon($, 'translate-ja')
+  expect(s.drawn[LIT]).toBe(before.lit)
+  expect(s.drawn[PLAIN]).toBe(before.plain)
+
+  // A highlight cleared that leaves the row highlighted (the other entry's
+  // still on): the rows are as they were, nothing drawn again.
+  await pane.press({ key: UNMARK(3) })
+  expect(s.drawn[LIT]).toBe(before.lit)
+  // The last one cleared: the row is drawn again, as the engine draws it.
+  await pane.press({ key: UNMARK(1) })
+  expect(s.drawn[LIT]).toBeGreaterThan(before.lit ?? 0)
+  expect(((await lit.drawn()) as unknown as { props: Record<string, unknown> }).props['backgroundColor']).toBeUndefined()
+  await pane.unmount()
+  await lit.unmount()
+  await plain.unmount()
 })
 
 // The kit has no implementation of $.ui.scroll (see tests/scroll.test.tsx):
@@ -386,8 +509,8 @@ test('an entry pushed out of the pane takes its highlight with it', { options: E
 // them, so that clearing its highlight clears its own and no other's.
 test('after a reload, a new entry takes an ID past every entry kept, and clearing it leaves the kept ones', { options: EN }, async ($, on) => {
   const KEPT: Result[] = [
-    entry(101, { requestId: OTHER_ASSISTANT_ROW.requestId, text: 'memory limit', highlighted: true }),
-    entry(100, { requestId: ASSISTANT_ROW.requestId, text: 'exit 137', highlighted: true }),
+    entry(101, { requestId: OTHER_ASSISTANT_ROW.requestId, highlighted: true }),
+    entry(100, { requestId: ASSISTANT_ROW.requestId, highlighted: true }),
   ]
   // Beneath the plugin, the pane's results as a reload leaves them, read and
   // written here (a write with a stale ifVersion refused, as the host does).

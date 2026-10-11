@@ -31,7 +31,7 @@ import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { USAGE_KEY, arrange, defaultsLead, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { OrderSlot } from './order'
-import { HIGHLIGHT_ROWS, clearHighlight, highlightsFor, nextEntryId } from './highlight'
+import { HIGHLIGHT_ROWS, clearHighlight, highlightedRowsOf, isHighlighted, nextEntryId, sameRows } from './highlight'
 import { HIGHLIGHT, paneStyle, parsePaneTheme } from './palette'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
@@ -96,6 +96,7 @@ const dismissed = atom({ plugin: 'quick-actions', key: 'dismissed' } as const, n
 const results = atom({ plugin: 'quick-actions', key: 'results' } as const, [])
 const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
 const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
+const highlightedRows = atom({ plugin: 'quick-actions', key: 'highlightedRows' } as const, [])
 
 const quoteOf = (text: string) => {
   const line = text.replace(/\s+/g, ' ').trim()
@@ -359,6 +360,22 @@ async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, 
   await startTicker($, lang, id, def.label, now, outcome)
 }
 
+/**
+ * Brings `highlightedRows` in line with what `results` says, written only when
+ * the rows differ: the transcript rows read it while they draw, so a write of
+ * `results` that leaves the rows as they were (a tick, a settle) redraws none.
+ * Called after every write that can change the rows (an entry added, and so
+ * one pushed out; a highlight cleared) and as a session starts. Read again
+ * after a write, should `results` have changed meanwhile.
+ */
+async function syncHighlights($: EngineInterface) {
+  for (;;) {
+    const rows = highlightedRowsOf(await read($, results))
+    if (sameRows(await read($, highlightedRows), rows)) return
+    await update($, highlightedRows, () => rows)
+  }
+}
+
 /** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */
 type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'origin'>
 
@@ -393,6 +410,7 @@ async function begin($: EngineInterface, def: ActionDef, head: EntryHead): Promi
     return [result, ...list].slice(0, KEEP)
   })
   nextId = Math.max(nextId, id + 1)
+  await syncHighlights($)
   if (tickers.size > 0) {
     const kept = new Set((await read($, results)).map(r => r.id))
     for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
@@ -425,7 +443,7 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // named one: the entry then keeps it (its origin), highlighted.
 async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string) {
   const context = isContext(def)
-  const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId, text, highlighted: true }
+  const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId, highlighted: true }
   const id = await begin(
     $,
     def,
@@ -681,6 +699,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
+    // The rows as the results kept say, should they have been kept without them.
+    await syncHighlights($)
     // The order for this session, from the usage so far.
     await ensureOrder($, orderLoad)
     await $.command.register({
@@ -1063,9 +1083,11 @@ export const register: Register = (on, options) => {
   // result's "Clear highlight" (or until it is pushed out of the pane): the
   // engine's own drawing of the row, untouched, inside a Box of the highlight
   // colour. A row with no highlight is left to the engine, as it always was.
-  // Closing the pane leaves the highlights alone.
+  // Closing the pane leaves the highlights alone. It reads highlightedRows
+  // alone, never `results`, so the rows are drawn again only when the
+  // highlighted rows change, not on every write of the results.
   on('ui.render', { component: HIGHLIGHT_ROWS }, async ($, e, next) => {
-    if (highlightsFor(await read($, results), e.requestId).length === 0) return next(e)
+    if (!isHighlighted(await read($, highlightedRows), e)) return next(e)
     const drawn = await next(e)
     const { Box } = $.ui.resolve(e)
     return <Box backgroundColor={HIGHLIGHT}>{drawn}</Box>
@@ -1105,21 +1127,23 @@ export const register: Register = (on, options) => {
       if (target === 'none') return r.arg === undefined ? t.standalone : t.quote(r.arg)
       return t.quote(r.quote)
     }
+    /** A button of the pane: in the palette's muted colour when it paints one, else the surface's own. */
+    const paneButton = (key: string, label: string, onPress: () => unknown) =>
+      fixed ? (
+        <Button key={key} label={label} onPress={onPress}>
+          <Text color={style.muted}>{label}</Text>
+        </Button>
+      ) : (
+        <Button key={key} label={label} onPress={onPress} />
+      )
     /** A running entry: its frame and stop button while it runs over time, stopped once its run is gone (a reload), else the running text. */
     const running = (r: Result, def: ActionDef | undefined) => {
       if (r.ticker !== true) return <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
       if (!tickers.has(r.id)) return <Text {...muted(style)}>{t.tickerStopped()}</Text>
-      const stop = { label: t.stop, onPress: () => stopTicker($, l, r.id) }
       return (
         <Box flexDirection="column">
           <Text color={style.body}>{r.text}</Text>
-          {fixed ? (
-            <Button key={stopKey(r.id)} {...stop}>
-              <Text color={style.muted}>{t.stop}</Text>
-            </Button>
-          ) : (
-            <Button key={stopKey(r.id)} {...stop} />
-          )}
+          {paneButton(stopKey(r.id), t.stop, () => stopTicker($, l, r.id))}
         </Box>
       )
     }
@@ -1129,34 +1153,16 @@ export const register: Register = (on, options) => {
      * when the engine moves the transcript), and, while the row shows it, the
      * entry's highlight off. A refused scroll (the row no longer kept) does nothing.
      */
-    const marks = (r: Result, origin: ResultOrigin) => {
-      const goto = { label: t.gotoSelection, onPress: () => settleQuietly($.ui.scroll(toRow(origin.requestId))) }
-      const unmark = {
-        label: t.clearHighlight,
-        onPress: async () => {
-          await update($, results, list => clearHighlight(list, r.id))
-        },
-      }
-      return (
-        <Box flexDirection="row">
-          {fixed ? (
-            <Button key={gotoKey(r.id)} {...goto}>
-              <Text color={style.muted}>{t.gotoSelection}</Text>
-            </Button>
-          ) : (
-            <Button key={gotoKey(r.id)} {...goto} />
-          )}
-          {origin.highlighted &&
-            (fixed ? (
-              <Button key={unmarkKey(r.id)} {...unmark}>
-                <Text color={style.muted}>{t.clearHighlight}</Text>
-              </Button>
-            ) : (
-              <Button key={unmarkKey(r.id)} {...unmark} />
-            ))}
-        </Box>
-      )
-    }
+    const marks = (r: Result, origin: ResultOrigin) => (
+      <Box flexDirection="row">
+        {paneButton(gotoKey(r.id), t.gotoSelection, () => settleQuietly($.ui.scroll(toRow(origin.requestId))))}
+        {origin.highlighted &&
+          paneButton(unmarkKey(r.id), t.clearHighlight, async () => {
+            await update($, results, list => clearHighlight(list, r.id))
+            await syncHighlights($)
+          })}
+      </Box>
+    )
 
     return (
       <Box flexDirection="column" {...painted(style)}>

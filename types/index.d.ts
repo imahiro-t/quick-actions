@@ -34,8 +34,6 @@ export type Result = {
 export type ResultOrigin = {
   /** The row, by the id its `ui.render` hook reads as `e.requestId` and `$.ui.scroll` takes. */
   requestId: string
-  /** The selected text, trimmed, whole (the entry's `quote` is it shortened). */
-  text: string
   /** True until the entry's "Clear highlight" is pressed. */
   highlighted: boolean
 }
@@ -54,6 +52,14 @@ declare module 'claude-code' {
       selection: string | null
       dismissed: string | null
       results: Result[]
+      /**
+       * The transcript rows drawn highlighted now (by requestId, sorted, each
+       * once): what `results` says (an entry's origin, not cleared), kept
+       * apart so that the transcript rows read this alone while they draw,
+       * and are drawn again when it changes, not on every write of `results`
+       * (a run over time writes it every tick). Written only when it changes.
+       */
+      highlightedRows: string[]
       /**
        * The ⋯ dialog: null while it is closed; open, the text it runs selection
        * actions on (null: none, context and standalone actions only) and what

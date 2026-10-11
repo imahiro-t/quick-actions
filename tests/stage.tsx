@@ -100,6 +100,54 @@ export const TOOL_RESULT_ROW = {
   props: { tool_use_id: 'toolu_1', tool: 'Bash', output: { stdout: 'Out of memory: Killed process 4242', stderr: '', interrupted: false }, isErrored: false },
 } as const
 
+// The other transcript rows a selection can lie in. A folded group of tool
+// calls has an id of its own and names each call's; the progress row under a
+// running call names that call.
+export const TOOL_GROUP_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolGroup',
+  requestId: 'group-1',
+  props: {
+    calls: [
+      { tool_use_id: 'toolu_g1', tool: 'Read', input: { file_path: '/repo/a.ts' }, isRunning: false, isErrored: false, isInterrupted: false },
+      { tool_use_id: 'toolu_g2', tool: 'Grep', input: { pattern: 'exit' }, isRunning: false, isErrored: false, isInterrupted: false },
+    ],
+    isActive: false,
+    isExpanded: false,
+  },
+} as const
+
+export const TOOL_PROGRESS_ROW = {
+  plugin: PLUGIN,
+  component: 'ToolProgress',
+  requestId: 'progress-1',
+  props: { tool_use_id: 'toolu_1', kind: 'background_hint', hint: '(ctrl+b to run in background)' },
+} as const
+
+export const INFO_NOTICE_ROW = {
+  plugin: PLUGIN,
+  component: 'InfoNotice',
+  requestId: 'notice-1',
+  props: { text: 'Using the model from your settings', command: '/model' },
+} as const
+
+export const TURN_DURATION_ROW = {
+  plugin: PLUGIN,
+  component: 'TurnDuration',
+  requestId: 'turn-1',
+  props: { word: 'Baked', durationMs: 3000 },
+} as const
+
+// The question dialog: only its props are used (rowIdsOf); the kit cannot
+// draw it, which must hold the engine's own dialog, and nothing beneath the
+// plugin here can be that.
+export const ASK_ROW = {
+  plugin: PLUGIN,
+  component: 'AskUserQuestion',
+  requestId: 'toolu_ask',
+  props: { tool: 'AskUserQuestion', questions: [{ question: 'Which one?', header: 'Pick', options: [], multiSelect: false }] as unknown[] },
+} as const
+
 /** The ⋯ dialog's pane, as the plugin opens it. */
 export const PICKER = `${PLUGIN}-picker`
 
@@ -160,6 +208,10 @@ export type Stage = {
   rows: Record<string, number | undefined>
   // What $.store holds, by key: the test's entries, then what the plugin wrote.
   stored: Record<string, unknown>
+  // How many times the engine drew each site beneath the plugin, by
+  // `<component>:<requestId>`: a transcript row's hook drawing it again
+  // (highlighted or not) asks the engine's drawing again.
+  drawn: Record<string, number>
 }
 
 const reply = (s: Stage, text: string) => {
@@ -172,7 +224,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store } }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, stored: { ...options.store }, drawn: {} }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -187,6 +239,8 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
+    const site = `${e.component}:${e.requestId}`
+    s.drawn[site] = (s.drawn[site] ?? 0) + 1
     const { Box } = $.ui.resolve(e)
     return <Box key="engine" />
   })

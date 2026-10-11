@@ -13,6 +13,8 @@
     --text: #1c1c1a;
     --muted: #55524d;
     --border: #d9d7d2;
+    /* Borders that show a control is there (search box, filter buttons): 3:1 or more against bg and surface. */
+    --control-border: #827e77;
     --tag-bg: #efeeeb;
     --tag-text: #3d3a36;
     --code-bg: #efeeeb;
@@ -31,6 +33,7 @@
       --text: #ecebe8;
       --muted: #b0aca5;
       --border: #3a3936;
+      --control-border: #85817a;
       --tag-bg: #2c2b29;
       --tag-text: #dcdad5;
       --code-bg: #2c2b29;
@@ -58,21 +61,30 @@
   .lead { margin: 6px 0 0; color: var(--muted); }
   .links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
   a { color: var(--focus); }
-  .lang { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  /* No overflow: hidden here, so the buttons' focus outline is drawn in full; the end buttons carry the rounded corners. */
+  .lang { display: inline-flex; border: 1px solid var(--control-border); border-radius: 8px; }
   button { font: inherit; color: inherit; cursor: pointer; }
   .lang button { border: 0; background: var(--surface); color: var(--text); padding: 4px 12px; }
+  .lang button:first-child { border-radius: 7px 0 0 7px; }
+  .lang button:last-child { border-radius: 0 7px 7px 0; }
+  .lang button:focus-visible { position: relative; z-index: 1; }
   .lang button[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); }
-  .controls { position: sticky; top: 0; z-index: 1; background: var(--bg); padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .controls { position: static; background: var(--bg); padding: 12px 0; border-bottom: 1px solid var(--border); }
+  /* The controls stay in view only where they leave most of the screen to the cards:
+     on a narrow or short viewport (a phone, landscape, or 400% zoom) they scroll away. */
+  @media (min-width: 48rem) and (min-height: 40rem) {
+    .controls { position: sticky; top: 0; z-index: 1; }
+  }
   .search label { display: block; font-weight: 600; margin-bottom: 4px; }
   .search input {
     width: 100%; font: inherit; padding: 8px 12px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border: 1px solid var(--control-border); background: var(--surface); color: var(--text);
   }
   .filters { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 10px; }
   .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
   .group-name { color: var(--muted); font-size: 0.85rem; margin-right: 2px; }
   .chip {
-    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border: 1px solid var(--control-border); background: var(--surface); color: var(--text);
     border-radius: 999px; padding: 2px 12px; font-size: 0.9rem;
   }
   .chip[aria-pressed="true"] { background: var(--pressed-bg); color: var(--pressed-text); border-color: var(--pressed-bg); }
@@ -109,6 +121,12 @@
   .empty, .error { margin: 24px 0; padding: 16px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
   [hidden] { display: none !important; }
   footer { color: var(--muted); font-size: 0.85rem; padding: 0 0 32px; }
+  footer h2 { font-size: 0.95rem; color: var(--text); margin: 0 0 4px; }
+  .legend { margin: 0 0 16px; padding-left: 1.2em; }
+  .legend code { color: var(--text); }
+  .method-help { margin: 8px 0 0; font-size: 0.85rem; }
+  .method-help summary { cursor: pointer; color: var(--muted); }
+  .method-help ul { margin: 4px 0 0; padding-left: 1.2em; }
 </style>
 </head>
 <body>
@@ -126,7 +144,7 @@
   <p class="lead" id="lead"></p>
 </header>
 
-<div class="controls">
+<div class="controls" role="search" id="controls">
   <div class="wrap">
     <div class="search">
       <label for="q" id="q-label">Search</label>
@@ -136,12 +154,17 @@
       <div class="group" role="group" id="kind-group" aria-labelledby="kind-name"><span class="group-name" id="kind-name"></span></div>
       <div class="group" role="group" id="method-group" aria-labelledby="method-name"><span class="group-name" id="method-name"></span></div>
     </div>
+    <details class="method-help" id="method-help"><summary id="method-help-title"></summary><ul id="method-help-list"></ul></details>
     <p class="status" id="status" aria-live="polite" role="status"></p>
   </div>
 </div>
 
 <main class="wrap" id="main"></main>
-<footer class="wrap" id="footer"></footer>
+<footer class="wrap">
+  <h2 id="legend-title"></h2>
+  <ul class="legend" id="legend"></ul>
+  <p id="footer"></p>
+</footer>
 
 <script src="actions-data.js"></script>
 <script>
@@ -164,6 +187,9 @@
       arg: '引数',
       model: 'モデル',
       language: '言語',
+      controls: 'アクションの検索と絞り込み',
+      methodHelp: '実行方式の意味',
+      legend: '実行方式',
       footer: 'このページは hooks/actions.ts の定義から scripts/gen-catalog.mjs で生成したデータを表示しています。',
       methods: {
         complete: 'complete: モデルを 1 回呼び出す（会話は使わない）',
@@ -185,6 +211,9 @@
       arg: 'Argument',
       model: 'Model',
       language: 'Language',
+      controls: 'Search and filter the actions',
+      methodHelp: 'What the run methods mean',
+      legend: 'Run methods',
       footer: 'This page shows the data scripts/gen-catalog.mjs generates from the definitions in hooks/actions.ts.',
       methods: {
         complete: 'complete: one model call (the conversation is not used)',
@@ -320,17 +349,38 @@
     data.methods.forEach(function (m) { mg.appendChild(chip('methods', m, [m], t.methods[m])) })
   }
 
+  // The run methods' meanings, shown as text too (a title only appears on hover):
+  // folded under the filters, and listed in the footer.
+  function fillMethodHelp(t) {
+    $('method-help-title').textContent = t.methodHelp
+    $('legend-title').textContent = t.legend
+    ;['method-help-list', 'legend'].forEach(function (id) {
+      var list = $(id)
+      list.textContent = ''
+      data.methods.forEach(function (m) { list.appendChild(el('li', { text: t.methods[m] })) })
+    })
+  }
+
   function anyOn(set) { for (var k in set) if (set[k]) return true; return false }
 
   function matches(a, words) {
     if (anyOn(state.kinds) && !state.kinds[a.kind]) return false
     if (anyOn(state.methods) && !state.methods[a.method]) return false
     if (!words.length) return true
-    var hay = (a.id + '\n' + a.label[state.lang] + '\n' + a.summary[state.lang]).toLowerCase()
+    var hay = (a.id + '\n' + a.label[state.lang] + '\n' + a.summary[state.lang].replace(/`/g, '')).toLowerCase()
     return words.every(function (w) { return hay.indexOf(w) !== -1 })
   }
 
-  function apply() {
+  // The live count: right away on a click or a language change, but while typing
+  // only once the typing pauses, so a screen reader is not read every keystroke.
+  var statusTimer = null
+  function showStatus(text, delay) {
+    if (statusTimer !== null) { clearTimeout(statusTimer); statusTimer = null }
+    if (!delay) { $('status').textContent = text; return }
+    statusTimer = setTimeout(function () { statusTimer = null; $('status').textContent = text }, delay)
+  }
+
+  function apply(statusDelay) {
     var t = UI[state.lang]
     var words = state.query.toLowerCase().split(/\s+/).filter(Boolean)
     var shown = 0
@@ -351,7 +401,7 @@
       kindNodes[k].countNode.textContent = '(' + n + ')'
     }
     $('empty').hidden = shown !== 0
-    $('status').textContent = t.shown(shown, data.total)
+    showStatus(t.shown(shown, data.total), statusDelay)
   }
 
   function setLang(lang, remember) {
@@ -372,16 +422,18 @@
       b.setAttribute('aria-pressed', b.getAttribute('data-lang') === lang ? 'true' : 'false')
     })
     $('q-label').textContent = t.search
+    $('controls').setAttribute('aria-label', t.controls)
     $('q').placeholder = t.placeholder
     if (!data) {
       $('lead').textContent = ''
       $('main').textContent = ''
       $('main').appendChild(el('p', { class: 'error', role: 'alert', text: t.noData }))
-      $('status').textContent = ''
+      showStatus('', 0)
       return
     }
     $('lead').textContent = t.lead(data.total)
     $('footer').textContent = t.footer
+    fillMethodHelp(t)
     buildControls()
     build()
     apply()
@@ -392,9 +444,9 @@
   })
   $('q').addEventListener('input', function (e) {
     state.query = e.target.value
-    if (data) apply()
+    if (data) apply(300)
   })
-  if (!data) document.querySelector('.filters').hidden = true
+  if (!data) { document.querySelector('.filters').hidden = true; $('method-help').hidden = true }
   setLang(state.lang, false)
 })()
 </script>

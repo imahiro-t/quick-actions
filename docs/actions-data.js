@@ -2325,8 +2325,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Recap"
       },
       "summary": {
-        "ja": "会話の目的・経緯・現状を短くまとめる |",
-        "en": "What the conversation set out to do, how it went and where things stand |"
+        "ja": "会話の目的・経緯・現状を短くまとめる",
+        "en": "What the conversation set out to do, how it went and where things stand"
       }
     },
     {
@@ -2340,8 +2340,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Decisions so far"
       },
       "summary": {
-        "ja": "決まったこと・合意したことを箇条書きにする |",
-        "en": "The decisions made and points agreed on, as bullets |"
+        "ja": "決まったこと・合意したことを箇条書きにする",
+        "en": "The decisions made and points agreed on, as bullets"
       }
     },
     {
@@ -2355,8 +2355,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Next steps"
       },
       "summary": {
-        "ja": "残っている作業を、実行順の TODO として並べる |",
-        "en": "The work left, as a to-do list in the order to do it |"
+        "ja": "残っている作業を、実行順の TODO として並べる",
+        "en": "The work left, as a to-do list in the order to do it"
       }
     },
     {
@@ -2370,8 +2370,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Open questions"
       },
       "summary": {
-        "ja": "まだ答えの出ていない問い・保留点を並べる |",
-        "en": "The questions still unanswered and the points on hold |"
+        "ja": "まだ答えの出ていない問い・保留点を並べる",
+        "en": "The questions still unanswered and the points on hold"
       }
     },
     {
@@ -2385,8 +2385,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer, simply"
       },
       "summary": {
-        "ja": "Claude の直前の回答を、前提知識のない人向けに言い直す |",
-        "en": "Claude's last answer restated for someone with no background |"
+        "ja": "Claude の直前の回答を、前提知識のない人向けに言い直す",
+        "en": "Claude's last answer restated for someone with no background"
       }
     },
     {
@@ -2400,8 +2400,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Translate last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答を訳す。主に日本語なら英語へ、それ以外なら日本語へ（訳す先は `language` より優先） |",
-        "en": "Claude's last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`) |"
+        "ja": "Claude の直前の回答を訳す。主に日本語なら英語へ、それ以外なら日本語へ（訳す先は `language` より優先）",
+        "en": "Claude's last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`)"
       }
     },
     {
@@ -2415,8 +2415,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Assumptions"
       },
       "summary": {
-        "ja": "作業が頼っている前提・仮定を挙げ、確かめていないものを示す |",
-        "en": "The premises and assumptions the work relies on, marking those not checked |"
+        "ja": "作業が頼っている前提・仮定を挙げ、確かめていないものを示す",
+        "en": "The premises and assumptions the work relies on, marking those not checked"
       }
     },
     {
@@ -2430,8 +2430,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Risks"
       },
       "summary": {
-        "ja": "今の方針・変更のリスクと懸念点を、重要度の高い順に挙げる |",
-        "en": "The risks and concerns of the current approach and changes, most serious first |"
+        "ja": "今の方針・変更のリスクと懸念点を、重要度の高い順に挙げる",
+        "en": "The risks and concerns of the current approach and changes, most serious first"
       }
     },
     {
@@ -2445,8 +2445,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Changed files"
       },
       "summary": {
-        "ja": "セッションで作成・変更・削除したファイルと変更内容を、会話から分かる範囲で並べる |",
-        "en": "The files created, changed or deleted in the session and what changed, as far as the conversation shows |"
+        "ja": "セッションで作成・変更・削除したファイルと変更内容を、会話から分かる範囲で並べる",
+        "en": "The files created, changed or deleted in the session and what changed, as far as the conversation shows"
       }
     },
     {
@@ -2460,8 +2460,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Questions to ask next"
       },
       "summary": {
-        "ja": "次に Claude に聞くとよい質問を 3〜5 個提案する |",
-        "en": "Three to five questions worth asking Claude next |"
+        "ja": "次に Claude に聞くとよい質問を 3〜5 個提案する",
+        "en": "Three to five questions worth asking Claude next"
       }
     },
     {
@@ -2475,8 +2475,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Handoff note"
       },
       "summary": {
-        "ja": "別の人・別のセッションに渡す引き継ぎメモ（目的・現状・決定事項・残作業・注意点） |",
-        "en": "A note to hand the work to another person or session: goal, status, decisions, work left, caveats |"
+        "ja": "別の人・別のセッションに渡す引き継ぎメモ（目的・現状・決定事項・残作業・注意点）",
+        "en": "A note to hand the work to another person or session: goal, status, decisions, work left, caveats"
       }
     },
     {
@@ -2490,8 +2490,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "One-line recap"
       },
       "summary": {
-        "ja": "会話の目的と現状を一行で言う |",
-        "en": "What the conversation is for and where it stands, in one line |"
+        "ja": "会話の目的と現状を一行で言う",
+        "en": "What the conversation is for and where it stands, in one line"
       }
     },
     {
@@ -2505,8 +2505,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Recent recap"
       },
       "summary": {
-        "ja": "直近 3〜5 往復のやりとりだけを要約する |",
-        "en": "A recap of the last three to five exchanges alone |"
+        "ja": "直近 3〜5 往復のやりとりだけを要約する",
+        "en": "A recap of the last three to five exchanges alone"
       }
     },
     {
@@ -2520,8 +2520,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session timeline"
       },
       "summary": {
-        "ja": "依頼・調査・変更・判明した事実・方針転換を、起きた順に並べる |",
-        "en": "What happened in order: requests, investigations, changes, facts found, changes of direction |"
+        "ja": "依頼・調査・変更・判明した事実・方針転換を、起きた順に並べる",
+        "en": "What happened in order: requests, investigations, changes, facts found, changes of direction"
       }
     },
     {
@@ -2535,8 +2535,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session goal"
       },
       "summary": {
-        "ja": "会話の最終目的と、何をもって完了とするかを示す（不明ならそう言う） |",
-        "en": "The final goal of the conversation and what would count as done (saying what is unclear) |"
+        "ja": "会話の最終目的と、何をもって完了とするかを示す（不明ならそう言う）",
+        "en": "The final goal of the conversation and what would count as done (saying what is unclear)"
       }
     },
     {
@@ -2550,8 +2550,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Status by request"
       },
       "summary": {
-        "ja": "ユーザーの依頼を 1 つずつ並べ、対応済み・一部・未対応を示す |",
-        "en": "Each thing the user asked for, in order, marked done, partly done or not done |"
+        "ja": "ユーザーの依頼を 1 つずつ並べ、対応済み・一部・未対応を示す",
+        "en": "Each thing the user asked for, in order, marked done, partly done or not done"
       }
     },
     {
@@ -2565,8 +2565,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Key facts"
       },
       "summary": {
-        "ja": "調査やコマンドの結果で確かめられた事実を、裏づけと一緒に挙げる |",
-        "en": "The facts established by investigation or command results, each with what backs it |"
+        "ja": "調査やコマンドの結果で確かめられた事実を、裏づけと一緒に挙げる",
+        "en": "The facts established by investigation or command results, each with what backs it"
       }
     },
     {
@@ -2580,8 +2580,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Commands run"
       },
       "summary": {
-        "ja": "セッションで実行したシェルのコマンドを、目的と成否つきで実行順に並べる |",
-        "en": "The shell commands run in the session, in order, each with its purpose and whether it worked |"
+        "ja": "セッションで実行したシェルのコマンドを、目的と成否つきで実行順に並べる",
+        "en": "The shell commands run in the session, in order, each with its purpose and whether it worked"
       }
     },
     {
@@ -2595,8 +2595,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Errors and fixes"
       },
       "summary": {
-        "ja": "出たエラーごとに、原因・対処・解決したかをまとめる |",
-        "en": "Each error that came up: its cause, what was done and whether it is solved |"
+        "ja": "出たエラーごとに、原因・対処・解決したかをまとめる",
+        "en": "Each error that came up: its cause, what was done and whether it is solved"
       }
     },
     {
@@ -2610,8 +2610,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Files read"
       },
       "summary": {
-        "ja": "読んだだけで変更していないファイルを、何を確かめるためかと一緒に並べる |",
-        "en": "The files read but not changed, each with what it was read to check |"
+        "ja": "読んだだけで変更していないファイルを、何を確かめるためかと一緒に並べる",
+        "en": "The files read but not changed, each with what it was read to check"
       }
     },
     {
@@ -2625,8 +2625,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Failed attempts"
       },
       "summary": {
-        "ja": "うまくいかなかった・やめた試みと、その理由を並べる |",
-        "en": "The approaches that failed or were dropped, and why |"
+        "ja": "うまくいかなかった・やめた試みと、その理由を並べる",
+        "en": "The approaches that failed or were dropped, and why"
       }
     },
     {
@@ -2640,8 +2640,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Alternatives considered"
       },
       "summary": {
-        "ja": "検討した選択肢と、採用・不採用とその理由を並べる |",
-        "en": "The options weighed, each taken or turned down, and why |"
+        "ja": "検討した選択肢と、採用・不採用とその理由を並べる",
+        "en": "The options weighed, each taken or turned down, and why"
       }
     },
     {
@@ -2655,8 +2655,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Constraints"
       },
       "summary": {
-        "ja": "技術的な制約・仕様・ユーザーの指示などの要件を並べ、まだ満たしていないものを示す |",
-        "en": "The constraints and requirements set out (technical, the spec, the user's instructions), marking those not yet met |"
+        "ja": "技術的な制約・仕様・ユーザーの指示などの要件を並べ、まだ満たしていないものを示す",
+        "en": "The constraints and requirements set out (technical, the spec, the user's instructions), marking those not yet met"
       }
     },
     {
@@ -2670,8 +2670,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer to English"
       },
       "summary": {
-        "ja": "Claude の直前の回答を英語に訳す（訳す先は `language` より優先） |",
-        "en": "Claude's last answer translated into English (this target comes before `language`) |"
+        "ja": "Claude の直前の回答を英語に訳す（訳す先は `language` より優先）",
+        "en": "Claude's last answer translated into English (this target comes before `language`)"
       }
     },
     {
@@ -2685,8 +2685,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer to Japanese"
       },
       "summary": {
-        "ja": "Claude の直前の回答を日本語に訳す（訳す先は `language` より優先） |",
-        "en": "Claude's last answer translated into Japanese (this target comes before `language`) |"
+        "ja": "Claude の直前の回答を日本語に訳す（訳す先は `language` より優先）",
+        "en": "Claude's last answer translated into Japanese (this target comes before `language`)"
       }
     },
     {
@@ -2700,8 +2700,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Summarize last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答を数文か 5 項目以内で要約する |",
-        "en": "Claude's last answer in a few sentences or up to five bullets |"
+        "ja": "Claude の直前の回答を数文か 5 項目以内で要約する",
+        "en": "Claude's last answer in a few sentences or up to five bullets"
       }
     },
     {
@@ -2715,8 +2715,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer TL;DR"
       },
       "summary": {
-        "ja": "Claude の直前の回答を一行で要約する |",
-        "en": "Claude's last answer in one line |"
+        "ja": "Claude の直前の回答を一行で要約する",
+        "en": "Claude's last answer in one line"
       }
     },
     {
@@ -2730,8 +2730,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer in depth"
       },
       "summary": {
-        "ja": "Claude の直前の回答を、背景・仕組み・理由・注意点を補って詳しく説明する |",
-        "en": "Claude's last answer in more depth: background, how it works, why, what to watch |"
+        "ja": "Claude の直前の回答を、背景・仕組み・理由・注意点を補って詳しく説明する",
+        "en": "Claude's last answer in more depth: background, how it works, why, what to watch"
       }
     },
     {
@@ -2745,8 +2745,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Examples for last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答を、具体例（コード・入出力・場面）2〜3 個で示す |",
-        "en": "Two or three concrete examples for Claude's last answer (code, input and output, situations) |"
+        "ja": "Claude の直前の回答を、具体例（コード・入出力・場面）2〜3 個で示す",
+        "en": "Two or three concrete examples for Claude's last answer (code, input and output, situations)"
       }
     },
     {
@@ -2760,8 +2760,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer as steps"
       },
       "summary": {
-        "ja": "Claude の直前の回答を、確認方法つきの番号つき手順にする |",
-        "en": "Claude's last answer as numbered steps to follow, each with how to check it worked |"
+        "ja": "Claude の直前の回答を、確認方法つきの番号つき手順にする",
+        "en": "Claude's last answer as numbered steps to follow, each with how to check it worked"
       }
     },
     {
@@ -2775,8 +2775,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer as table"
       },
       "summary": {
-        "ja": "Claude の直前の回答を Markdown の表に整理する |",
-        "en": "Claude's last answer organized as a Markdown table |"
+        "ja": "Claude の直前の回答を Markdown の表に整理する",
+        "en": "Claude's last answer organized as a Markdown table"
       }
     },
     {
@@ -2790,8 +2790,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Last answer as diagram"
       },
       "summary": {
-        "ja": "Claude の直前の回答の構造や流れを、テキストの図（ASCII か Mermaid）にする |",
-        "en": "The structure or flow of Claude's last answer as a text diagram (ASCII or Mermaid) |"
+        "ja": "Claude の直前の回答の構造や流れを、テキストの図（ASCII か Mermaid）にする",
+        "en": "The structure or flow of Claude's last answer as a text diagram (ASCII or Mermaid)"
       }
     },
     {
@@ -2805,8 +2805,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Terms in last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答に出てくる専門用語・略語を解説する |",
-        "en": "The technical terms and abbreviations in Claude's last answer, explained |"
+        "ja": "Claude の直前の回答に出てくる専門用語・略語を解説する",
+        "en": "The technical terms and abbreviations in Claude's last answer, explained"
       }
     },
     {
@@ -2820,8 +2820,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Counterpoints to last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答への反論・別の見方を 3〜5 個挙げる |",
-        "en": "Three to five counterarguments or other views on Claude's last answer |"
+        "ja": "Claude の直前の回答への反論・別の見方を 3〜5 個挙げる",
+        "en": "Three to five counterarguments or other views on Claude's last answer"
       }
     },
     {
@@ -2835,8 +2835,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Check last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答の主張を、会話に根拠がある・一般知識・推測に分け、確からしさの低い点を示す |",
-        "en": "Sorts the claims in Claude's last answer into backed by the conversation, general knowledge or a guess, pointing out the shaky parts |"
+        "ja": "Claude の直前の回答の主張を、会話に根拠がある・一般知識・推測に分け、確からしさの低い点を示す",
+        "en": "Sorts the claims in Claude's last answer into backed by the conversation, general knowledge or a guess, pointing out the shaky parts"
       }
     },
     {
@@ -2850,8 +2850,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Caveats of last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答をそのまま使うときの注意点・前提条件・当てはまらないケースを挙げる |",
-        "en": "What to watch when using Claude's last answer as it stands: caveats, preconditions, cases it does not fit |"
+        "ja": "Claude の直前の回答をそのまま使うときの注意点・前提条件・当てはまらないケースを挙げる",
+        "en": "What to watch when using Claude's last answer as it stands: caveats, preconditions, cases it does not fit"
       }
     },
     {
@@ -2865,8 +2865,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Alternatives to last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答とは別のやり方を 2〜3 個、長所と短所つきで挙げる |",
-        "en": "Two or three other ways than Claude's last answer, each with its strengths and weaknesses |"
+        "ja": "Claude の直前の回答とは別のやり方を 2〜3 個、長所と短所つきで挙げる",
+        "en": "Two or three other ways than Claude's last answer, each with its strengths and weaknesses"
       }
     },
     {
@@ -2880,8 +2880,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Questions on last answer"
       },
       "summary": {
-        "ja": "Claude の直前の回答を理解・判断するために聞き返すとよい質問を 3〜5 個挙げる |",
-        "en": "Three to five questions worth asking back to understand or judge Claude's last answer |"
+        "ja": "Claude の直前の回答を理解・判断するために聞き返すとよい質問を 3〜5 個挙げる",
+        "en": "Three to five questions worth asking back to understand or judge Claude's last answer"
       }
     },
     {
@@ -2895,8 +2895,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Explain last code"
       },
       "summary": {
-        "ja": "会話で最後に示された・書かれたコードを、ブロックごとに解説する |",
-        "en": "The code last shown or written in the conversation, explained block by block |"
+        "ja": "会話で最後に示された・書かれたコードを、ブロックごとに解説する",
+        "en": "The code last shown or written in the conversation, explained block by block"
       }
     },
     {
@@ -2910,8 +2910,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Explain last command"
       },
       "summary": {
-        "ja": "会話で最後に実行された・提案されたコマンドの、オプションと実行内容を解説する |",
-        "en": "The shell command last run or suggested: each option and what running it does |"
+        "ja": "会話で最後に実行された・提案されたコマンドの、オプションと実行内容を解説する",
+        "en": "The shell command last run or suggested: each option and what running it does"
       }
     },
     {
@@ -2925,8 +2925,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Explain last error"
       },
       "summary": {
-        "ja": "会話で最後に出たエラーの意味・原因・次に確かめることを解説する |",
-        "en": "The last error in the conversation: what it means, its likely cause, what to check next |"
+        "ja": "会話で最後に出たエラーの意味・原因・次に確かめることを解説する",
+        "en": "The last error in the conversation: what it means, its likely cause, what to check next"
       }
     },
     {
@@ -2940,8 +2940,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Explain last change"
       },
       "summary": {
-        "ja": "会話で最後に行ったファイルの変更の内容・理由・挙動の違いを解説する |",
-        "en": "The last file change: what changed and why, and how the behaviour differs |"
+        "ja": "会話で最後に行ったファイルの変更の内容・理由・挙動の違いを解説する",
+        "en": "The last file change: what changed and why, and how the behaviour differs"
       }
     },
     {
@@ -2955,8 +2955,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Review last change"
       },
       "summary": {
-        "ja": "会話で最後に行ったファイルの変更を、バグ・読みやすさ・テスト不足の観点でレビューする（直しはしない） |",
-        "en": "Reviews the last file change for possible bugs, readability and missing tests (it fixes nothing) |"
+        "ja": "会話で最後に行ったファイルの変更を、バグ・読みやすさ・テスト不足の観点でレビューする（直しはしない）",
+        "en": "Reviews the last file change for possible bugs, readability and missing tests (it fixes nothing)"
       }
     },
     {
@@ -2970,8 +2970,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Next move"
       },
       "summary": {
-        "ja": "今まずやるべきことを 1 つだけ、理由と具体的なやり方つきで示す |",
-        "en": "The one thing to do first right now, with why and how |"
+        "ja": "今まずやるべきことを 1 つだけ、理由と具体的なやり方つきで示す",
+        "en": "The one thing to do first right now, with why and how"
       }
     },
     {
@@ -2985,8 +2985,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Blind spots"
       },
       "summary": {
-        "ja": "まだ考えていない観点や抜けていそうな作業を挙げる |",
-        "en": "The points of view not yet considered and the work that seems missing |"
+        "ja": "まだ考えていない観点や抜けていそうな作業を挙げる",
+        "en": "The points of view not yet considered and the work that seems missing"
       }
     },
     {
@@ -3000,8 +3000,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Get unstuck"
       },
       "summary": {
-        "ja": "どこで行き詰まっているかを特定し、まだ試していない打開策を 3 つ、試す順に示す |",
-        "en": "Where the work is stuck, and three ways out not yet tried, in the order to try them |"
+        "ja": "どこで行き詰まっているかを特定し、まだ試していない打開策を 3 つ、試す順に示す",
+        "en": "Where the work is stuck, and three ways out not yet tried, in the order to try them"
       }
     },
     {
@@ -3015,8 +3015,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Root-cause hypotheses"
       },
       "summary": {
-        "ja": "追っている問題の原因の仮説を、可能性の高い順に、根拠と確かめ方つきで挙げる |",
-        "en": "Hypotheses about the cause of the problem being chased, most likely first, each with its grounds and how to check it |"
+        "ja": "追っている問題の原因の仮説を、可能性の高い順に、根拠と確かめ方つきで挙げる",
+        "en": "Hypotheses about the cause of the problem being chased, most likely first, each with its grounds and how to check it"
       }
     },
     {
@@ -3030,8 +3030,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Debug plan"
       },
       "summary": {
-        "ja": "追っているバグについて、次に確かめること（ログ・再現手順・切り分け）を順に示す |",
-        "en": "What to check next for the bug being chased: logs, steps to reproduce, how to narrow it down |"
+        "ja": "追っているバグについて、次に確かめること（ログ・再現手順・切り分け）を順に示す",
+        "en": "What to check next for the bug being chased: logs, steps to reproduce, how to narrow it down"
       }
     },
     {
@@ -3045,8 +3045,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Simpler approach"
       },
       "summary": {
-        "ja": "今の方針より簡単・小さなやり方があるかを検討し、あれば失うものと一緒に示す |",
-        "en": "Whether there is a simpler or smaller way than the current approach, and what taking it would give up |"
+        "ja": "今の方針より簡単・小さなやり方があるかを検討し、あれば失うものと一緒に示す",
+        "en": "Whether there is a simpler or smaller way than the current approach, and what taking it would give up"
       }
     },
     {
@@ -3060,8 +3060,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Devil's advocate"
       },
       "summary": {
-        "ja": "あえて反対の立場から、方針への最も強い批判を 3 つ挙げる |",
-        "en": "The three strongest criticisms of the overall approach, taking the opposing side on purpose |"
+        "ja": "あえて反対の立場から、方針への最も強い批判を 3 つ挙げる",
+        "en": "The three strongest criticisms of the overall approach, taking the opposing side on purpose"
       }
     },
     {
@@ -3075,8 +3075,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Pre-mortem"
       },
       "summary": {
-        "ja": "作業が後で失敗したと仮定し、ありうる失敗の筋書きと今できる予防策を挙げる |",
-        "en": "Supposing the work later failed: the ways it could have, and what to do now to prevent them |"
+        "ja": "作業が後で失敗したと仮定し、ありうる失敗の筋書きと今できる予防策を挙げる",
+        "en": "Supposing the work later failed: the ways it could have, and what to do now to prevent them"
       }
     },
     {
@@ -3090,8 +3090,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Trade-offs"
       },
       "summary": {
-        "ja": "今の方針で得るものと失うものを、観点（速度・保守性・複雑さなど）ごとに整理する |",
-        "en": "What the current approach gains and gives up, aspect by aspect (speed, maintainability, complexity…) |"
+        "ja": "今の方針で得るものと失うものを、観点（速度・保守性・複雑さなど）ごとに整理する",
+        "en": "What the current approach gains and gives up, aspect by aspect (speed, maintainability, complexity…)"
       }
     },
     {
@@ -3105,8 +3105,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Scope check"
       },
       "summary": {
-        "ja": "元の依頼と比べ、範囲内か・広がりすぎていないか・抜けがないかを確かめる |",
-        "en": "Compares the work with the original request: within scope, grown too wide, anything missing |"
+        "ja": "元の依頼と比べ、範囲内か・広がりすぎていないか・抜けがないかを確かめる",
+        "en": "Compares the work with the original request: within scope, grown too wide, anything missing"
       }
     },
     {
@@ -3120,8 +3120,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Done check"
       },
       "summary": {
-        "ja": "依頼やチケットに書かれた完了条件を 1 つずつ、満たした・満たしていない・不明で示す |",
-        "en": "Goes through the stated completion criteria one by one: met, not met or unclear |"
+        "ja": "依頼やチケットに書かれた完了条件を 1 つずつ、満たした・満たしていない・不明で示す",
+        "en": "Goes through the stated completion criteria one by one: met, not met or unclear"
       }
     },
     {
@@ -3135,8 +3135,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "How to verify"
       },
       "summary": {
-        "ja": "変更が正しく動くかを確かめる手順を、実行するものと期待する結果つきで示す（実行はしない） |",
-        "en": "Numbered steps to check the changes work, each with what to run and the expected result (nothing is run) |"
+        "ja": "変更が正しく動くかを確かめる手順を、実行するものと期待する結果つきで示す（実行はしない）",
+        "en": "Numbered steps to check the changes work, each with what to run and the expected result (nothing is run)"
       }
     },
     {
@@ -3150,8 +3150,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Rollback plan"
       },
       "summary": {
-        "ja": "変更を元に戻す手順と注意点を示す（実行はしない） |",
-        "en": "The steps to undo the changes, with what to watch (nothing is run) |"
+        "ja": "変更を元に戻す手順と注意点を示す（実行はしない）",
+        "en": "The steps to undo the changes, with what to watch (nothing is run)"
       }
     },
     {
@@ -3165,8 +3165,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Impact"
       },
       "summary": {
-        "ja": "変更が影響しうる箇所（呼び出し元・設定・利用者・他の機能）を挙げる |",
-        "en": "The places the changes could affect: callers, settings, users, other features |"
+        "ja": "変更が影響しうる箇所（呼び出し元・設定・利用者・他の機能）を挙げる",
+        "en": "The places the changes could affect: callers, settings, users, other features"
       }
     },
     {
@@ -3180,8 +3180,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Effort estimate"
       },
       "summary": {
-        "ja": "残作業を項目ごとに大・中・小で見積もり、見積もりの前提を添える |",
-        "en": "The remaining work item by item as large, medium or small, with the assumptions behind it |"
+        "ja": "残作業を項目ごとに大・中・小で見積もり、見積もりの前提を添える",
+        "en": "The remaining work item by item as large, medium or small, with the assumptions behind it"
       }
     },
     {
@@ -3195,8 +3195,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Task dependencies"
       },
       "summary": {
-        "ja": "残りの作業の依存関係を整理し、並行できるものと順序が決まっているものを分ける |",
-        "en": "The dependencies among the remaining work: what can run in parallel and what must come in order |"
+        "ja": "残りの作業の依存関係を整理し、並行できるものと順序が決まっているものを分ける",
+        "en": "The dependencies among the remaining work: what can run in parallel and what must come in order"
       }
     },
     {
@@ -3210,8 +3210,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session test ideas"
       },
       "summary": {
-        "ja": "会話での変更について確かめるべきテストケースを、正常・異常・境界値に分けて挙げる |",
-        "en": "The test cases worth checking for the changes, as normal cases, error cases and boundary values |"
+        "ja": "会話での変更について確かめるべきテストケースを、正常・異常・境界値に分けて挙げる",
+        "en": "The test cases worth checking for the changes, as normal cases, error cases and boundary values"
       }
     },
     {
@@ -3225,8 +3225,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session edge cases"
       },
       "summary": {
-        "ja": "今の実装・方針で扱いを確かめるべき境界条件・珍しい入力や状況を挙げる |",
-        "en": "The boundary conditions and unusual inputs or situations the current approach should be checked for |"
+        "ja": "今の実装・方針で扱いを確かめるべき境界条件・珍しい入力や状況を挙げる",
+        "en": "The boundary conditions and unusual inputs or situations the current approach should be checked for"
       }
     },
     {
@@ -3240,8 +3240,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session security review"
       },
       "summary": {
-        "ja": "会話での変更と方針を、入力検証・権限・秘密情報・インジェクションの観点で点検する |",
-        "en": "Checks the changes and approach for security: input validation, permissions, secrets, injection |"
+        "ja": "会話での変更と方針を、入力検証・権限・秘密情報・インジェクションの観点で点検する",
+        "en": "Checks the changes and approach for security: input validation, permissions, secrets, injection"
       }
     },
     {
@@ -3255,8 +3255,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session performance review"
       },
       "summary": {
-        "ja": "会話での変更と方針を、計算量・I/O・メモリ・無駄な処理の観点で点検し、改善案を示す |",
-        "en": "Checks the changes and approach for performance (cost, I/O, memory, needless work), with improvements |"
+        "ja": "会話での変更と方針を、計算量・I/O・メモリ・無駄な処理の観点で点検し、改善案を示す",
+        "en": "Checks the changes and approach for performance (cost, I/O, memory, needless work), with improvements"
       }
     },
     {
@@ -3270,8 +3270,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session error handling review"
       },
       "summary": {
-        "ja": "変更した箇所のエラー処理（失敗時の動き・メッセージ・後始末）の抜けを点検する |",
-        "en": "Checks the error handling in the changed places for gaps: behaviour on failure, messages, cleanup |"
+        "ja": "変更した箇所のエラー処理（失敗時の動き・メッセージ・後始末）の抜けを点検する",
+        "en": "Checks the error handling in the changed places for gaps: behaviour on failure, messages, cleanup"
       }
     },
     {
@@ -3285,8 +3285,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session compatibility review"
       },
       "summary": {
-        "ja": "変更が既存の利用者・設定・API・データとの互換性に与える影響と、破壊的変更の有無を確かめる |",
-        "en": "How the changes affect compatibility with existing users, settings, APIs and data, and whether any is breaking |"
+        "ja": "変更が既存の利用者・設定・API・データとの互換性に与える影響と、破壊的変更の有無を確かめる",
+        "en": "How the changes affect compatibility with existing users, settings, APIs and data, and whether any is breaking"
       }
     },
     {
@@ -3300,8 +3300,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session accessibility review"
       },
       "summary": {
-        "ja": "会話で扱った UI・出力を、色・スクリーンリーダー・キーボード操作などのアクセシビリティの観点で点検する |",
-        "en": "Checks the UI and output dealt with for accessibility: colour, screen readers, keyboard use… |"
+        "ja": "会話で扱った UI・出力を、色・スクリーンリーダー・キーボード操作などのアクセシビリティの観点で点検する",
+        "en": "Checks the UI and output dealt with for accessibility: colour, screen readers, keyboard use…"
       }
     },
     {
@@ -3315,8 +3315,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session i18n review"
       },
       "summary": {
-        "ja": "会話で扱った変更を、未翻訳の文言・日付や数値の書式・文字幅など国際化の観点で点検する |",
-        "en": "Checks the changes for internationalization: untranslated text, date and number formats, character widths |"
+        "ja": "会話で扱った変更を、未翻訳の文言・日付や数値の書式・文字幅など国際化の観点で点検する",
+        "en": "Checks the changes for internationalization: untranslated text, date and number formats, character widths"
       }
     },
     {
@@ -3330,8 +3330,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session observability review"
       },
       "summary": {
-        "ja": "変更で問題が起きたときに気づけて原因を追えるか（ログ・エラー表示・計測）を点検する |",
-        "en": "Checks whether a problem with the changes would be noticed and traced: logs, error display, measurements |"
+        "ja": "変更で問題が起きたときに気づけて原因を追えるか（ログ・エラー表示・計測）を点検する",
+        "en": "Checks whether a problem with the changes would be noticed and traced: logs, error display, measurements"
       }
     },
     {
@@ -3345,8 +3345,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session refactor ideas"
       },
       "summary": {
-        "ja": "会話で触れたコードの読みやすさ・重複・責務分離の改善案を挙げる（変更はしない） |",
-        "en": "Improvements to the code touched, for readability, duplication and separation of concerns (nothing is changed) |"
+        "ja": "会話で触れたコードの読みやすさ・重複・責務分離の改善案を挙げる（変更はしない）",
+        "en": "Improvements to the code touched, for readability, duplication and separation of concerns (nothing is changed)"
       }
     },
     {
@@ -3360,8 +3360,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session tech debt"
       },
       "summary": {
-        "ja": "会話で生じた・見つかった技術的負債（暫定対応・TODO・回避策）を、返済の目安つきで挙げる |",
-        "en": "The technical debt created or found (stopgaps, TODOs, workarounds), with when to pay it back |"
+        "ja": "会話で生じた・見つかった技術的負債（暫定対応・TODO・回避策）を、返済の目安つきで挙げる",
+        "en": "The technical debt created or found (stopgaps, TODOs, workarounds), with when to pay it back"
       }
     },
     {
@@ -3375,8 +3375,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session docs to update"
       },
       "summary": {
-        "ja": "変更に合わせて更新が要りそうなドキュメント（README・コメント・設定例など）を挙げる |",
-        "en": "The documentation likely to need updating with the changes (README, comments, sample settings…) |"
+        "ja": "変更に合わせて更新が要りそうなドキュメント（README・コメント・設定例など）を挙げる",
+        "en": "The documentation likely to need updating with the changes (README, comments, sample settings…)"
       }
     },
     {
@@ -3390,8 +3390,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session naming ideas"
       },
       "summary": {
-        "ja": "会話で新しく作った・作るもの（関数・ファイル・機能）の名前の案を挙げる |",
-        "en": "Name ideas for what was or is about to be made (functions, files, features) |"
+        "ja": "会話で新しく作った・作るもの（関数・ファイル・機能）の名前の案を挙げる",
+        "en": "Name ideas for what was or is about to be made (functions, files, features)"
       }
     },
     {
@@ -3405,8 +3405,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session pre-release check"
       },
       "summary": {
-        "ja": "変更をリリース・マージする前に確かめることのチェックリストをつくる |",
-        "en": "A checklist of what to check before releasing or merging the changes |"
+        "ja": "変更をリリース・マージする前に確かめることのチェックリストをつくる",
+        "en": "A checklist of what to check before releasing or merging the changes"
       }
     },
     {
@@ -3420,8 +3420,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Commit message draft"
       },
       "summary": {
-        "ja": "変更のコミットメッセージ案（1 行の要約と本文） |",
-        "en": "A commit message for the changes: a one-line summary and a body |"
+        "ja": "変更のコミットメッセージ案（1 行の要約と本文）",
+        "en": "A commit message for the changes: a one-line summary and a body"
       }
     },
     {
@@ -3435,8 +3435,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "PR description draft"
       },
       "summary": {
-        "ja": "変更のプルリクエスト説明文の下書き（タイトル・概要・変更点・確認方法） |",
-        "en": "A pull request description for the changes: title, summary, changes, how to verify |"
+        "ja": "変更のプルリクエスト説明文の下書き（タイトル・概要・変更点・確認方法）",
+        "en": "A pull request description for the changes: title, summary, changes, how to verify"
       }
     },
     {
@@ -3450,8 +3450,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Changelog entry draft"
       },
       "summary": {
-        "ja": "利用者向けの変更履歴・リリースノートの下書き |",
-        "en": "Changelog or release-note entries for the people who use the product |"
+        "ja": "利用者向けの変更履歴・リリースノートの下書き",
+        "en": "Changelog or release-note entries for the people who use the product"
       }
     },
     {
@@ -3465,8 +3465,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Status update draft"
       },
       "summary": {
-        "ja": "チームや上司向けの進捗報告の下書き（やったこと・現状・次・懸念） |",
-        "en": "A status update for the team or a manager: done, where things stand, next, blockers |"
+        "ja": "チームや上司向けの進捗報告の下書き（やったこと・現状・次・懸念）",
+        "en": "A status update for the team or a manager: done, where things stand, next, blockers"
       }
     },
     {
@@ -3480,8 +3480,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Issue draft"
       },
       "summary": {
-        "ja": "会話で見つかった問題・残作業の Issue の下書き |",
-        "en": "An issue for a problem or piece of work left over that the conversation found |"
+        "ja": "会話で見つかった問題・残作業の Issue の下書き",
+        "en": "An issue for a problem or piece of work left over that the conversation found"
       }
     },
     {
@@ -3495,8 +3495,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Review request draft"
       },
       "summary": {
-        "ja": "レビュアーへのレビュー依頼文の下書き |",
-        "en": "A message asking a reviewer to review the changes |"
+        "ja": "レビュアーへのレビュー依頼文の下書き",
+        "en": "A message asking a reviewer to review the changes"
       }
     },
     {
@@ -3510,8 +3510,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Question draft"
       },
       "summary": {
-        "ja": "同僚やフォーラムに聞く、それだけで分かる質問文の下書き |",
-        "en": "A self-contained question about the current problem for a colleague or a forum |"
+        "ja": "同僚やフォーラムに聞く、それだけで分かる質問文の下書き",
+        "en": "A self-contained question about the current problem for a colleague or a forum"
       }
     },
     {
@@ -3525,8 +3525,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "ADR draft"
       },
       "summary": {
-        "ja": "会話での主な設計判断の ADR（Context・Decision・Rationale・Consequences）の下書き |",
-        "en": "An ADR for the main design decision made: Context, Decision, Rationale, Consequences |"
+        "ja": "会話での主な設計判断の ADR（Context・Decision・Rationale・Consequences）の下書き",
+        "en": "An ADR for the main design decision made: Context, Decision, Rationale, Consequences"
       }
     },
     {
@@ -3540,8 +3540,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Resume prompt"
       },
       "summary": {
-        "ja": "新しい Claude Code のセッションに貼って作業を再開するためのプロンプト |",
-        "en": "A prompt to paste into a new Claude Code session to pick the work up again |"
+        "ja": "新しい Claude Code のセッションに貼って作業を再開するためのプロンプト",
+        "en": "A prompt to paste into a new Claude Code session to pick the work up again"
       }
     },
     {
@@ -3555,8 +3555,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "For non-engineers"
       },
       "summary": {
-        "ja": "非エンジニア向けに、作業の目的・成果・影響を専門用語なしで説明する |",
-        "en": "Explains the work to non-engineers: why, what it achieved, what changes for them, without jargon |"
+        "ja": "非エンジニア向けに、作業の目的・成果・影響を専門用語なしで説明する",
+        "en": "Explains the work to non-engineers: why, what it achieved, what changes for them, without jargon"
       }
     },
     {
@@ -3570,8 +3570,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Retrospective (KPT)"
       },
       "summary": {
-        "ja": "セッションを KPT（Keep・Problem・Try）で振り返る |",
-        "en": "A KPT retrospective of the session: Keep, Problem, Try |"
+        "ja": "セッションを KPT（Keep・Problem・Try）で振り返る",
+        "en": "A KPT retrospective of the session: Keep, Problem, Try"
       }
     },
     {
@@ -3585,8 +3585,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Learnings"
       },
       "summary": {
-        "ja": "次に同じ場面で役立つ形で、今回の学びを挙げる |",
-        "en": "The lessons learned, written to help the next time the same situation comes up |"
+        "ja": "次に同じ場面で役立つ形で、今回の学びを挙げる",
+        "en": "The lessons learned, written to help the next time the same situation comes up"
       }
     },
     {
@@ -3600,8 +3600,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session glossary"
       },
       "summary": {
-        "ja": "会話全体に出た専門用語・略語・プロジェクト固有の名前の用語集 |",
-        "en": "A glossary of the technical terms, abbreviations and project names that came up anywhere in the conversation |"
+        "ja": "会話全体に出た専門用語・略語・プロジェクト固有の名前の用語集",
+        "en": "A glossary of the technical terms, abbreviations and project names that came up anywhere in the conversation"
       }
     },
     {
@@ -3615,8 +3615,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Key concepts"
       },
       "summary": {
-        "ja": "会話を理解するのに必要な背景知識・概念を解説する |",
-        "en": "The background knowledge and concepts needed to follow the conversation |"
+        "ja": "会話を理解するのに必要な背景知識・概念を解説する",
+        "en": "The background knowledge and concepts needed to follow the conversation"
       }
     },
     {
@@ -3630,8 +3630,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session cheat sheet"
       },
       "summary": {
-        "ja": "会話で実際に使ったコマンド・API・設定を用途別にまとめたチートシート |",
-        "en": "A cheat sheet of the commands, APIs and settings actually used, by purpose |"
+        "ja": "会話で実際に使ったコマンド・API・設定を用途別にまとめたチートシート",
+        "en": "A cheat sheet of the commands, APIs and settings actually used, by purpose"
       }
     },
     {
@@ -3645,8 +3645,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session quiz"
       },
       "summary": {
-        "ja": "会話の内容の理解度を確かめるクイズを 3〜5 問（答えは最後に） |",
-        "en": "Three to five questions on what the conversation covered, the answers at the end |"
+        "ja": "会話の内容の理解度を確かめるクイズを 3〜5 問（答えは最後に）",
+        "en": "Three to five questions on what the conversation covered, the answers at the end"
       }
     },
     {
@@ -3660,8 +3660,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session FAQ"
       },
       "summary": {
-        "ja": "会話の内容を、他の人が聞きそうな FAQ（Q&A）にまとめる |",
-        "en": "What the conversation covered as an FAQ others are likely to ask |"
+        "ja": "会話の内容を、他の人が聞きそうな FAQ（Q&A）にまとめる",
+        "en": "What the conversation covered as an FAQ others are likely to ask"
       }
     },
     {
@@ -3675,8 +3675,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Next study topics from session"
       },
       "summary": {
-        "ja": "会話の内容を深めるために次に学ぶとよいテーマを挙げる（Web は調べない） |",
-        "en": "Topics worth studying next to go deeper, with why and how to look into them (no web search) |"
+        "ja": "会話の内容を深めるために次に学ぶとよいテーマを挙げる（Web は調べない）",
+        "en": "Topics worth studying next to go deeper, with why and how to look into them (no web search)"
       }
     },
     {
@@ -3690,8 +3690,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Session search keywords"
       },
       "summary": {
-        "ja": "今の問題・テーマを調べるための検索キーワードを日英で挙げる |",
-        "en": "Search keywords for the current problem or topic, in Japanese and English |"
+        "ja": "今の問題・テーマを調べるための検索キーワードを日英で挙げる",
+        "en": "Search keywords for the current problem or topic, in Japanese and English"
       }
     },
     {
@@ -3705,8 +3705,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Tricks picked up"
       },
       "summary": {
-        "ja": "会話で出てきた、あまり知られていない小技だけを挙げる |",
-        "en": "The little-known or surprising tricks from the conversation alone |"
+        "ja": "会話で出てきた、あまり知られていない小技だけを挙げる",
+        "en": "The little-known or surprising tricks from the conversation alone"
       }
     },
     {
@@ -3720,8 +3720,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Claude's mistakes"
       },
       "summary": {
-        "ja": "Claude が会話で間違えた点・訂正された点と、正しかった内容を挙げる |",
-        "en": "The mistakes Claude made and where it was corrected, with what was right |"
+        "ja": "Claude が会話で間違えた点・訂正された点と、正しかった内容を挙げる",
+        "en": "The mistakes Claude made and where it was corrected, with what was right"
       }
     },
     {
@@ -3735,8 +3735,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Prompting tips"
       },
       "summary": {
-        "ja": "ユーザーの指示を振り返り、より速く正確に進む頼み方を提案する |",
-        "en": "How the user's instructions could be put so the work goes faster and more accurately |"
+        "ja": "ユーザーの指示を振り返り、より速く正確に進む頼み方を提案する",
+        "en": "How the user's instructions could be put so the work goes faster and more accurately"
       }
     },
     {
@@ -3750,8 +3750,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "CLAUDE.md ideas"
       },
       "summary": {
-        "ja": "ユーザーが繰り返した指示・慣習から、CLAUDE.md に書くとよい内容を文案つきで提案する（編集はしない） |",
-        "en": "From instructions the user had to repeat, what is worth putting in CLAUDE.md, with the text (CLAUDE.md is not edited) |"
+        "ja": "ユーザーが繰り返した指示・慣習から、CLAUDE.md に書くとよい内容を文案つきで提案する（編集はしない）",
+        "en": "From instructions the user had to repeat, what is worth putting in CLAUDE.md, with the text (CLAUDE.md is not edited)"
       }
     },
     {
@@ -3765,8 +3765,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Contradictions"
       },
       "summary": {
-        "ja": "会話の中で食い違う発言・方針・事実と、どちらが新しい・正しそうかを挙げる |",
-        "en": "The statements, policies or facts that contradict each other, and which is newer or more likely right |"
+        "ja": "会話の中で食い違う発言・方針・事実と、どちらが新しい・正しそうかを挙げる",
+        "en": "The statements, policies or facts that contradict each other, and which is newer or more likely right"
       }
     },
     {
@@ -3780,8 +3780,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Code map"
       },
       "summary": {
-        "ja": "会話に出たファイル・関数・モジュールと、その関係（呼び出し・import・包含）の地図 |",
-        "en": "A map of the files, functions and modules that came up and how they relate (calls, imports, contains) |"
+        "ja": "会話に出たファイル・関数・モジュールと、その関係（呼び出し・import・包含）の地図",
+        "en": "A map of the files, functions and modules that came up and how they relate (calls, imports, contains)"
       }
     },
     {
@@ -3795,8 +3795,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Workflow diagram"
       },
       "summary": {
-        "ja": "会話全体の作業の流れ（調査・変更・確認と手戻り）をテキストの図にする |",
-        "en": "The flow of the work as a whole (investigating, changing, checking, loops back) as a text diagram |"
+        "ja": "会話全体の作業の流れ（調査・変更・確認と手戻り）をテキストの図にする",
+        "en": "The flow of the work as a whole (investigating, changing, checking, loops back) as a text diagram"
       }
     },
     {
@@ -3810,8 +3810,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Environment"
       },
       "summary": {
-        "ja": "会話から分かる環境（OS・言語やツールのバージョン・関係する設定）をまとめる |",
-        "en": "The environment the conversation shows: OS, versions of languages and tools, relevant settings |"
+        "ja": "会話から分かる環境（OS・言語やツールのバージョン・関係する設定）をまとめる",
+        "en": "The environment the conversation shows: OS, versions of languages and tools, relevant settings"
       }
     },
     {
@@ -3825,8 +3825,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Packages changed"
       },
       "summary": {
-        "ja": "セッションで追加・更新・削除したパッケージ・依存関係を、用途つきで挙げる |",
-        "en": "The packages and dependencies added, updated or removed in the session, each with what it is for |"
+        "ja": "セッションで追加・更新・削除したパッケージ・依存関係を、用途つきで挙げる",
+        "en": "The packages and dependencies added, updated or removed in the session, each with what it is for"
       }
     },
     {
@@ -3840,8 +3840,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "en": "Links mentioned"
       },
       "summary": {
-        "ja": "会話に出た URL・資料・Issue や PR の番号などを、それが何かと一緒に挙げる |",
-        "en": "The references that came up (URLs, documents, issue and PR numbers…), each with what it is |"
+        "ja": "会話に出た URL・資料・Issue や PR の番号などを、それが何かと一緒に挙げる",
+        "en": "The references that came up (URLs, documents, issue and PR numbers…), each with what it is"
       }
     },
     {

@@ -26,6 +26,22 @@ test('every built-in names a category in CATEGORIES and has a summary in both la
   expect(undescribed).toEqual([])
 })
 
+// The labels and summaries are shown on the catalog page as they are: none may
+// carry stray whitespace at either end or a table separator ("|") left over
+// from the README tables they were taken from.
+test('labels and summaries have no surrounding whitespace and no "|"', () => {
+  const bad: string[] = []
+  for (const a of ACTIONS) {
+    for (const lang of ['ja', 'en'] as const) {
+      for (const [field, text] of [['label', a.label[lang]], ['summary', a.summary?.[lang]]] as const) {
+        if (typeof text !== 'string') continue
+        if (text !== text.trim() || text.includes('|')) bad.push(`${a.id} ${field}.${lang}: ${JSON.stringify(text)}`)
+      }
+    }
+  }
+  expect(bad).toEqual([])
+})
+
 test("an action's kind is its category's", () => {
   const byId = new Map(CATEGORIES.map(c => [c.id, c]))
   const mismatched = ACTIONS.filter(a => targetOf(byId.get(a.category ?? '') ?? {}) !== targetOf(a)).map(a => a.id)

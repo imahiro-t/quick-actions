@@ -1935,7 +1935,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧭',
       label: { ja: '会話の要約', en: 'Recap' },
       category: 'essentials',
-      summary: { ja: '会話の目的・経緯・現状を短くまとめる |', en: 'What the conversation set out to do, how it went and where things stand |' },
+      summary: { ja: '会話の目的・経緯・現状を短くまとめる', en: 'What the conversation set out to do, how it went and where things stand' },
       prompt: conversation(
         'Recap this conversation so far: what we set out to do, how it went, and where things stand now.',
         'Keep it to about 10 lines.',
@@ -1946,7 +1946,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '✅',
       label: { ja: 'ここまでの決定事項', en: 'Decisions so far' },
       category: 'essentials',
-      summary: { ja: '決まったこと・合意したことを箇条書きにする |', en: 'The decisions made and points agreed on, as bullets |' },
+      summary: { ja: '決まったこと・合意したことを箇条書きにする', en: 'The decisions made and points agreed on, as bullets' },
       prompt: conversation(
         'List the decisions made and the points agreed on in this conversation so far, one bullet each, most important first.',
         'If nothing has been decided yet, say so.',
@@ -1958,7 +1958,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📋',
       label: { ja: '次にやること', en: 'Next steps' },
       category: 'essentials',
-      summary: { ja: '残っている作業を、実行順の TODO として並べる |', en: 'The work left, as a to-do list in the order to do it |' },
+      summary: { ja: '残っている作業を、実行順の TODO として並べる', en: 'The work left, as a to-do list in the order to do it' },
       prompt: conversation(
         'List the work still left to do in this conversation as a to-do list, in the order it should be done.',
         'If nothing is left, say so.',
@@ -1970,7 +1970,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '❓',
       label: { ja: '未解決の疑問', en: 'Open questions' },
       category: 'essentials',
-      summary: { ja: 'まだ答えの出ていない問い・保留点を並べる |', en: 'The questions still unanswered and the points on hold |' },
+      summary: { ja: 'まだ答えの出ていない問い・保留点を並べる', en: 'The questions still unanswered and the points on hold' },
       prompt: conversation(
         'List the questions in this conversation that are still unanswered and the points left on hold, one bullet each.',
         'If there are none, say so.',
@@ -1982,7 +1982,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧸',
       label: { ja: '直前の回答をやさしく', en: 'Last answer, simply' },
       category: 'essentials',
-      summary: { ja: 'Claude の直前の回答を、前提知識のない人向けに言い直す |', en: 'Claude\'s last answer restated for someone with no background |' },
+      summary: { ja: 'Claude の直前の回答を、前提知識のない人向けに言い直す', en: 'Claude\'s last answer restated for someone with no background' },
       prompt: conversation(
         'Restate your (Claude\'s) last answer in this conversation for someone with no background in the topic:',
         'use everyday words and an analogy, and explain any technical term that cannot be avoided right where it appears.',
@@ -1995,8 +1995,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を翻訳', en: 'Translate last answer' },
       category: 'essentials',
       summary: {
-        ja: 'Claude の直前の回答を訳す。主に日本語なら英語へ、それ以外なら日本語へ（訳す先は `language` より優先） |',
-        en: 'Claude\'s last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`) |',
+        ja: 'Claude の直前の回答を訳す。主に日本語なら英語へ、それ以外なら日本語へ（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`)',
       },
       prompt: conversation(
         'Translate your (Claude\'s) last answer in this conversation:',
@@ -2010,7 +2010,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧱',
       label: { ja: '前提・仮定の洗い出し', en: 'Assumptions' },
       category: 'essentials',
-      summary: { ja: '作業が頼っている前提・仮定を挙げ、確かめていないものを示す |', en: 'The premises and assumptions the work relies on, marking those not checked |' },
+      summary: { ja: '作業が頼っている前提・仮定を挙げ、確かめていないものを示す', en: 'The premises and assumptions the work relies on, marking those not checked' },
       prompt: conversation(
         'List the premises and assumptions this conversation and the work in it rely on, stated or not, one bullet each,',
         'and mark the ones that have not been checked.',
@@ -2022,7 +2022,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '⚠️',
       label: { ja: 'リスク・懸念点', en: 'Risks' },
       category: 'essentials',
-      summary: { ja: '今の方針・変更のリスクと懸念点を、重要度の高い順に挙げる |', en: 'The risks and concerns of the current approach and changes, most serious first |' },
+      summary: { ja: '今の方針・変更のリスクと懸念点を、重要度の高い順に挙げる', en: 'The risks and concerns of the current approach and changes, most serious first' },
       prompt: conversation(
         'List the risks and concerns in the current approach and the changes made in this conversation, most serious first,',
         'each with a line on why it matters.',
@@ -2035,8 +2035,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '変更したファイルとその内容', en: 'Changed files' },
       category: 'essentials',
       summary: {
-        ja: 'セッションで作成・変更・削除したファイルと変更内容を、会話から分かる範囲で並べる |',
-        en: 'The files created, changed or deleted in the session and what changed, as far as the conversation shows |',
+        ja: 'セッションで作成・変更・削除したファイルと変更内容を、会話から分かる範囲で並べる',
+        en: 'The files created, changed or deleted in the session and what changed, as far as the conversation shows',
       },
       prompt: conversation(
         'List the files created, changed or deleted in this session, each with a line or two on what changed in it.',
@@ -2050,7 +2050,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💭',
       label: { ja: '次に聞くとよい質問', en: 'Questions to ask next' },
       category: 'essentials',
-      summary: { ja: '次に Claude に聞くとよい質問を 3〜5 個提案する |', en: 'Three to five questions worth asking Claude next |' },
+      summary: { ja: '次に Claude に聞くとよい質問を 3〜5 個提案する', en: 'Three to five questions worth asking Claude next' },
       prompt: conversation(
         'Suggest three to five questions worth asking you (Claude) next in this conversation, each with a short reason.',
         'Keep it to about 10 lines.',
@@ -2062,8 +2062,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '引き継ぎメモ', en: 'Handoff note' },
       category: 'essentials',
       summary: {
-        ja: '別の人・別のセッションに渡す引き継ぎメモ（目的・現状・決定事項・残作業・注意点） |',
-        en: 'A note to hand the work to another person or session: goal, status, decisions, work left, caveats |',
+        ja: '別の人・別のセッションに渡す引き継ぎメモ（目的・現状・決定事項・残作業・注意点）',
+        en: 'A note to hand the work to another person or session: goal, status, decisions, work left, caveats',
       },
       prompt: conversation(
         'Write a handoff note for another person or a new session to pick up this work:',
@@ -2078,7 +2078,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🪶',
       label: { ja: '会話を一行で', en: 'One-line recap' },
       category: 'looking-back',
-      summary: { ja: '会話の目的と現状を一行で言う |', en: 'What the conversation is for and where it stands, in one line |' },
+      summary: { ja: '会話の目的と現状を一行で言う', en: 'What the conversation is for and where it stands, in one line' },
       prompt: lookBack(
         'Say in one sentence on one line what this conversation is for and where it stands now.',
         'Reply with that sentence alone, with no preamble.',
@@ -2089,7 +2089,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔁',
       label: { ja: '直近のやりとりの要約', en: 'Recent recap' },
       category: 'looking-back',
-      summary: { ja: '直近 3〜5 往復のやりとりだけを要約する |', en: 'A recap of the last three to five exchanges alone |' },
+      summary: { ja: '直近 3〜5 往復のやりとりだけを要約する', en: 'A recap of the last three to five exchanges alone' },
       prompt: lookBack(
         'Recap only the last few exchanges of this conversation (about three to five back-and-forths), not the whole of it:',
         'what was talked about and what happened.',
@@ -2102,8 +2102,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の経緯（時系列）', en: 'Session timeline' },
       category: 'looking-back',
       summary: {
-        ja: '依頼・調査・変更・判明した事実・方針転換を、起きた順に並べる |',
-        en: 'What happened in order: requests, investigations, changes, facts found, changes of direction |',
+        ja: '依頼・調査・変更・判明した事実・方針転換を、起きた順に並べる',
+        en: 'What happened in order: requests, investigations, changes, facts found, changes of direction',
       },
       prompt: lookBack(
         'List what happened in this conversation in the order it happened, one bullet each:',
@@ -2117,8 +2117,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'この会話の目的', en: 'Session goal' },
       category: 'looking-back',
       summary: {
-        ja: '会話の最終目的と、何をもって完了とするかを示す（不明ならそう言う） |',
-        en: 'The final goal of the conversation and what would count as done (saying what is unclear) |',
+        ja: '会話の最終目的と、何をもって完了とするかを示す（不明ならそう言う）',
+        en: 'The final goal of the conversation and what would count as done (saying what is unclear)',
       },
       prompt: lookBack(
         'State the final goal of this conversation as it reads from what was said, and what would count as done.',
@@ -2131,7 +2131,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🙋',
       label: { ja: '依頼ごとの対応状況', en: 'Status by request' },
       category: 'looking-back',
-      summary: { ja: 'ユーザーの依頼を 1 つずつ並べ、対応済み・一部・未対応を示す |', en: 'Each thing the user asked for, in order, marked done, partly done or not done |' },
+      summary: { ja: 'ユーザーの依頼を 1 つずつ並べ、対応済み・一部・未対応を示す', en: 'Each thing the user asked for, in order, marked done, partly done or not done' },
       prompt: lookBack(
         'Go through the user\'s messages in this conversation and list each thing the user asked for, in the order asked, one request per line.',
         'Mark each as done, partly done or not done, and for partly done or not done, say what is still left.',
@@ -2145,8 +2145,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '判明した事実', en: 'Key facts' },
       category: 'looking-back',
       summary: {
-        ja: '調査やコマンドの結果で確かめられた事実を、裏づけと一緒に挙げる |',
-        en: 'The facts established by investigation or command results, each with what backs it |',
+        ja: '調査やコマンドの結果で確かめられた事実を、裏づけと一緒に挙げる',
+        en: 'The facts established by investigation or command results, each with what backs it',
       },
       prompt: lookBack(
         'List the facts established in this conversation by investigation or by command results, one bullet each,',
@@ -2161,8 +2161,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '実行したコマンド', en: 'Commands run' },
       category: 'looking-back',
       summary: {
-        ja: 'セッションで実行したシェルのコマンドを、目的と成否つきで実行順に並べる |',
-        en: 'The shell commands run in the session, in order, each with its purpose and whether it worked |',
+        ja: 'セッションで実行したシェルのコマンドを、目的と成否つきで実行順に並べる',
+        en: 'The shell commands run in the session, in order, each with its purpose and whether it worked',
       },
       prompt: lookBack(
         'List the shell commands run in this session, in the order they were run,',
@@ -2176,7 +2176,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧯',
       label: { ja: '出たエラーと対処', en: 'Errors and fixes' },
       category: 'looking-back',
-      summary: { ja: '出たエラーごとに、原因・対処・解決したかをまとめる |', en: 'Each error that came up: its cause, what was done and whether it is solved |' },
+      summary: { ja: '出たエラーごとに、原因・対処・解決したかをまとめる', en: 'Each error that came up: its cause, what was done and whether it is solved' },
       prompt: lookBack(
         'For each error that came up in this conversation, give one bullet with what the error was,',
         'its cause as far as it is known, what was done about it, and whether it is solved.',
@@ -2189,7 +2189,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📖',
       label: { ja: '読んだファイル', en: 'Files read' },
       category: 'looking-back',
-      summary: { ja: '読んだだけで変更していないファイルを、何を確かめるためかと一緒に並べる |', en: 'The files read but not changed, each with what it was read to check |' },
+      summary: { ja: '読んだだけで変更していないファイルを、何を確かめるためかと一緒に並べる', en: 'The files read but not changed, each with what it was read to check' },
       prompt: lookBack(
         'List the files read but not changed in this session, each with one line on what it was read to check.',
         'If no file was read, say so.',
@@ -2201,7 +2201,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔙',
       label: { ja: 'うまくいかなかった試み', en: 'Failed attempts' },
       category: 'looking-back',
-      summary: { ja: 'うまくいかなかった・やめた試みと、その理由を並べる |', en: 'The approaches that failed or were dropped, and why |' },
+      summary: { ja: 'うまくいかなかった・やめた試みと、その理由を並べる', en: 'The approaches that failed or were dropped, and why' },
       prompt: lookBack(
         'List the approaches tried in this conversation that failed or were dropped,',
         'each with one or two lines on why it did not work.',
@@ -2214,7 +2214,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔀',
       label: { ja: '検討した代替案', en: 'Alternatives considered' },
       category: 'looking-back',
-      summary: { ja: '検討した選択肢と、採用・不採用とその理由を並べる |', en: 'The options weighed, each taken or turned down, and why |' },
+      summary: { ja: '検討した選択肢と、採用・不採用とその理由を並べる', en: 'The options weighed, each taken or turned down, and why' },
       prompt: lookBack(
         'List the options weighed in this conversation, each with whether it was taken or turned down and why.',
         'If no alternatives were weighed, say so.',
@@ -2227,8 +2227,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '制約・要件の一覧', en: 'Constraints' },
       category: 'looking-back',
       summary: {
-        ja: '技術的な制約・仕様・ユーザーの指示などの要件を並べ、まだ満たしていないものを示す |',
-        en: 'The constraints and requirements set out (technical, the spec, the user\'s instructions), marking those not yet met |',
+        ja: '技術的な制約・仕様・ユーザーの指示などの要件を並べ、まだ満たしていないものを示す',
+        en: 'The constraints and requirements set out (technical, the spec, the user\'s instructions), marking those not yet met',
       },
       prompt: lookBack(
         'List the constraints and requirements set out in this conversation (technical ones, the spec and the user\'s instructions), one bullet each,',
@@ -2245,8 +2245,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を英訳', en: 'Last answer to English' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を英語に訳す（訳す先は `language` より優先） |',
-        en: 'Claude\'s last answer translated into English (this target comes before `language`) |',
+        ja: 'Claude の直前の回答を英語に訳す（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated into English (this target comes before `language`)',
       },
       prompt: lookBack(
         'Translate your (Claude\'s) last answer in this conversation into natural English, whatever language it is in.',
@@ -2260,8 +2260,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を日本語訳', en: 'Last answer to Japanese' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を日本語に訳す（訳す先は `language` より優先） |',
-        en: 'Claude\'s last answer translated into Japanese (this target comes before `language`) |',
+        ja: 'Claude の直前の回答を日本語に訳す（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated into Japanese (this target comes before `language`)',
       },
       prompt: lookBack(
         'Translate your (Claude\'s) last answer in this conversation into natural Japanese, whatever language it is in.',
@@ -2274,7 +2274,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📄',
       label: { ja: '直前の回答を要約', en: 'Summarize last answer' },
       category: 'last-answer',
-      summary: { ja: 'Claude の直前の回答を数文か 5 項目以内で要約する |', en: 'Claude\'s last answer in a few sentences or up to five bullets |' },
+      summary: { ja: 'Claude の直前の回答を数文か 5 項目以内で要約する', en: 'Claude\'s last answer in a few sentences or up to five bullets' },
       prompt: lookBack(
         'Summarize your (Claude\'s) last answer in this conversation in a few sentences or at most five bullets,',
         'keeping the key facts, figures and names.',
@@ -2285,7 +2285,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '⚡',
       label: { ja: '直前の回答を一行で', en: 'Last answer TL;DR' },
       category: 'last-answer',
-      summary: { ja: 'Claude の直前の回答を一行で要約する |', en: 'Claude\'s last answer in one line |' },
+      summary: { ja: 'Claude の直前の回答を一行で要約する', en: 'Claude\'s last answer in one line' },
       prompt: lookBack(
         'Sum up your (Claude\'s) last answer in this conversation in one sentence on one line,',
         'and reply with that sentence alone.',
@@ -2297,8 +2297,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を詳しく', en: 'Last answer in depth' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を、背景・仕組み・理由・注意点を補って詳しく説明する |',
-        en: 'Claude\'s last answer in more depth: background, how it works, why, what to watch |',
+        ja: 'Claude の直前の回答を、背景・仕組み・理由・注意点を補って詳しく説明する',
+        en: 'Claude\'s last answer in more depth: background, how it works, why, what to watch',
       },
       prompt: lookBack(
         'Explain your (Claude\'s) last answer in this conversation in more depth,',
@@ -2313,8 +2313,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答の具体例', en: 'Examples for last answer' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を、具体例（コード・入出力・場面）2〜3 個で示す |',
-        en: 'Two or three concrete examples for Claude\'s last answer (code, input and output, situations) |',
+        ja: 'Claude の直前の回答を、具体例（コード・入出力・場面）2〜3 個で示す',
+        en: 'Two or three concrete examples for Claude\'s last answer (code, input and output, situations)',
       },
       prompt: lookBack(
         'Show what your (Claude\'s) last answer in this conversation says through two or three concrete examples:',
@@ -2328,8 +2328,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を手順に', en: 'Last answer as steps' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を、確認方法つきの番号つき手順にする |',
-        en: 'Claude\'s last answer as numbered steps to follow, each with how to check it worked |',
+        ja: 'Claude の直前の回答を、確認方法つきの番号つき手順にする',
+        en: 'Claude\'s last answer as numbered steps to follow, each with how to check it worked',
       },
       prompt: lookBack(
         'Rework your (Claude\'s) last answer in this conversation into numbered steps that can be followed in order as they stand,',
@@ -2343,7 +2343,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📊',
       label: { ja: '直前の回答を表に', en: 'Last answer as table' },
       category: 'last-answer',
-      summary: { ja: 'Claude の直前の回答を Markdown の表に整理する |', en: 'Claude\'s last answer organized as a Markdown table |' },
+      summary: { ja: 'Claude の直前の回答を Markdown の表に整理する', en: 'Claude\'s last answer organized as a Markdown table' },
       prompt: lookBack(
         'Organize what your (Claude\'s) last answer in this conversation says into a Markdown table.',
         'A table is wanted here, whatever the style below says.',
@@ -2356,8 +2356,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答を図に', en: 'Last answer as diagram' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答の構造や流れを、テキストの図（ASCII か Mermaid）にする |',
-        en: 'The structure or flow of Claude\'s last answer as a text diagram (ASCII or Mermaid) |',
+        ja: 'Claude の直前の回答の構造や流れを、テキストの図（ASCII か Mermaid）にする',
+        en: 'The structure or flow of Claude\'s last answer as a text diagram (ASCII or Mermaid)',
       },
       prompt: lookBack(
         'Show the structure or flow of your (Claude\'s) last answer in this conversation as a text diagram,',
@@ -2370,7 +2370,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔠',
       label: { ja: '直前の回答の用語解説', en: 'Terms in last answer' },
       category: 'last-answer',
-      summary: { ja: 'Claude の直前の回答に出てくる専門用語・略語を解説する |', en: 'The technical terms and abbreviations in Claude\'s last answer, explained |' },
+      summary: { ja: 'Claude の直前の回答に出てくる専門用語・略語を解説する', en: 'The technical terms and abbreviations in Claude\'s last answer, explained' },
       prompt: lookBack(
         'List the technical terms and abbreviations in your (Claude\'s) last answer in this conversation,',
         'each with one or two lines on what it means.',
@@ -2383,7 +2383,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🥊',
       label: { ja: '直前の回答への反論', en: 'Counterpoints to last answer' },
       category: 'last-answer',
-      summary: { ja: 'Claude の直前の回答への反論・別の見方を 3〜5 個挙げる |', en: 'Three to five counterarguments or other views on Claude\'s last answer |' },
+      summary: { ja: 'Claude の直前の回答への反論・別の見方を 3〜5 個挙げる', en: 'Three to five counterarguments or other views on Claude\'s last answer' },
       prompt: lookBack(
         'Give three to five counterarguments or different views that could be raised against your (Claude\'s) last answer in this conversation,',
         'most important first, each with a short reason.',
@@ -2396,8 +2396,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答の確からしさ', en: 'Check last answer' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答の主張を、会話に根拠がある・一般知識・推測に分け、確からしさの低い点を示す |',
-        en: 'Sorts the claims in Claude\'s last answer into backed by the conversation, general knowledge or a guess, pointing out the shaky parts |',
+        ja: 'Claude の直前の回答の主張を、会話に根拠がある・一般知識・推測に分け、確からしさの低い点を示す',
+        en: 'Sorts the claims in Claude\'s last answer into backed by the conversation, general knowledge or a guess, pointing out the shaky parts',
       },
       prompt: lookBack(
         'Go through the claims in your (Claude\'s) last answer in this conversation and sort each into',
@@ -2412,8 +2412,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答の注意点', en: 'Caveats of last answer' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答をそのまま使うときの注意点・前提条件・当てはまらないケースを挙げる |',
-        en: 'What to watch when using Claude\'s last answer as it stands: caveats, preconditions, cases it does not fit |',
+        ja: 'Claude の直前の回答をそのまま使うときの注意点・前提条件・当てはまらないケースを挙げる',
+        en: 'What to watch when using Claude\'s last answer as it stands: caveats, preconditions, cases it does not fit',
       },
       prompt: lookBack(
         'List what to watch out for when using your (Claude\'s) last answer in this conversation as it stands:',
@@ -2427,8 +2427,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答の別解', en: 'Alternatives to last answer' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答とは別のやり方を 2〜3 個、長所と短所つきで挙げる |',
-        en: 'Two or three other ways than Claude\'s last answer, each with its strengths and weaknesses |',
+        ja: 'Claude の直前の回答とは別のやり方を 2〜3 個、長所と短所つきで挙げる',
+        en: 'Two or three other ways than Claude\'s last answer, each with its strengths and weaknesses',
       },
       prompt: lookBack(
         'Give two or three other ways or solutions than the one in your (Claude\'s) last answer in this conversation,',
@@ -2442,8 +2442,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の回答への確認質問', en: 'Questions on last answer' },
       category: 'last-answer',
       summary: {
-        ja: 'Claude の直前の回答を理解・判断するために聞き返すとよい質問を 3〜5 個挙げる |',
-        en: 'Three to five questions worth asking back to understand or judge Claude\'s last answer |',
+        ja: 'Claude の直前の回答を理解・判断するために聞き返すとよい質問を 3〜5 個挙げる',
+        en: 'Three to five questions worth asking back to understand or judge Claude\'s last answer',
       },
       prompt: lookBack(
         'Suggest three to five questions worth asking you (Claude) back in order to understand or judge your last answer in this conversation,',
@@ -2456,7 +2456,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💻',
       label: { ja: '直前のコードを解説', en: 'Explain last code' },
       category: 'last-answer',
-      summary: { ja: '会話で最後に示された・書かれたコードを、ブロックごとに解説する |', en: 'The code last shown or written in the conversation, explained block by block |' },
+      summary: { ja: '会話で最後に示された・書かれたコードを、ブロックごとに解説する', en: 'The code last shown or written in the conversation, explained block by block' },
       prompt: lookBack(
         'Take the code last shown or written in this conversation and explain, block by block, what it does.',
         'If the conversation has no code, say so.',
@@ -2469,8 +2469,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前のコマンドを解説', en: 'Explain last command' },
       category: 'last-answer',
       summary: {
-        ja: '会話で最後に実行された・提案されたコマンドの、オプションと実行内容を解説する |',
-        en: 'The shell command last run or suggested: each option and what running it does |',
+        ja: '会話で最後に実行された・提案されたコマンドの、オプションと実行内容を解説する',
+        en: 'The shell command last run or suggested: each option and what running it does',
       },
       prompt: lookBack(
         'Take the shell command last run or suggested in this conversation and explain what each of its options means',
@@ -2485,8 +2485,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前のエラーを解説', en: 'Explain last error' },
       category: 'last-answer',
       summary: {
-        ja: '会話で最後に出たエラーの意味・原因・次に確かめることを解説する |',
-        en: 'The last error in the conversation: what it means, its likely cause, what to check next |',
+        ja: '会話で最後に出たエラーの意味・原因・次に確かめることを解説する',
+        en: 'The last error in the conversation: what it means, its likely cause, what to check next',
       },
       prompt: lookBack(
         'Take the error that came up last in this conversation and explain what it means,',
@@ -2500,7 +2500,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧾',
       label: { ja: '直前の変更を解説', en: 'Explain last change' },
       category: 'last-answer',
-      summary: { ja: '会話で最後に行ったファイルの変更の内容・理由・挙動の違いを解説する |', en: 'The last file change: what changed and why, and how the behaviour differs |' },
+      summary: { ja: '会話で最後に行ったファイルの変更の内容・理由・挙動の違いを解説する', en: 'The last file change: what changed and why, and how the behaviour differs' },
       prompt: lookBack(
         'Take the file change made last in this conversation and explain what was changed and why,',
         'and how the behaviour differs as a result.',
@@ -2514,8 +2514,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '直前の変更のレビュー', en: 'Review last change' },
       category: 'last-answer',
       summary: {
-        ja: '会話で最後に行ったファイルの変更を、バグ・読みやすさ・テスト不足の観点でレビューする（直しはしない） |',
-        en: 'Reviews the last file change for possible bugs, readability and missing tests (it fixes nothing) |',
+        ja: '会話で最後に行ったファイルの変更を、バグ・読みやすさ・テスト不足の観点でレビューする（直しはしない）',
+        en: 'Reviews the last file change for possible bugs, readability and missing tests (it fixes nothing)',
       },
       prompt: lookBack(
         'Review, as a code reviewer, the file change made last in this conversation:',
@@ -2530,7 +2530,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '👣',
       label: { ja: '次の一手', en: 'Next move' },
       category: 'work-ahead',
-      summary: { ja: '今まずやるべきことを 1 つだけ、理由と具体的なやり方つきで示す |', en: 'The one thing to do first right now, with why and how |' },
+      summary: { ja: '今まずやるべきことを 1 つだけ、理由と具体的なやり方つきで示す', en: 'The one thing to do first right now, with why and how' },
       prompt: lookBack(
         'Name the one thing that should be done first right now in the work of this conversation, only one,',
         'with why it comes first and concretely how to do it.',
@@ -2542,7 +2542,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔦',
       label: { ja: '見落としチェック', en: 'Blind spots' },
       category: 'work-ahead',
-      summary: { ja: 'まだ考えていない観点や抜けていそうな作業を挙げる |', en: 'The points of view not yet considered and the work that seems missing |' },
+      summary: { ja: 'まだ考えていない観点や抜けていそうな作業を挙げる', en: 'The points of view not yet considered and the work that seems missing' },
       prompt: lookBack(
         'List the points of view not yet considered and the work that seems to be missing in what this conversation has done so far,',
         'one bullet each, each with one line on why it is needed.',
@@ -2555,8 +2555,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '行き詰まりの打開策', en: 'Get unstuck' },
       category: 'work-ahead',
       summary: {
-        ja: 'どこで行き詰まっているかを特定し、まだ試していない打開策を 3 つ、試す順に示す |',
-        en: 'Where the work is stuck, and three ways out not yet tried, in the order to try them |',
+        ja: 'どこで行き詰まっているかを特定し、まだ試していない打開策を 3 つ、試す順に示す',
+        en: 'Where the work is stuck, and three ways out not yet tried, in the order to try them',
       },
       prompt: lookBack(
         'Pin down where the work in this conversation is stuck right now,',
@@ -2571,8 +2571,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '原因の仮説', en: 'Root-cause hypotheses' },
       category: 'work-ahead',
       summary: {
-        ja: '追っている問題の原因の仮説を、可能性の高い順に、根拠と確かめ方つきで挙げる |',
-        en: 'Hypotheses about the cause of the problem being chased, most likely first, each with its grounds and how to check it |',
+        ja: '追っている問題の原因の仮説を、可能性の高い順に、根拠と確かめ方つきで挙げる',
+        en: 'Hypotheses about the cause of the problem being chased, most likely first, each with its grounds and how to check it',
       },
       prompt: lookBack(
         'For the problem being chased in this conversation, list hypotheses about its cause, most likely first,',
@@ -2587,8 +2587,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'デバッグの進め方', en: 'Debug plan' },
       category: 'work-ahead',
       summary: {
-        ja: '追っているバグについて、次に確かめること（ログ・再現手順・切り分け）を順に示す |',
-        en: 'What to check next for the bug being chased: logs, steps to reproduce, how to narrow it down |',
+        ja: '追っているバグについて、次に確かめること（ログ・再現手順・切り分け）を順に示す',
+        en: 'What to check next for the bug being chased: logs, steps to reproduce, how to narrow it down',
       },
       prompt: lookBack(
         'For the bug being chased in this conversation, give in numbered order what to check next:',
@@ -2603,8 +2603,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'もっと簡単な方法', en: 'Simpler approach' },
       category: 'work-ahead',
       summary: {
-        ja: '今の方針より簡単・小さなやり方があるかを検討し、あれば失うものと一緒に示す |',
-        en: 'Whether there is a simpler or smaller way than the current approach, and what taking it would give up |',
+        ja: '今の方針より簡単・小さなやり方があるかを検討し、あれば失うものと一緒に示す',
+        en: 'Whether there is a simpler or smaller way than the current approach, and what taking it would give up',
       },
       prompt: lookBack(
         'Consider whether there is a simpler or smaller way to do what the current approach in this conversation does.',
@@ -2618,8 +2618,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'あえて反対意見', en: "Devil's advocate" },
       category: 'work-ahead',
       summary: {
-        ja: 'あえて反対の立場から、方針への最も強い批判を 3 つ挙げる |',
-        en: 'The three strongest criticisms of the overall approach, taking the opposing side on purpose |',
+        ja: 'あえて反対の立場から、方針への最も強い批判を 3 つ挙げる',
+        en: 'The three strongest criticisms of the overall approach, taking the opposing side on purpose',
       },
       prompt: lookBack(
         'Take the opposing side on purpose against the overall approach taken in this conversation,',
@@ -2633,8 +2633,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '失敗の事前検討', en: 'Pre-mortem' },
       category: 'work-ahead',
       summary: {
-        ja: '作業が後で失敗したと仮定し、ありうる失敗の筋書きと今できる予防策を挙げる |',
-        en: 'Supposing the work later failed: the ways it could have, and what to do now to prevent them |',
+        ja: '作業が後で失敗したと仮定し、ありうる失敗の筋書きと今できる予防策を挙げる',
+        en: 'Supposing the work later failed: the ways it could have, and what to do now to prevent them',
       },
       prompt: lookBack(
         'Suppose the work in this conversation turns out later to have failed.',
@@ -2648,8 +2648,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'トレードオフ', en: 'Trade-offs' },
       category: 'work-ahead',
       summary: {
-        ja: '今の方針で得るものと失うものを、観点（速度・保守性・複雑さなど）ごとに整理する |',
-        en: 'What the current approach gains and gives up, aspect by aspect (speed, maintainability, complexity…) |',
+        ja: '今の方針で得るものと失うものを、観点（速度・保守性・複雑さなど）ごとに整理する',
+        en: 'What the current approach gains and gives up, aspect by aspect (speed, maintainability, complexity…)',
       },
       prompt: lookBack(
         'Sort out what the current approach in this conversation gains and what it gives up,',
@@ -2663,8 +2663,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'スコープの確認', en: 'Scope check' },
       category: 'work-ahead',
       summary: {
-        ja: '元の依頼と比べ、範囲内か・広がりすぎていないか・抜けがないかを確かめる |',
-        en: 'Compares the work with the original request: within scope, grown too wide, anything missing |',
+        ja: '元の依頼と比べ、範囲内か・広がりすぎていないか・抜けがないかを確かめる',
+        en: 'Compares the work with the original request: within scope, grown too wide, anything missing',
       },
       prompt: lookBack(
         'Compare the work done in this conversation with the original request:',
@@ -2679,8 +2679,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '完了条件の確認', en: 'Done check' },
       category: 'work-ahead',
       summary: {
-        ja: '依頼やチケットに書かれた完了条件を 1 つずつ、満たした・満たしていない・不明で示す |',
-        en: 'Goes through the stated completion criteria one by one: met, not met or unclear |',
+        ja: '依頼やチケットに書かれた完了条件を 1 つずつ、満たした・満たしていない・不明で示す',
+        en: 'Goes through the stated completion criteria one by one: met, not met or unclear',
       },
       prompt: lookBack(
         'Go through the stated completion criteria, one criterion per line:',
@@ -2698,8 +2698,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '確認手順', en: 'How to verify' },
       category: 'work-ahead',
       summary: {
-        ja: '変更が正しく動くかを確かめる手順を、実行するものと期待する結果つきで示す（実行はしない） |',
-        en: 'Numbered steps to check the changes work, each with what to run and the expected result (nothing is run) |',
+        ja: '変更が正しく動くかを確かめる手順を、実行するものと期待する結果つきで示す（実行はしない）',
+        en: 'Numbered steps to check the changes work, each with what to run and the expected result (nothing is run)',
       },
       prompt: lookBack(
         'Give numbered steps the user can follow to check that the changes made in this conversation work correctly:',
@@ -2713,7 +2713,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '⏪',
       label: { ja: '戻し方', en: 'Rollback plan' },
       category: 'work-ahead',
-      summary: { ja: '変更を元に戻す手順と注意点を示す（実行はしない） |', en: 'The steps to undo the changes, with what to watch (nothing is run) |' },
+      summary: { ja: '変更を元に戻す手順と注意点を示す（実行はしない）', en: 'The steps to undo the changes, with what to watch (nothing is run)' },
       prompt: lookBack(
         'Give the steps to undo the changes made in this conversation and put things back as they were,',
         'with what to watch out for while doing so.',
@@ -2726,7 +2726,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💥',
       label: { ja: '影響範囲', en: 'Impact' },
       category: 'work-ahead',
-      summary: { ja: '変更が影響しうる箇所（呼び出し元・設定・利用者・他の機能）を挙げる |', en: 'The places the changes could affect: callers, settings, users, other features |' },
+      summary: { ja: '変更が影響しうる箇所（呼び出し元・設定・利用者・他の機能）を挙げる', en: 'The places the changes could affect: callers, settings, users, other features' },
       prompt: lookBack(
         'List the places the changes made in this conversation could affect: callers, settings, users and other features, one bullet each.',
         'Start the bullets that need checking with [check].',
@@ -2740,8 +2740,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '残作業の見積もり', en: 'Effort estimate' },
       category: 'work-ahead',
       summary: {
-        ja: '残作業を項目ごとに大・中・小で見積もり、見積もりの前提を添える |',
-        en: 'The remaining work item by item as large, medium or small, with the assumptions behind it |',
+        ja: '残作業を項目ごとに大・中・小で見積もり、見積もりの前提を添える',
+        en: 'The remaining work item by item as large, medium or small, with the assumptions behind it',
       },
       prompt: lookBack(
         'Estimate the remaining work in this conversation item by item as large, medium or small,',
@@ -2756,8 +2756,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '作業の依存関係', en: 'Task dependencies' },
       category: 'work-ahead',
       summary: {
-        ja: '残りの作業の依存関係を整理し、並行できるものと順序が決まっているものを分ける |',
-        en: 'The dependencies among the remaining work: what can run in parallel and what must come in order |',
+        ja: '残りの作業の依存関係を整理し、並行できるものと順序が決まっているものを分ける',
+        en: 'The dependencies among the remaining work: what can run in parallel and what must come in order',
       },
       prompt: lookBack(
         'Sort out the dependencies among the remaining work and parts in this conversation (what has to come before what),',
@@ -2774,8 +2774,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のテスト観点', en: 'Session test ideas' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話での変更について確かめるべきテストケースを、正常・異常・境界値に分けて挙げる |',
-        en: 'The test cases worth checking for the changes, as normal cases, error cases and boundary values |',
+        ja: '会話での変更について確かめるべきテストケースを、正常・異常・境界値に分けて挙げる',
+        en: 'The test cases worth checking for the changes, as normal cases, error cases and boundary values',
       },
       prompt: lookBack(
         'List the test cases worth checking for the changes made in this conversation,',
@@ -2790,8 +2790,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のエッジケース', en: 'Session edge cases' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '今の実装・方針で扱いを確かめるべき境界条件・珍しい入力や状況を挙げる |',
-        en: 'The boundary conditions and unusual inputs or situations the current approach should be checked for |',
+        ja: '今の実装・方針で扱いを確かめるべき境界条件・珍しい入力や状況を挙げる',
+        en: 'The boundary conditions and unusual inputs or situations the current approach should be checked for',
       },
       prompt: lookBack(
         'List the boundary conditions and the unusual inputs or situations whose handling should be checked',
@@ -2805,8 +2805,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のセキュリティ点検', en: 'Session security review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話での変更と方針を、入力検証・権限・秘密情報・インジェクションの観点で点検する |',
-        en: 'Checks the changes and approach for security: input validation, permissions, secrets, injection |',
+        ja: '会話での変更と方針を、入力検証・権限・秘密情報・インジェクションの観点で点検する',
+        en: 'Checks the changes and approach for security: input validation, permissions, secrets, injection',
       },
       prompt: lookBack(
         'Check the changes and the approach in this conversation for security:',
@@ -2821,8 +2821,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の性能点検', en: 'Session performance review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話での変更と方針を、計算量・I/O・メモリ・無駄な処理の観点で点検し、改善案を示す |',
-        en: 'Checks the changes and approach for performance (cost, I/O, memory, needless work), with improvements |',
+        ja: '会話での変更と方針を、計算量・I/O・メモリ・無駄な処理の観点で点検し、改善案を示す',
+        en: 'Checks the changes and approach for performance (cost, I/O, memory, needless work), with improvements',
       },
       prompt: lookBack(
         'Check the changes and the approach in this conversation for performance:',
@@ -2837,8 +2837,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のエラー処理点検', en: 'Session error handling review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '変更した箇所のエラー処理（失敗時の動き・メッセージ・後始末）の抜けを点検する |',
-        en: 'Checks the error handling in the changed places for gaps: behaviour on failure, messages, cleanup |',
+        ja: '変更した箇所のエラー処理（失敗時の動き・メッセージ・後始末）の抜けを点検する',
+        en: 'Checks the error handling in the changed places for gaps: behaviour on failure, messages, cleanup',
       },
       prompt: lookBack(
         'Check the error handling in the places changed in this conversation for gaps:',
@@ -2853,8 +2853,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の互換性点検', en: 'Session compatibility review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '変更が既存の利用者・設定・API・データとの互換性に与える影響と、破壊的変更の有無を確かめる |',
-        en: 'How the changes affect compatibility with existing users, settings, APIs and data, and whether any is breaking |',
+        ja: '変更が既存の利用者・設定・API・データとの互換性に与える影響と、破壊的変更の有無を確かめる',
+        en: 'How the changes affect compatibility with existing users, settings, APIs and data, and whether any is breaking',
       },
       prompt: lookBack(
         'Check how the changes made in this conversation affect compatibility with existing users, settings, APIs and data,',
@@ -2869,8 +2869,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のアクセシビリティ点検', en: 'Session accessibility review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話で扱った UI・出力を、色・スクリーンリーダー・キーボード操作などのアクセシビリティの観点で点検する |',
-        en: 'Checks the UI and output dealt with for accessibility: colour, screen readers, keyboard use… |',
+        ja: '会話で扱った UI・出力を、色・スクリーンリーダー・キーボード操作などのアクセシビリティの観点で点検する',
+        en: 'Checks the UI and output dealt with for accessibility: colour, screen readers, keyboard use…',
       },
       prompt: lookBack(
         'Check the UI and the output dealt with in this conversation for accessibility:',
@@ -2885,8 +2885,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の国際化点検', en: 'Session i18n review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話で扱った変更を、未翻訳の文言・日付や数値の書式・文字幅など国際化の観点で点検する |',
-        en: 'Checks the changes for internationalization: untranslated text, date and number formats, character widths |',
+        ja: '会話で扱った変更を、未翻訳の文言・日付や数値の書式・文字幅など国際化の観点で点検する',
+        en: 'Checks the changes for internationalization: untranslated text, date and number formats, character widths',
       },
       prompt: lookBack(
         'Check the changes dealt with in this conversation for internationalization:',
@@ -2901,8 +2901,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のログ・監視点検', en: 'Session observability review' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '変更で問題が起きたときに気づけて原因を追えるか（ログ・エラー表示・計測）を点検する |',
-        en: 'Checks whether a problem with the changes would be noticed and traced: logs, error display, measurements |',
+        ja: '変更で問題が起きたときに気づけて原因を追えるか（ログ・エラー表示・計測）を点検する',
+        en: 'Checks whether a problem with the changes would be noticed and traced: logs, error display, measurements',
       },
       prompt: lookBack(
         'Check whether, when something goes wrong with the changes made in this conversation, it would be noticed and its cause could be traced:',
@@ -2917,8 +2917,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話のリファクタリング案', en: 'Session refactor ideas' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話で触れたコードの読みやすさ・重複・責務分離の改善案を挙げる（変更はしない） |',
-        en: 'Improvements to the code touched, for readability, duplication and separation of concerns (nothing is changed) |',
+        ja: '会話で触れたコードの読みやすさ・重複・責務分離の改善案を挙げる（変更はしない）',
+        en: 'Improvements to the code touched, for readability, duplication and separation of concerns (nothing is changed)',
       },
       prompt: lookBack(
         'Suggest improvements to the code touched in this conversation for readability, duplication and separation of responsibilities,',
@@ -2933,8 +2933,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話で生じた技術的負債', en: 'Session tech debt' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '会話で生じた・見つかった技術的負債（暫定対応・TODO・回避策）を、返済の目安つきで挙げる |',
-        en: 'The technical debt created or found (stopgaps, TODOs, workarounds), with when to pay it back |',
+        ja: '会話で生じた・見つかった技術的負債（暫定対応・TODO・回避策）を、返済の目安つきで挙げる',
+        en: 'The technical debt created or found (stopgaps, TODOs, workarounds), with when to pay it back',
       },
       prompt: lookBack(
         'List the technical debt created or found in this conversation (stopgaps, TODOs and workarounds),',
@@ -2949,8 +2949,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の変更で要るドキュメント更新', en: 'Session docs to update' },
       category: 'viewpoint-checks',
       summary: {
-        ja: '変更に合わせて更新が要りそうなドキュメント（README・コメント・設定例など）を挙げる |',
-        en: 'The documentation likely to need updating with the changes (README, comments, sample settings…) |',
+        ja: '変更に合わせて更新が要りそうなドキュメント（README・コメント・設定例など）を挙げる',
+        en: 'The documentation likely to need updating with the changes (README, comments, sample settings…)',
       },
       prompt: lookBack(
         'List the documentation that likely needs updating along with the changes made in this conversation (README, comments, sample settings and the like),',
@@ -2964,7 +2964,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🪧',
       label: { ja: '会話の新規要素の命名案', en: 'Session naming ideas' },
       category: 'viewpoint-checks',
-      summary: { ja: '会話で新しく作った・作るもの（関数・ファイル・機能）の名前の案を挙げる |', en: 'Name ideas for what was or is about to be made (functions, files, features) |' },
+      summary: { ja: '会話で新しく作った・作るもの（関数・ファイル・機能）の名前の案を挙げる', en: 'Name ideas for what was or is about to be made (functions, files, features)' },
       prompt: lookBack(
         'For the things newly made or about to be made in this conversation (functions, files, features),',
         'suggest candidate names, each with a short reason.',
@@ -2977,7 +2977,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🚀',
       label: { ja: '会話の変更のリリース前チェック', en: 'Session pre-release check' },
       category: 'viewpoint-checks',
-      summary: { ja: '変更をリリース・マージする前に確かめることのチェックリストをつくる |', en: 'A checklist of what to check before releasing or merging the changes |' },
+      summary: { ja: '変更をリリース・マージする前に確かめることのチェックリストをつくる', en: 'A checklist of what to check before releasing or merging the changes' },
       prompt: lookBack(
         'Make a checklist, one item per bullet, of what to check before releasing or merging the changes made in this conversation:',
         'tests, settings, migration, announcements and the like.',
@@ -2992,7 +2992,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💾',
       label: { ja: 'コミットメッセージ案', en: 'Commit message draft' },
       category: 'drafts',
-      summary: { ja: '変更のコミットメッセージ案（1 行の要約と本文） |', en: 'A commit message for the changes: a one-line summary and a body |' },
+      summary: { ja: '変更のコミットメッセージ案（1 行の要約と本文）', en: 'A commit message for the changes: a one-line summary and a body' },
       prompt: lookBack(
         'Draft a commit message for the changes made in this session: a one-line summary, a blank line, then a short body on what changed and why.',
         'Show it in a code block, ready to paste, whatever the style below says.',
@@ -3006,8 +3006,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'PR 説明文の下書き', en: 'PR description draft' },
       category: 'drafts',
       summary: {
-        ja: '変更のプルリクエスト説明文の下書き（タイトル・概要・変更点・確認方法） |',
-        en: 'A pull request description for the changes: title, summary, changes, how to verify |',
+        ja: '変更のプルリクエスト説明文の下書き（タイトル・概要・変更点・確認方法）',
+        en: 'A pull request description for the changes: title, summary, changes, how to verify',
       },
       prompt: lookBack(
         'Draft a pull request description for the changes made in this session: a title, a summary, the changes, and how to verify them.',
@@ -3022,7 +3022,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📰',
       label: { ja: '変更履歴の下書き', en: 'Changelog entry draft' },
       category: 'drafts',
-      summary: { ja: '利用者向けの変更履歴・リリースノートの下書き |', en: 'Changelog or release-note entries for the people who use the product |' },
+      summary: { ja: '利用者向けの変更履歴・リリースノートの下書き', en: 'Changelog or release-note entries for the people who use the product' },
       prompt: lookBack(
         'Draft changelog or release-note entries for the changes made in this session, written for the people who use the product:',
         'what changes for them, not the implementation details, one entry per bullet, grouped as added, changed and fixed where that helps.',
@@ -3036,8 +3036,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '進捗報告の下書き', en: 'Status update draft' },
       category: 'drafts',
       summary: {
-        ja: 'チームや上司向けの進捗報告の下書き（やったこと・現状・次・懸念） |',
-        en: 'A status update for the team or a manager: done, where things stand, next, blockers |',
+        ja: 'チームや上司向けの進捗報告の下書き（やったこと・現状・次・懸念）',
+        en: 'A status update for the team or a manager: done, where things stand, next, blockers',
       },
       prompt: lookBack(
         'Draft a short status update on this work for the team or a manager, in four parts:',
@@ -3051,7 +3051,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🐛',
       label: { ja: 'Issue の下書き', en: 'Issue draft' },
       category: 'drafts',
-      summary: { ja: '会話で見つかった問題・残作業の Issue の下書き |', en: 'An issue for a problem or piece of work left over that the conversation found |' },
+      summary: { ja: '会話で見つかった問題・残作業の Issue の下書き', en: 'An issue for a problem or piece of work left over that the conversation found' },
       prompt: lookBack(
         'Draft an issue for a problem or a piece of work left over that this conversation found:',
         'a title, the steps to reproduce, what was expected and what happened instead, and any notes.',
@@ -3064,7 +3064,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🙏',
       label: { ja: 'レビュー依頼文', en: 'Review request draft' },
       category: 'drafts',
-      summary: { ja: 'レビュアーへのレビュー依頼文の下書き |', en: 'A message asking a reviewer to review the changes |' },
+      summary: { ja: 'レビュアーへのレビュー依頼文の下書き', en: 'A message asking a reviewer to review the changes' },
       prompt: lookBack(
         'Draft a message asking a reviewer to review the changes made in this session:',
         'the gist of the changes, the points you most want looked at, and how to verify them.',
@@ -3077,7 +3077,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📨',
       label: { ja: '質問文の下書き', en: 'Question draft' },
       category: 'drafts',
-      summary: { ja: '同僚やフォーラムに聞く、それだけで分かる質問文の下書き |', en: 'A self-contained question about the current problem for a colleague or a forum |' },
+      summary: { ja: '同僚やフォーラムに聞く、それだけで分かる質問文の下書き', en: 'A self-contained question about the current problem for a colleague or a forum' },
       prompt: lookBack(
         'Draft a question about the current problem to ask a colleague or a forum:',
         'the situation, what has been tried and what happened, and what exactly you want to know.',
@@ -3092,8 +3092,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '設計判断の記録（ADR）', en: 'ADR draft' },
       category: 'drafts',
       summary: {
-        ja: '会話での主な設計判断の ADR（Context・Decision・Rationale・Consequences）の下書き |',
-        en: 'An ADR for the main design decision made: Context, Decision, Rationale, Consequences |',
+        ja: '会話での主な設計判断の ADR（Context・Decision・Rationale・Consequences）の下書き',
+        en: 'An ADR for the main design decision made: Context, Decision, Rationale, Consequences',
       },
       prompt: lookBack(
         'Draft an architecture decision record (ADR) for the main design decision made in this conversation',
@@ -3108,8 +3108,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '再開用プロンプト', en: 'Resume prompt' },
       category: 'drafts',
       summary: {
-        ja: '新しい Claude Code のセッションに貼って作業を再開するためのプロンプト |',
-        en: 'A prompt to paste into a new Claude Code session to pick the work up again |',
+        ja: '新しい Claude Code のセッションに貼って作業を再開するためのプロンプト',
+        en: 'A prompt to paste into a new Claude Code session to pick the work up again',
       },
       prompt: lookBack(
         'Write a short, self-contained prompt to paste into a new Claude Code session to pick this work up again:',
@@ -3126,8 +3126,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '非エンジニア向け説明', en: 'For non-engineers' },
       category: 'drafts',
       summary: {
-        ja: '非エンジニア向けに、作業の目的・成果・影響を専門用語なしで説明する |',
-        en: 'Explains the work to non-engineers: why, what it achieved, what changes for them, without jargon |',
+        ja: '非エンジニア向けに、作業の目的・成果・影響を専門用語なしで説明する',
+        en: 'Explains the work to non-engineers: why, what it achieved, what changes for them, without jargon',
       },
       prompt: lookBack(
         'Explain this work to people who are not engineers (stakeholders, managers, customers):',
@@ -3142,7 +3142,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔄',
       label: { ja: '振り返り（KPT）', en: 'Retrospective (KPT)' },
       category: 'drafts',
-      summary: { ja: 'セッションを KPT（Keep・Problem・Try）で振り返る |', en: 'A KPT retrospective of the session: Keep, Problem, Try |' },
+      summary: { ja: 'セッションを KPT（Keep・Problem・Try）で振り返る', en: 'A KPT retrospective of the session: Keep, Problem, Try' },
       prompt: lookBack(
         'Look back on this session as a KPT retrospective in three parts:',
         'Keep (what went well and is worth keeping), Problem (what went badly or slowed things down), and Try (what to try next time),',
@@ -3158,7 +3158,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🎓',
       label: { ja: '今回の学び', en: 'Learnings' },
       category: 'conversation-learning',
-      summary: { ja: '次に同じ場面で役立つ形で、今回の学びを挙げる |', en: 'The lessons learned, written to help the next time the same situation comes up |' },
+      summary: { ja: '次に同じ場面で役立つ形で、今回の学びを挙げる', en: 'The lessons learned, written to help the next time the same situation comes up' },
       prompt: lookBack(
         'List the lessons learned in this conversation, one bullet each,',
         'written so that they help the next time the same situation comes up (what to do, or what to avoid, and when).',
@@ -3172,8 +3172,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話の用語集', en: 'Session glossary' },
       category: 'conversation-learning',
       summary: {
-        ja: '会話全体に出た専門用語・略語・プロジェクト固有の名前の用語集 |',
-        en: 'A glossary of the technical terms, abbreviations and project names that came up anywhere in the conversation |',
+        ja: '会話全体に出た専門用語・略語・プロジェクト固有の名前の用語集',
+        en: 'A glossary of the technical terms, abbreviations and project names that came up anywhere in the conversation',
       },
       prompt: lookBack(
         'Make a glossary of the technical terms, abbreviations and project-specific names that came up anywhere in this conversation (not only the last answer),',
@@ -3187,7 +3187,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🧠',
       label: { ja: '押さえるべき概念', en: 'Key concepts' },
       category: 'conversation-learning',
-      summary: { ja: '会話を理解するのに必要な背景知識・概念を解説する |', en: 'The background knowledge and concepts needed to follow the conversation |' },
+      summary: { ja: '会話を理解するのに必要な背景知識・概念を解説する', en: 'The background knowledge and concepts needed to follow the conversation' },
       prompt: lookBack(
         'List the background knowledge and concepts someone needs to understand this conversation,',
         'each explained in two or three lines.',
@@ -3199,7 +3199,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '📇',
       label: { ja: '会話のチートシート', en: 'Session cheat sheet' },
       category: 'conversation-learning',
-      summary: { ja: '会話で実際に使ったコマンド・API・設定を用途別にまとめたチートシート |', en: 'A cheat sheet of the commands, APIs and settings actually used, by purpose |' },
+      summary: { ja: '会話で実際に使ったコマンド・API・設定を用途別にまとめたチートシート', en: 'A cheat sheet of the commands, APIs and settings actually used, by purpose' },
       prompt: lookBack(
         'Make a cheat sheet of the commands, APIs and settings actually used in this conversation, grouped by use (investigating, building, testing, configuring and the like).',
         'One item per line: the form to type and a few words on what it is for.',
@@ -3213,7 +3213,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🎲',
       label: { ja: '会話の理解度クイズ', en: 'Session quiz' },
       category: 'conversation-learning',
-      summary: { ja: '会話の内容の理解度を確かめるクイズを 3〜5 問（答えは最後に） |', en: 'Three to five questions on what the conversation covered, the answers at the end |' },
+      summary: { ja: '会話の内容の理解度を確かめるクイズを 3〜5 問（答えは最後に）', en: 'Three to five questions on what the conversation covered, the answers at the end' },
       prompt: lookBack(
         'Write three to five questions that check understanding of what this conversation covered.',
         'List the questions first, then put all the answers, each with a short explanation, together at the end.',
@@ -3224,7 +3224,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💁',
       label: { ja: '会話の FAQ', en: 'Session FAQ' },
       category: 'conversation-learning',
-      summary: { ja: '会話の内容を、他の人が聞きそうな FAQ（Q&A）にまとめる |', en: 'What the conversation covered as an FAQ others are likely to ask |' },
+      summary: { ja: '会話の内容を、他の人が聞きそうな FAQ（Q&A）にまとめる', en: 'What the conversation covered as an FAQ others are likely to ask' },
       prompt: lookBack(
         'Turn what this conversation covered into an FAQ: the questions other people are likely to ask about it, each followed by its answer (Q and A).',
         'Keep it to about 15 lines.',
@@ -3236,8 +3236,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '会話から次に学ぶテーマ', en: 'Next study topics from session' },
       category: 'conversation-learning',
       summary: {
-        ja: '会話の内容を深めるために次に学ぶとよいテーマを挙げる（Web は調べない） |',
-        en: 'Topics worth studying next to go deeper, with why and how to look into them (no web search) |',
+        ja: '会話の内容を深めるために次に学ぶとよいテーマを挙げる（Web は調べない）',
+        en: 'Topics worth studying next to go deeper, with why and how to look into them (no web search)',
       },
       prompt: lookBack(
         'Suggest topics worth studying next to go deeper into what this conversation covered,',
@@ -3251,7 +3251,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🔑',
       label: { ja: '会話のテーマの検索キーワード', en: 'Session search keywords' },
       category: 'conversation-learning',
-      summary: { ja: '今の問題・テーマを調べるための検索キーワードを日英で挙げる |', en: 'Search keywords for the current problem or topic, in Japanese and English |' },
+      summary: { ja: '今の問題・テーマを調べるための検索キーワードを日英で挙げる', en: 'Search keywords for the current problem or topic, in Japanese and English' },
       prompt: lookBack(
         'Suggest search keywords for looking up the current problem or topic of this conversation on the web or in documentation,',
         'in both Japanese and English, each with a few words on what it should find.',
@@ -3263,7 +3263,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '💡',
       label: { ja: '会話で知った小技', en: 'Tricks picked up' },
       category: 'conversation-learning',
-      summary: { ja: '会話で出てきた、あまり知られていない小技だけを挙げる |', en: 'The little-known or surprising tricks from the conversation alone |' },
+      summary: { ja: '会話で出てきた、あまり知られていない小技だけを挙げる', en: 'The little-known or surprising tricks from the conversation alone' },
       prompt: lookBack(
         'List only the tricks from this conversation that are little known or surprising (an uncommon option, a way of writing something, a feature of a tool),',
         'each with one or two lines on why it is handy and when to use it.',
@@ -3277,7 +3277,7 @@ export const ACTIONS: readonly ActionSpec[] = [
       icon: '🙈',
       label: { ja: 'Claude の誤り', en: "Claude's mistakes" },
       category: 'conversation-learning',
-      summary: { ja: 'Claude が会話で間違えた点・訂正された点と、正しかった内容を挙げる |', en: 'The mistakes Claude made and where it was corrected, with what was right |' },
+      summary: { ja: 'Claude が会話で間違えた点・訂正された点と、正しかった内容を挙げる', en: 'The mistakes Claude made and where it was corrected, with what was right' },
       prompt: lookBack(
         'List the mistakes you (Claude) made in this conversation and the points where you were corrected,',
         'each with what was actually right.',
@@ -3291,8 +3291,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '指示の出し方の改善', en: 'Prompting tips' },
       category: 'conversation-learning',
       summary: {
-        ja: 'ユーザーの指示を振り返り、より速く正確に進む頼み方を提案する |',
-        en: 'How the user\'s instructions could be put so the work goes faster and more accurately |',
+        ja: 'ユーザーの指示を振り返り、より速く正確に進む頼み方を提案する',
+        en: 'How the user\'s instructions could be put so the work goes faster and more accurately',
       },
       prompt: lookBack(
         'Looking at the instructions the user gave in this conversation, suggest how they could be put',
@@ -3307,8 +3307,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: 'CLAUDE.md に書くとよいこと', en: 'CLAUDE.md ideas' },
       category: 'conversation-learning',
       summary: {
-        ja: 'ユーザーが繰り返した指示・慣習から、CLAUDE.md に書くとよい内容を文案つきで提案する（編集はしない） |',
-        en: 'From instructions the user had to repeat, what is worth putting in CLAUDE.md, with the text (CLAUDE.md is not edited) |',
+        ja: 'ユーザーが繰り返した指示・慣習から、CLAUDE.md に書くとよい内容を文案つきで提案する（編集はしない）',
+        en: 'From instructions the user had to repeat, what is worth putting in CLAUDE.md, with the text (CLAUDE.md is not edited)',
       },
       prompt: lookBack(
         'From the instructions and conventions the user had to repeat in this conversation, pick the ones worth writing in CLAUDE.md,',
@@ -3325,8 +3325,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '矛盾の検出', en: 'Contradictions' },
       category: 'conversation-analysis',
       summary: {
-        ja: '会話の中で食い違う発言・方針・事実と、どちらが新しい・正しそうかを挙げる |',
-        en: 'The statements, policies or facts that contradict each other, and which is newer or more likely right |',
+        ja: '会話の中で食い違う発言・方針・事実と、どちらが新しい・正しそうかを挙げる',
+        en: 'The statements, policies or facts that contradict each other, and which is newer or more likely right',
       },
       prompt: lookBack(
         'List the statements, policies or facts in this conversation that contradict each other,',
@@ -3341,8 +3341,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '登場したコードの地図', en: 'Code map' },
       category: 'conversation-analysis',
       summary: {
-        ja: '会話に出たファイル・関数・モジュールと、その関係（呼び出し・import・包含）の地図 |',
-        en: 'A map of the files, functions and modules that came up and how they relate (calls, imports, contains) |',
+        ja: '会話に出たファイル・関数・モジュールと、その関係（呼び出し・import・包含）の地図',
+        en: 'A map of the files, functions and modules that came up and how they relate (calls, imports, contains)',
       },
       prompt: lookBack(
         'Map the files, functions and modules that came up in this conversation and how they relate to each other',
@@ -3357,8 +3357,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '作業の流れ図', en: 'Workflow diagram' },
       category: 'conversation-analysis',
       summary: {
-        ja: '会話全体の作業の流れ（調査・変更・確認と手戻り）をテキストの図にする |',
-        en: 'The flow of the work as a whole (investigating, changing, checking, loops back) as a text diagram |',
+        ja: '会話全体の作業の流れ（調査・変更・確認と手戻り）をテキストの図にする',
+        en: 'The flow of the work as a whole (investigating, changing, checking, loops back) as a text diagram',
       },
       prompt: lookBack(
         'Show the flow of the work done in this conversation as a whole (investigating, changing, checking and so on, with any loops back)',
@@ -3372,8 +3372,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '環境情報の整理', en: 'Environment' },
       category: 'conversation-analysis',
       summary: {
-        ja: '会話から分かる環境（OS・言語やツールのバージョン・関係する設定）をまとめる |',
-        en: 'The environment the conversation shows: OS, versions of languages and tools, relevant settings |',
+        ja: '会話から分かる環境（OS・言語やツールのバージョン・関係する設定）をまとめる',
+        en: 'The environment the conversation shows: OS, versions of languages and tools, relevant settings',
       },
       prompt: lookBack(
         'Sum up the environment this conversation shows: the OS, the versions of languages and tools, and the relevant settings,',
@@ -3388,8 +3388,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '追加・変更したパッケージ', en: 'Packages changed' },
       category: 'conversation-analysis',
       summary: {
-        ja: 'セッションで追加・更新・削除したパッケージ・依存関係を、用途つきで挙げる |',
-        en: 'The packages and dependencies added, updated or removed in the session, each with what it is for |',
+        ja: 'セッションで追加・更新・削除したパッケージ・依存関係を、用途つきで挙げる',
+        en: 'The packages and dependencies added, updated or removed in the session, each with what it is for',
       },
       prompt: lookBack(
         'List the packages and dependencies added, updated or removed in this session,',
@@ -3404,8 +3404,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       label: { ja: '登場した URL・資料', en: 'Links mentioned' },
       category: 'conversation-analysis',
       summary: {
-        ja: '会話に出た URL・資料・Issue や PR の番号などを、それが何かと一緒に挙げる |',
-        en: 'The references that came up (URLs, documents, issue and PR numbers…), each with what it is |',
+        ja: '会話に出た URL・資料・Issue や PR の番号などを、それが何かと一緒に挙げる',
+        en: 'The references that came up (URLs, documents, issue and PR numbers…), each with what it is',
       },
       prompt: lookBack(
         'List the references that came up in this conversation (URLs, documents, issue and pull request numbers and the like),',

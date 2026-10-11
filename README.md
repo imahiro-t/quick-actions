@@ -26,6 +26,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds. This is for a hint line shown by a selection alone; one opened with `/quick-actions hint` closes as [described below](#opening-the-hint-line-without-a-selection-quick-actions-hint)
 3. Press an icon and the result is added at the top of the "Quick Actions" pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
    - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command ("standalone" when there was none)
+   - For an action on a selection inside one transcript row, the row stays highlighted, and the result has "Go to selection" and "Clear highlight" buttons (see [Finding the selection again](#finding-the-selection-again-highlight-and-the-two-buttons))
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
    - A standalone action pressed on the hint line or in the ⋯ dialog runs with no argument (on its default). To hand it an argument, use `/quick-actions <id> <argument>` (see [Command](#command))
 4. An action not on the hint line is under the ⋯ at its end: it opens a dialog (so does `/quick-actions` without an ID), where typing in the filter finds it (see [The ⋯ dialog and its filter](#the--dialog-and-its-filter))
@@ -70,6 +71,24 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Move the keyboard from the field to the list (with Tab, for one) and ↑ / ↓ and Enter pick from it
 - **In the mobile app** there is no filter field: every action is listed as a button, with no limit, to tap
 - With [`paneTheme`](#panetheme) set to `light` / `dark`, the filter stays, and the list is a row of buttons instead of a selection list, every action on it with no limit
+
+### Finding the selection again (highlight and the two buttons)
+
+Once the pane opens, Claude Code no longer shows what was selected. So that you can tell which text a result is about, an action run on a selection inside one transcript row keeps that row highlighted, and its result gets two buttons:
+
+- **The highlight**: the whole row the selection was in gets a background (the theme's `subtle` color, so it follows the light or dark theme), not just the selected words. The row is drawn as usual inside it (Markdown and tool output are left as they are). The rows that can be highlighted are your messages, Claude's answers, tool calls and their results, groups of tool calls, tool progress, command output, notices, the turn duration line and question dialogs (`AskUserQuestion`)
+  - A tool call and its result are one unit: a selection in either highlights both, and the progress shown under the call too. A group of tool calls is highlighted whether the selection names the group or one of the calls in it
+- **Go to selection**: scrolls the transcript back to that row (to the middle of the view)
+- **Clear highlight**: takes that result's highlight away; then the button goes. Other results' highlights stay, and a row stays highlighted while any result on it still holds one (two commands run on one selection give two results, each with its own pair of buttons)
+
+The highlight stays until you press Clear highlight: closing the pane, running other actions and a plugin reload keep it. It goes, too, when its result is pushed out of the pane's 20.
+
+No highlight and no buttons are shown, and the action runs as before, when:
+
+- the selection spans more than one row, or lies outside the transcript (in the pane, the prompt, the hint line or a dialog): Claude Code reports no row for it
+- the result is from a context action or a standalone action (they work on no selection)
+
+Highlighting and the buttons happen inside Claude Code and send nothing.
 
 ### Actions that run over time
 

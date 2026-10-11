@@ -13,14 +13,19 @@
 // dock is measured where it is drawn (the pane's bodyColumns plus its frame);
 // another plugin's dock cannot be seen from here and is not taken off.
 //
-// The row also holds, at its left, the session's mode as the engine draws it
-// (`▸▸ auto mode on ·`): its cells come off what the buttons may take
-// (leadWidth), though not off the width the count is in proportion to.
+// The row also holds, at its left, the permission mode the engine draws there
+// (`⏵⏵ auto mode on ·`, shift+tab cycles it), and the footer keeps two
+// columns clear at each side. No hook says which mode is up, so on the
+// surfaces that draw it LEAD_RESERVE, the widest mode's cells, always comes
+// off what the buttons may take, though not off the width the count is in
+// proportion to. (SessionMode, the footer's dim mode labels such as `focus`,
+// is drawn on the row above, not on this one: seen in a pseudo-terminal.)
 //
-// A button is drawn `[ label ]` on the terminal: its label and a frame of four
-// cells (SELM-00058: counted as its label and two before, every button came
-// out four cells short of what is drawn, the line was given more than it holds,
-// and the row squeezed each button until its closing `]` fell onto a second row).
+// A button is drawn `[ label ]` on the terminal, flush against the next
+// (`[ a ][ b ]`): its label and a frame of four cells (SELM-00058: counted as
+// its label and two, every button came out two cells short of what is drawn,
+// the line was given more than it holds, and the row squeezed each button until
+// its closing `]` fell onto a second row, the mode at its left squeezed too).
 
 /** The width the `hintCount` setting is the count for. */
 export const BASE_COLUMNS = 80
@@ -31,8 +36,8 @@ export const DOCK_FRAME = 3
 /** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
 export const BUTTON_FRAME = 4
 
-/** The cells counted between one button and the next (an estimate on the safe side: the engine may draw them flush). */
-export const BUTTON_GAP = 1
+/** The cells between one button and the next: none, the terminal draws them flush (`[ a ][ b ]`). */
+export const BUTTON_GAP = 0
 
 /** The cell more a label with an emoji is counted, since a terminal may draw an emoji a cell wider than counted. */
 export const EMOJI_EXTRA = 1
@@ -40,17 +45,17 @@ export const EMOJI_EXTRA = 1
 /** The fewest actions the kind buttons drawn with their names leave room for; fewer, and they are drawn as their marks alone. */
 export const MIN_LABELED_ACTIONS = 2
 
-/** The cells the mode drawn at the row's left is taken to take before it is known: `⏵⏵ accept edits on · ` (21) and one to spare. */
-export const LEAD_RESERVE = 22
+/**
+ * The cells of the hint line's row that are not the buttons': the footer's two
+ * columns at each side and the widest permission mode at the left,
+ * `⏵⏵ bypass permissions on ·` (26). The others take fewer (`⏵⏵ auto mode on ·`
+ * 17, `⏵⏵ accept edits on ·` 20, `⏸ manual mode on ·` 18, `⏸ plan mode on ·` 16),
+ * so the buttons never run into the mode, whichever is up.
+ */
+export const LEAD_RESERVE = 30
 
-/** What the mode at the row's left takes beyond its labels: the mark before them (`▸▸ `). */
-export const LEAD_MARK = 3
-
-/** What each mode label takes beyond itself: the separator after it (` · `, or ` & ` between two). */
-export const LEAD_SEPARATOR = 3
-
-/** The surfaces the engine raises SessionMode on, where the mode is drawn beside the hint line. */
-export const SESSION_MODE_SURFACES: readonly string[] = ['terminal', 'desktop']
+/** The surfaces that draw the permission mode at the left of the hint line's row (those PromptHint is raised on). */
+export const LEAD_SURFACES: readonly string[] = ['terminal', 'desktop']
 
 // The symbols of the Miscellaneous Technical, Miscellaneous Symbols and
 // Dingbats blocks drawn as emoji (two cells) by default; the rest of those
@@ -137,31 +142,15 @@ export const buttonWidth = (label: string) => textWidth(label) + BUTTON_FRAME + 
 /** What a docked pane takes off the line: its body's columns and its frame. */
 export const dockWidth = (bodyColumns: number) => bodyColumns + DOCK_FRAME
 
-/**
- * The cells the mode drawn at the row's left takes, from the labels the
- * session shows (SessionMode's `modes`): none with none, else the mark before
- * them and a separator after each.
- */
-export function leadWidth(modes: readonly string[]): number {
-  if (modes.length === 0) return 0
-  return LEAD_MARK + modes.reduce((sum, mode) => sum + textWidth(mode) + LEAD_SEPARATOR, 0)
-}
-
-/**
- * The cells taken off the hint line on `surface` for the mode at its left:
- * the width of the modes last drawn there; LEAD_RESERVE on a surface that
- * draws them (SESSION_MODE_SURFACES) before any are known there; none on
- * one that never does.
- */
-export function leadFor(surface: string, modes: readonly string[] | undefined): number {
-  if (modes !== undefined) return leadWidth(modes)
-  return SESSION_MODE_SURFACES.includes(surface) ? LEAD_RESERVE : 0
+/** The cells taken off the hint line's row on `surface` beside its buttons: LEAD_RESERVE where the mode is drawn at its left, else none. */
+export function leadFor(surface: string): number {
+  return LEAD_SURFACES.includes(surface) ? LEAD_RESERVE : 0
 }
 
 /**
  * The columns the hint line has for its buttons: the terminal's, less the
  * dock of this plugin's pane while one is docked beside the transcript (0:
- * none) and the mode drawn at the row's left (0: none).
+ * none) and the rest of the row (leadFor; 0: none).
  */
 export function hintLineColumns(viewportColumns: number, dock: number, lead = 0): number {
   return Math.max(0, viewportColumns - Math.max(0, dock) - Math.max(0, lead))
@@ -185,19 +174,6 @@ function fitting(room: number, target: number, widths: readonly number[]): numbe
     count++
   }
   return count
-}
-
-/**
- * How many of the actions the hint line shows. `widths` are their buttons'
- * cells (buttonWidth), in the line's order; `reserved` the cells of the rest
- * of the line (the kind buttons, ✕ and ⋯). With no width measured, the
- * setting's count as it always was. Otherwise as many as hintTarget asks for,
- * in order, while they fit: none when not even the first does, so the line
- * never runs past its width.
- */
-export function hintCountFor(columns: number | undefined, hintCount: number, reserved: number, widths: readonly number[]): number {
-  if (columns === undefined) return Math.min(hintCount, widths.length)
-  return fitting(columns - reserved, hintTarget(columns, hintCount), widths)
 }
 
 /** How the kind buttons are drawn: with their names, as their marks alone, or not at all. */
@@ -225,7 +201,8 @@ export type HintLayoutInput = {
  * narrow even for those beside ✕ and ⋯, left out. Then as many actions as fit
  * and `target` asks for, none when not even one does: the buttons are never
  * more than the line holds, so none is squeezed onto a second row, and ⋯
- * always stays to reach the rest.
+ * always stays to reach the rest. Should the estimate still fall short of
+ * what is drawn, the row cuts the actions alone (./register PromptHint).
  */
 export function hintLayout({ line, target, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
   if (line === undefined) return { kinds: 'labeled', count: Math.min(target, widths.length) }

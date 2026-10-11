@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { LEAD_RESERVE, buttonWidth, hintLayout, hintLineColumns, hintTarget, leadWidth } from '../hooks/hint-width'
+import { LEAD_RESERVE, buttonWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -45,14 +45,8 @@ async function lineWidth(band: Parameters<typeof hintIcons>[0]) {
 /** How many actions the line shows (its icons, less ✕ and ⋯). */
 const actionCount = async (band: Parameters<typeof hintIcons>[0]) => (await hintIcons(band)).length - 2
 
-/**
- * The engine draws the session's mode at the row's left (SessionMode) with
- * `modes`, on `surface`: the hint line there takes its cells off from then on.
- */
-async function drawModes($: Engine, modes: readonly string[], surface: 'terminal' | 'desktop' = 'terminal') {
-  const mode = await $.ui.mount({ plugin: PLUGIN, component: 'SessionMode', surface, props: { modes } })
-  await mode.unmount()
-}
+/** The cells the line has on a terminal `columns` wide: the permission mode at the row's left (LEAD_RESERVE) taken off. */
+const room = (columns: number, dock = 0) => hintLineColumns(columns, dock, leadFor('terminal'))
 
 // ---------------------------------------------------------------------------
 // The kinds
@@ -189,30 +183,27 @@ test('wider, more icons: in proportion to hintCount at 80 columns, more than six
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  // No mode drawn beside the line: it has the terminal's whole width.
-  await drawModes($, [])
 
   const counts: number[] = []
   for (const columns of [80, 120, 160, 200]) {
     const band = await mountBand($, columns)
     counts.push(await actionCount(band))
-    expect(await lineWidth(band)).toBeLessThanOrEqual(columns)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(room(columns))
     await band.unmount()
   }
-  // Three at 80 columns, not the six counted before SELM-00058: six never fit
-  // once each button's frame is counted.
-  expect(counts[0]).toBe(3)
+  // Two at 80 columns beside the permission mode, not the six counted before
+  // SELM-00058: six never fit once each button's frame is counted.
+  expect(counts[0]).toBe(2)
   for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeGreaterThan(counts[i - 1]!)
   expect(counts.at(-1)!).toBeGreaterThan(6)
 })
 
-test('a small hintCount keeps its proportion: 3 at 80 columns, 6 at 160', { options: { ...JA, hintCount: '3' } }, async ($, on) => {
+test('a small hintCount keeps its proportion: 6 at 160 columns, 9 at 240, never more than fit (2 at 80)', { options: { ...JA, hintCount: '3' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  await drawModes($, [])
-  for (const [columns, want] of [[80, 3], [160, 6]] as const) {
+  for (const [columns, want] of [[80, 2], [160, 6], [240, 9]] as const) {
     const band = await mountBand($, columns)
     expect(await actionCount(band)).toBe(want)
     await band.unmount()
@@ -225,11 +216,11 @@ for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.e
     const s = stage(on)
     await start($)
     await select(s, clock, SELECTED)
-    await drawModes($, [])
     const marks = ['[ ]', '< >', '{ }'].reduce((sum, l) => sum + buttonWidth(l), 0)
     for (const columns of [80, 70, 60, 50, 40, 30, 20]) {
       const band = await mountBand($, columns)
-      expect(await lineWidth(band)).toBeLessThanOrEqual(columns)
+      // ✕ and ⋯ are drawn however narrow; whatever more is laid out fits beside them.
+      if (room(columns) >= buttonWidth('✕') + buttonWidth('⋯')) expect(await lineWidth(band)).toBeLessThanOrEqual(room(columns))
       // ✕ and ⋯ stay, so every action is still a press away.
       const icons = await hintIcons(band)
       expect(icons.slice(-2)).toEqual(['✕', '⋯'])
@@ -242,11 +233,11 @@ for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.e
         expect(kinds.map(b => b.label)).toEqual([t.hintKindShown(t.hintKindTips.selection), t.hintKindTips.context, t.hintKindTips.standalone])
       }
       // Too narrow even for the kinds' marks beside ✕ and ⋯: none.
-      if (columns < marks + buttonWidth('✕') + buttonWidth('⋯')) expect(kinds).toEqual([])
+      if (room(columns) < marks + buttonWidth('✕') + buttonWidth('⋯')) expect(kinds).toEqual([])
       await band.unmount()
     }
-    // 60 columns and narrower: their marks alone, still with an action beside them at 50.
-    for (const columns of [60, 50]) {
+    // 80 and 70 columns: their marks alone, still with an action beside them.
+    for (const columns of [80, 70]) {
       const band = await mountBand($, columns)
       expect((await kindButtons(band)).map(b => b.drawn)).toEqual(['[ ]', '< >', '{ }'])
       expect(await actionCount(band)).toBeGreaterThan(0)
@@ -411,8 +402,9 @@ test('tabs the engine unloaded unheard take nothing off the line, and a run neve
 
 // ---------------------------------------------------------------------------
 // The buttons drawn whole (SELM-00058): each counted as the terminal draws it,
-// `[ label ]`, with the mode the engine draws at the row's left taken off, and
-// none of them squeezed onto a second row.
+// `[ label ]` flush against the next, with the rest of the row (the permission
+// mode the engine draws at its left, LEAD_RESERVE) taken off, and none of them
+// squeezed onto a second row.
 
 /** The kind buttons' cells, named (`ja`/`en`) or as their marks alone. */
 const KIND_CELLS = {
@@ -421,8 +413,8 @@ const KIND_CELLS = {
   marks: ['[ ]', '< >', '{ }'].reduce((sum, l) => sum + buttonWidth(l), 0),
 }
 
-/** What hintLayout gives for a terminal `columns` wide, with `lead` cells of mode and `dock` of pane, every candidate 10 cells. */
-function expected(columns: number, lang: 'ja' | 'en', lead: number, dock = 0, hintCount = 6) {
+/** What hintLayout gives for a terminal `columns` wide, with `lead` cells beside the buttons and `dock` of pane, every candidate 9 cells. */
+function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE, dock = 0, hintCount = 6) {
   const target = hintTarget(hintLineColumns(columns, dock), hintCount)
   return hintLayout({
     line: hintLineColumns(columns, dock, lead),
@@ -430,7 +422,7 @@ function expected(columns: number, lang: 'ja' | 'en', lead: number, dock = 0, hi
     kindsLabeled: KIND_CELLS[lang],
     kindsMarks: KIND_CELLS.marks,
     ends: buttonWidth('✕') + buttonWidth('⋯'),
-    widths: Array.from({ length: target }, () => 10),
+    widths: Array.from({ length: target }, () => 9),
   })
 }
 
@@ -442,73 +434,65 @@ async function kindsDrawn(band: Parameters<typeof kindButtons>[0]) {
 }
 
 for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
-  test(`[${lang}] the line for each width, with the mode drawn beside it and without: as the plan's table`, { options }, async ($, on) => {
+  test(`[${lang}] the line for each width, the permission mode's room taken off: as the table`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     await select(s, clock, SELECTED)
 
     // Twelve candidates and more (hintTarget at 160 columns), each a single
-    // emoji in its mark (10 cells), so the count is never short of candidates.
-    await drawModes($, [])
+    // emoji in its mark (9 cells), so the count is never short of candidates.
     expect(hintTarget(160, 6)).toBe(12)
     const wide = await mountBand($, 400)
     const icons = (await hintIcons(wide)).slice(0, -2).map(String)
     expect(icons.length).toBeGreaterThanOrEqual(12)
-    for (const icon of icons) expect(buttonWidth(icon)).toBe(10)
+    for (const icon of icons) expect(buttonWidth(icon)).toBe(9)
     await wide.unmount()
 
     const table = {
-      ja: { 18: [[60, 'marks', 0], [80, 'marks', 2], [100, 'labeled', 3], [160, 'labeled', 9]], 0: [[80, 'labeled', 3], [100, 'labeled', 5], [160, 'labeled', 11]] },
-      en: { 18: [[60, 'marks', 0], [80, 'marks', 2], [100, 'labeled', 2], [160, 'labeled', 8]], 0: [[80, 'labeled', 2], [100, 'labeled', 4], [160, 'labeled', 10]] },
+      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 3], [160, 'labeled', 10]],
+      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 4], [160, 'labeled', 8]],
     } as const
-    for (const [modes, lead] of [[['auto mode on'], 18], [[], 0]] as const) {
-      await drawModes($, modes)
-      expect(leadWidth(modes)).toBe(lead)
-      for (const [columns, kinds, count] of table[lang][lead]) {
-        const band = await mountBand($, columns)
-        expect({ columns, lead, kinds: await kindsDrawn(band), count: await actionCount(band) }).toEqual({ columns, lead, kinds, count })
-        expect(expected(columns, lang, lead)).toEqual({ kinds, count })
-        await band.unmount()
-      }
+    for (const [columns, kinds, count] of table[lang]) {
+      const band = await mountBand($, columns)
+      expect({ columns, kinds: await kindsDrawn(band), count: await actionCount(band) }).toEqual({ columns, kinds, count })
+      expect(expected(columns, lang)).toEqual({ kinds, count })
+      await band.unmount()
     }
   })
 }
 
-test('the buttons drawn never take more than the line less the dock and the mode', { options: JA }, async ($, on) => {
+test('the buttons drawn never take more than the line less the dock and the rest of the row', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  for (const [columns, lead] of [[40, 0], [60, 18], [80, 0], [80, 18], [100, 18], [160, 18]] as const) {
-    await drawModes($, lead === 0 ? [] : ['auto mode on'])
+  for (const columns of [50, 60, 80, 100, 160]) {
     const band = await mountBand($, columns)
-    expect(await lineWidth(band)).toBeLessThanOrEqual(columns - lead)
-    expect(await actionCount(band)).toBe(expected(columns, 'ja', lead).count)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(columns - LEAD_RESERVE)
+    expect(await actionCount(band)).toBe(expected(columns, 'ja').count)
     await band.unmount()
   }
-  // A dock of 40 cells (a pane body of 37 and its frame) and the mode, on 160 columns.
-  await drawModes($, ['auto mode on'])
+  // A dock of 40 cells (a pane body of 37 and its frame), on 160 columns.
   let band = await mountBand($, 160, true)
   await band.press({ key: '_more' })
   await band.unmount()
   const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 37, placement: 'dock' } })
   band = await mountBand($, 160, true)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 40 - 18)
-  expect(await actionCount(band)).toBe(expected(160, 'ja', 18, 40).count)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 40 - LEAD_RESERVE)
+  expect(await actionCount(band)).toBe(expected(160, 'ja', LEAD_RESERVE, 40).count)
   await band.unmount()
   await pane.unmount()
 })
 
-test('60 columns with the mode beside the line: no action, yet ✕ and ⋯, and ⋯ reaches them all', { options: JA }, async ($, on) => {
+test('45 columns: no action and no kind button, yet ✕ and ⋯, and ⋯ reaches them all', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  await drawModes($, ['auto mode on'])
-  const band = await mountBand($, 60)
+  const band = await mountBand($, 45)
   expect(await hintIcons(band)).toEqual(['✕', '⋯'])
-  expect(await kindsDrawn(band)).toBe('marks')
+  expect(await kindsDrawn(band)).toBe('none')
   await band.press({ key: '_more' })
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
@@ -517,49 +501,18 @@ test('60 columns with the mode beside the line: no action, yet ✕ and ⋯, and 
   expect(s.models.at(-1)?.prompt).toContain(SELECTED)
 })
 
-test('hintCount 1 on 100 columns with no mode: the kinds named and one action', { options: { ...JA, hintCount: '1' } }, async ($, on) => {
+test('hintCount 1 on 100 columns: the kinds named and one action', { options: { ...JA, hintCount: '1' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  await drawModes($, [])
   const band = await mountBand($, 100)
   expect(await kindsDrawn(band)).toBe('labeled')
   expect(await actionCount(band)).toBe(1)
   await band.unmount()
 })
 
-test('SessionMode is watched, not drawn: it passes on as the engine hands it', async ($, on) => {
-  stage(on)
-  await start($)
-  for (const modes of [['auto mode on'], []]) {
-    const mode = await $.ui.mount({ plugin: PLUGIN, component: 'SessionMode', surface: 'terminal', props: { modes } })
-    // The engine's own drawing, which no plugin's hook rewrote.
-    expect(await mode.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
-    await mode.unmount()
-  }
-})
-
-test('the modes drawn beside the line take their cells off it: fewer actions with a mode than with none', { options: JA }, async ($, on) => {
-  const clock = mock.clock(on)
-  const s = stage(on)
-  await start($)
-  await select(s, clock, SELECTED)
-  // 103 columns: the mode's 18 cells and LEAD_RESERVE's 22 leave room for different counts.
-  await drawModes($, [])
-  let band = await mountBand($, 103)
-  const none = await actionCount(band)
-  await band.unmount()
-  await drawModes($, ['auto mode on'])
-  band = await mountBand($, 103)
-  const withMode = await actionCount(band)
-  await band.unmount()
-  expect(withMode).toBeLessThan(none)
-  expect(none).toBe(expected(103, 'ja', 0).count)
-  expect(withMode).toBe(expected(103, 'ja', 18).count)
-})
-
-test('before SessionMode is drawn on a surface, LEAD_RESERVE comes off; one surface\'s modes are not another\'s', { options: JA }, async ($, on) => {
+test('the permission mode\'s room comes off on the terminal and the desktop alike, always', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -567,55 +520,73 @@ test('before SessionMode is drawn on a surface, LEAD_RESERVE comes off; one surf
   const at = async (surface: 'terminal' | 'desktop') => {
     const band = await $.ui.mount({ ...BAND, surface, viewport: { columns: 103, rows: 40, isFullscreen: false } })
     const count = await actionCount(band)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(103 - LEAD_RESERVE)
     await band.unmount()
     return count
   }
-  // Nothing drawn yet on either: the reserve.
-  expect(expected(103, 'ja', LEAD_RESERVE).count).not.toBe(expected(103, 'ja', 18).count)
+  expect(expected(103, 'ja', LEAD_RESERVE).count).not.toBe(expected(103, 'ja', 0).count)
   for (const surface of SURFACES) expect(await at(surface)).toBe(expected(103, 'ja', LEAD_RESERVE).count)
-  // The terminal's mode: its own 18 cells there; the desktop still the reserve.
-  await drawModes($, ['auto mode on'], 'terminal')
-  expect(await at('terminal')).toBe(expected(103, 'ja', 18).count)
-  expect(await at('desktop')).toBe(expected(103, 'ja', LEAD_RESERVE).count)
-  // Drawn with none on the terminal: nothing comes off there.
-  await drawModes($, [], 'terminal')
-  expect(await at('terminal')).toBe(expected(103, 'ja', 0).count)
 })
 
-test('SessionMode props that cannot be read: nothing thrown, its drawing passes on, and LEAD_RESERVE comes off', { options: JA }, async ($, on) => {
+test('SessionMode (drawn on the row above) is left alone, and its labels change nothing on the line', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-  await drawModes($, ['auto mode on'])
-  const mode = await $.ui.mount({ plugin: PLUGIN, component: 'SessionMode', surface: 'terminal', props: { modes: 'auto mode on' as unknown as string[] } })
-  expect(await mode.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
-  await mode.unmount()
-  const band = await mountBand($, 103)
-  expect(await actionCount(band)).toBe(expected(103, 'ja', LEAD_RESERVE).count)
-  await band.unmount()
+  const before = await mountBand($, 103)
+  const count = await actionCount(before)
+  await before.unmount()
+  for (const modes of [['focus', 'memory paused'], []]) {
+    const mode = await $.ui.mount({ plugin: PLUGIN, component: 'SessionMode', surface: 'terminal', props: { modes } })
+    // The engine's own drawing, which no plugin's hook rewrote.
+    expect(await mode.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
+    await mode.unmount()
+    const band = await mountBand($, 103)
+    expect(await actionCount(band)).toBe(count)
+    await band.unmount()
+  }
 })
 
 for (const surface of SURFACES) {
-  test(`[${surface}] each button is kept whole in a row that does not wrap; the hover labels still shrink and are cut`, { options: JA }, async ($, on) => {
+  test(`[${surface}] each button is kept whole; only the actions' Box shrinks and cuts; the hover labels are sized to the room left`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     await select(s, clock, SELECTED)
-    await drawModes($, ['auto mode on'], surface)
     const band = await $.ui.mount({ ...BAND, surface, viewport: { columns: 80, rows: 40, isFullscreen: false } })
     const boxes = await band.findAll({ type: 'Box' })
     const acts = boxes.filter(b => String(b.key).startsWith('act-'))
-    // The kinds, the actions, ✕ and ⋯.
-    expect(acts.length).toBe(3 + (await actionCount(band)) + 2)
+    const count = await actionCount(band)
+    // The kinds, the actions, ✕ and ⋯, in that order, every one kept whole.
+    expect(acts.map(b => String(b.key))).toEqual([
+      'act-_kind-selection', 'act-_kind-context', 'act-_kind-standalone',
+      ...acts.slice(3, 3 + count).map(b => String(b.key)),
+      'act-close', 'act-_more',
+    ])
     for (const box of acts) expect(box.props.flexShrink).toBe(0)
     const row = boxes[0]!
     expect(row.props.flexDirection).toBe('row')
     expect(row.props.flexWrap).toBeUndefined()
     expect(row.props.overflow).toBe('hidden')
+    // The actions sit in a Box of their own, the one part of the row that
+    // shrinks: should they be more than the row holds, they are cut at its
+    // end, never the kind buttons, ✕ or ⋯.
+    const actions = boxes.find(b => b.key === '_hint-actions')!
+    expect(actions.props.flexShrink).toBe(1)
+    expect(actions.props.overflow).toBe('hidden')
+    expect(actions.props.flexDirection).toBe('row')
+    const inActions = actions.children.map(c => String((c as { key?: unknown; props?: { key?: unknown } }).key ?? (c as { props?: { key?: unknown } }).props?.key))
+    expect(inActions).toEqual(acts.slice(3, 3 + count).map(b => String(b.key)))
+    // The hover labels: sized to what the buttons leave of the row, so one
+    // shown neither pushes the mode at the row's left nor squeezes the
+    // actions, and giving way first (a far larger weight) should it still not fit.
     const tips = boxes.filter(b => b.props.display === 'none')
     expect(tips.length).toBe(acts.length)
-    for (const tip of tips) expect(tip.props.flexShrink).toBe(1)
+    const used = await lineWidth(band)
+    for (const tip of tips) {
+      expect(tip.props.flexShrink).toBeGreaterThan(actions.props.flexShrink as number)
+      expect(tip.props.width).toBe(80 - LEAD_RESERVE - used)
+    }
     const tipTexts = (await band.findAll({ type: 'Text' })).filter(t => t.props.wrap !== undefined)
     expect(tipTexts.length).toBe(tips.length)
     for (const text of tipTexts) expect(text.props.wrap).toBe('truncate')

@@ -2,29 +2,30 @@ import { expect, test } from 'claude-code/testing'
 
 import * as hintWidth from '../hooks/hint-width'
 import {
-  BASE_COLUMNS,
   BUTTON_FRAME,
   BUTTON_GAP,
+  DOCK_GUTTER,
   EMOJI_EXTRA,
   LEAD_RESERVE,
   MIN_LABELED_ACTIONS,
   buttonWidth,
+  dockReturn,
   LEAD_SURFACES,
   hasEmoji,
   hintLayout,
   hintLineColumns,
-  hintTarget,
+  hintMost,
   leadFor,
   textWidth,
+  UNMEASURED_COUNT,
 } from '../hooks/hint-width'
 import { BUTTON_FRAME as PICKER_BUTTON_FRAME } from '../hooks/picker-rows'
 import { HINT_KINDS, hintKindFor, isOfKind, ofKind } from '../hooks/order'
 import { ACTIONS, emojiIcon, markedIcon, TEXT_MARKS } from '../hooks/actions'
 import { filterActions } from '../hooks/filter'
 
-// How many icons the hint line shows for its width (SELM-00050): the
-// `hintCount` setting is the count on an 80-column line, more in proportion
-// on a wider one, never more than fit.
+// How many icons the hint line shows for its width (SELM-00050): as many as
+// fit, UNMEASURED_COUNT when the width is not known.
 
 test('the cells a label takes: wide characters and emoji count two, joiners and variation selectors none', () => {
   expect(textWidth('abc')).toBe(3)
@@ -41,26 +42,43 @@ test('the cells a label takes: wide characters and emoji count two, joiners and 
   expect(buttonWidth('[💡]')).toBe(4 + BUTTON_FRAME + BUTTON_GAP + EMOJI_EXTRA)
 })
 
-test('the line is the viewport\'s columns: no dock comes off them again (SELM-00066)', () => {
+test('the line is the viewport\'s columns with this plugin\'s dock given back: no dock comes off them again (SELM-00066, SELM-00068)', () => {
   expect(hintLineColumns(160)).toBe(160)
   // 180 columns with this plugin's pane docked, as seen in a pseudo-terminal:
-  // the engine hands PromptHint a viewport of 123, the dock already off.
+  // the engine hands PromptHint a viewport of 123, the dock (a body of 56 and
+  // its rule) already off; the line runs under the dock, so it is given back.
+  expect(DOCK_GUTTER).toBe(1)
+  expect(dockReturn(56)).toBe(57)
+  expect(dockReturn(0)).toBe(1)
+  expect(dockReturn(-5)).toBe(1)
+  expect(hintLineColumns(123, 0, dockReturn(56))).toBe(180)
+  for (const [terminal, viewport] of [[160, 103], [180, 123], [200, 143]] as const) {
+    expect(hintLineColumns(viewport, 0, dockReturn(56))).toBe(terminal)
+    expect(hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))).toBe(terminal - LEAD_RESERVE)
+    // As the same terminal undocked: the same line.
+    expect(hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))).toBe(hintLineColumns(terminal, LEAD_RESERVE))
+  }
+  // No dock given: the viewport's columns alone.
   expect(hintLineColumns(123)).toBe(123)
+  expect(hintLineColumns(123, 0, 0)).toBe(123)
+  expect(hintLineColumns(123, 0, -10)).toBe(123)
   expect(hintLineColumns(0)).toBe(0)
-  // The dock is neither measured nor taken off here any more.
+  // The dock is never taken off: the old measure of what comes off is gone.
   expect('dockWidth' in hintWidth).toBe(false)
   expect('DOCK_FRAME' in hintWidth).toBe(false)
 })
 
-test('hintCount is the count at 80 columns, in proportion beyond, one at least', () => {
-  expect(BASE_COLUMNS).toBe(80)
-  expect(hintTarget(80, 6)).toBe(6)
-  expect(hintTarget(160, 6)).toBe(12)
-  expect(hintTarget(200, 6)).toBe(15)
-  expect(hintTarget(40, 6)).toBe(3)
-  // A small count keeps its proportion: 3 on 160 columns is 6, not as many as fit.
-  expect(hintTarget(160, 3)).toBe(6)
-  expect(hintTarget(10, 1)).toBe(1)
+test('the hintCount setting is gone: no count in proportion to 80 columns', () => {
+  expect('hintTarget' in hintWidth).toBe(false)
+  expect('BASE_COLUMNS' in hintWidth).toBe(false)
+})
+
+test('hintMost: the most a line could take, each button of a one-cell label; UNMEASURED_COUNT when not measured', () => {
+  expect(UNMEASURED_COUNT).toBe(6)
+  expect(hintMost(undefined)).toBe(6)
+  expect(hintMost(130)).toBe(26)
+  expect(hintMost(4)).toBe(0)
+  expect(hintMost(0)).toBe(0)
 })
 
 const SIX = 6
@@ -68,35 +86,32 @@ const many = (n: number) => Array.from({ length: n }, () => SIX)
 
 // How many actions fit, the rest of the line (`reserved`: the kind buttons, ✕
 // and ⋯) taken off first: hintLayout with the reserved cells as its ends.
-const countFor = (columns: number | undefined, hintCount: number, reserved: number, widths: readonly number[]) =>
+const countFor = (columns: number | undefined, reserved: number, widths: readonly number[]) =>
   hintLayout({
     line: columns,
-    target: columns === undefined ? hintCount : hintTarget(columns, hintCount),
     kindsLabeled: 0,
     kindsMarks: 0,
     ends: reserved,
     widths,
   }).count
 
-test('as many as the target asks for while they fit, none when not even one does', () => {
-  // Room for all: the target.
-  expect(countFor(80, 6, 20, many(100))).toBe(6)
-  expect(countFor(160, 6, 20, many(100))).toBe(12)
-  expect(countFor(200, 6, 20, many(100))).toBe(15)
-  expect(countFor(160, 3, 20, many(100))).toBe(6)
-  // The room caps it: 40 - 25 = 15 cells, two of six.
-  expect(countFor(40, 6, 25, many(100))).toBe(2)
+test('as many as fit, none when not even one does', () => {
+  // 80 - 20 = 60 cells: ten of six.
+  expect(countFor(80, 20, many(100))).toBe(10)
+  expect(countFor(160, 20, many(100))).toBe(23)
+  // 40 - 25 = 15 cells, two of six.
+  expect(countFor(40, 25, many(100))).toBe(2)
   // Not even one fits: none, so the line never runs past its width.
-  expect(countFor(30, 6, 28, many(100))).toBe(0)
+  expect(countFor(30, 28, many(100))).toBe(0)
   // Never more than there are.
-  expect(countFor(200, 6, 20, many(4))).toBe(4)
+  expect(countFor(200, 20, many(4))).toBe(4)
   // Widths of their own, in order: the first that does not fit ends it.
-  expect(countFor(80, 6, 60, [6, 6, 10, 2])).toBe(2)
+  expect(countFor(80, 60, [6, 6, 10, 2])).toBe(2)
 })
 
-test('with no width measured, the setting as it always was', () => {
-  expect(countFor(undefined, 6, 20, many(100))).toBe(6)
-  expect(countFor(undefined, 30, 20, many(10))).toBe(10)
+test('with no width measured, UNMEASURED_COUNT', () => {
+  expect(countFor(undefined, 20, many(100))).toBe(6)
+  expect(countFor(undefined, 20, many(4))).toBe(4)
 })
 
 test('hintCountFor is gone: the hint line lays itself out with hintLayout alone', () => {
@@ -192,11 +207,6 @@ test('the line less the rest of the row, never below 0', () => {
   expect(hintLineColumns(20, 30)).toBe(0)
 })
 
-test('hintCount is in proportion to the line before the rest of the row comes off; the fit, after', () => {
-  expect(hintTarget(hintLineColumns(160), 6)).toBe(12)
-  expect(hintLineColumns(160, LEAD_RESERVE)).toBe(130)
-})
-
 test('COMPACT_BELOW is gone: hintLayout alone decides how the kind buttons are drawn', () => {
   expect('COMPACT_BELOW' in hintWidth).toBe(false)
   expect(MIN_LABELED_ACTIONS).toBe(2)
@@ -214,15 +224,14 @@ const ENDS = buttonWidth('✕') + buttonWidth('⋯')
 const sum = (labels: readonly string[]) => labels.reduce((n, l) => n + buttonWidth(l), 0)
 const CANDIDATES = Array.from({ length: 20 }, () => buttonWidth('[🔤]'))
 
-function layoutAt(columns: number, lang: 'ja' | 'en', lead: number, hintCount = 6) {
-  const target = hintTarget(hintLineColumns(columns), hintCount)
+function layoutAt(columns: number, lang: 'ja' | 'en', lead: number) {
+  const line = hintLineColumns(columns, lead)
   return hintLayout({
-    line: hintLineColumns(columns, lead),
-    target,
+    line,
     kindsLabeled: sum(KINDS[lang].labeled),
     kindsMarks: sum(MARKS),
     ends: ENDS,
-    widths: CANDIDATES.slice(0, target),
+    widths: CANDIDATES.slice(0, hintMost(line)),
   })
 }
 
@@ -250,7 +259,7 @@ test('the layout for each width, language and mode: named kinds while two action
     [80, 'en', 0, 'labeled', 2],
     [100, 'ja', 0, 'labeled', 6],
     [100, 'en', 0, 'labeled', 5],
-    [160, 'ja', 0, 'labeled', 12],
+    [160, 'ja', 0, 'labeled', 13],
     [160, 'en', 0, 'labeled', 11],
   ]
   for (const [columns, lang, lead, kinds, count] of table) {
@@ -258,32 +267,37 @@ test('the layout for each width, language and mode: named kinds while two action
   }
 })
 
-test('a hintTarget under MIN_LABELED_ACTIONS is the bar: hintCount 1 on 100 columns, named kinds and one action', () => {
-  expect(hintTarget(100, 1)).toBe(1)
-  // 100 - 30 - 10 = 60 cells: room for the one action asked for.
-  expect(layoutAt(100, 'ja', 0, 1)).toEqual({ kinds: 'labeled', count: 1 })
-})
-
 test('too narrow for the marks beside ✕ and ⋯: no kind buttons, ✕ and ⋯ alone', () => {
-  expect(hintLayout({ line: 30, target: 3, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 1 })
-  expect(hintLayout({ line: 20, target: 3, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 0 })
+  expect(hintLayout({ line: 30, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 1 })
+  expect(hintLayout({ line: 20, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 0 })
 })
 
 test('fewer candidates than the bar: named kinds while those there are fit', () => {
-  expect(hintLayout({ line: 60, target: 6, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10] })).toEqual({ kinds: 'labeled', count: 1 })
-  expect(hintLayout({ line: 50, target: 6, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [] })).toEqual({ kinds: 'labeled', count: 0 })
+  expect(hintLayout({ line: 60, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10] })).toEqual({ kinds: 'labeled', count: 1 })
+  expect(hintLayout({ line: 50, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [] })).toEqual({ kinds: 'labeled', count: 0 })
 })
 
-test('not measured: named kinds and the setting\'s count as it always was', () => {
-  expect(hintLayout({ line: undefined, target: 6, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
+test('not measured: named kinds and UNMEASURED_COUNT', () => {
+  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
 })
 
-// SELM-00066: with this plugin's pane docked, the line is what the engine hands
-// PromptHint, the terminal's columns less the dock (seen in a pseudo-terminal:
-// 160, 180 and 200 columns with a body of 56 give 103, 123 and 143). Taking the
-// dock off again (56 + 3) left 14, 34 and 54 cells for the buttons: at 160 and
-// 180 columns no action, ✕ and ⋯ alone, as the person saw.
+// SELM-00066: with this plugin's pane docked, the engine hands PromptHint the
+// terminal's columns less the dock (seen in a pseudo-terminal: 160, 180 and 200
+// columns with a body of 56 give 103, 123 and 143). Taking the dock off again
+// (56 + 3) left 14, 34 and 54 cells for the buttons: at 160 and 180 columns no
+// action, ✕ and ⋯ alone, as the person saw. Those viewports alone (another
+// plugin's dock, or this one's before it is measured) still hold one action.
 const DOCKED = [[160, 103], [180, 123], [200, 143]] as const
+
+test('docked, this plugin\'s dock given back: the line as the whole terminal\'s (SELM-00068)', () => {
+  for (const lang of ['ja', 'en'] as const) {
+    for (const [terminal, viewport] of DOCKED) {
+      const given = hintLineColumns(viewport, LEAD_RESERVE, dockReturn(56))
+      expect(given).toBe(hintLineColumns(terminal, LEAD_RESERVE))
+      expect(layoutAt(viewport + dockReturn(56), lang, LEAD_RESERVE)).toEqual(layoutAt(terminal, lang, LEAD_RESERVE))
+    }
+  }
+})
 
 test('docked: the line the engine hands over holds at least one action, never more than it holds (SELM-00066)', () => {
   for (const lang of ['ja', 'en'] as const) {

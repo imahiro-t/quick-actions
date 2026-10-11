@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS, actionsFor, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
 import { HINT_KINDS, ofKind } from '../hooks/order'
-import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EVERY_ACTION_FITS, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // ---------------------------------------------------------------------------
@@ -250,7 +250,7 @@ for (const language of ['en', 'ja'] as const) {
     const actions = ofKind(ACTIONS, kind)
     test(
       `[${language}] every ${kind} action asks for an answer in ${name}, translations aside`,
-      { options: { language, actions: actions.map(a => a.id).join(','), hintCount: String(actions.length) }, timeoutMs: 90_000 },
+      { options: { language, actions: actions.map(a => a.id).join(',') }, timeoutMs: 90_000 },
       async ($, on) => {
         const clock = mock.clock(on)
         const s = stage(on)
@@ -258,7 +258,7 @@ for (const language of ['en', 'ja'] as const) {
         s.selected = 'const x = 1'
         await clock.advance(400)
 
-        const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+        const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
         for (const a of actions) {
           await reselect(s, clock)
           // One kind at a time on the line (SELM-00050), and a run puts it back on the selection's:

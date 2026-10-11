@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_FILTER, PICKER_PANE, listedOptions, pickAction, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_FILTER, PICKER_PANE, listedOptions, pickAction, pickerKindButtons, showPickerKind, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // Standalone actions ({icon}): on neither the selection nor the conversation.
@@ -137,8 +137,11 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   await band.unmount()
 
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  // The legend, with all three kinds listed.
-  expect(await picker.find({ text: MESSAGES.en.pickerLegend(true) })).toBeDefined()
+  // The kind buttons, all three with a text held: their marks and names, none standing out.
+  const kinds = await pickerKindButtons(picker)
+  expect(kinds.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
+  expect(kinds.map(k => k.drawn)).toEqual(['[ ] selection', '< > context', '{ } standalone'])
+  expect(kinds.map(k => k.bold)).toEqual([false, false, false])
   await picker.input({ key: PICKER_FILTER, text: 'timer', kind: 'change' })
   const listed = await listedOptions(picker)
   expect(listed.find(o => o.value === 'timer')?.label).toBe('{⏳} Timer')
@@ -164,7 +167,8 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   await start($)
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  expect(await picker.find({ text: MESSAGES.ja.pickerLegend(false) })).toBeDefined()
+  // The kind buttons without the selection's: no text to run it on.
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['context', '< > 会話'], ['standalone', '{ } 単独']])
   await pickAction(picker, 'timer')
   await picker.input({ key: PICKER_ARG, text: '' })
   await picker.unmount()
@@ -176,13 +180,15 @@ test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast',
   expect(await paneTexts($)).toContain('⏳ 25:00 残り')
 })
 
-test('[mobile] the ⋯ dialog lists the timer as a button with the legend above, and a tap runs it', { options: JA }, async ($, on) => {
+test('[mobile] the ⋯ dialog lists the timer as a button with the kind buttons above, and a tap runs it', { options: JA }, async ($, on) => {
   mock.clock(on)
   const s = stage(on)
   await start($)
   await runCommand($, '')
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
-  expect(await picker.find({ text: MESSAGES.ja.pickerLegend(false) })).toBeDefined()
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.drawn])).toEqual([['context', '< > 会話'], ['standalone', '{ } 単独']])
+  // Switched to the standalone actions: the timer among them.
+  await showPickerKind(picker, 'standalone')
   expect((await picker.find({ key: 'timer' }))?.props.label).toBe('{⏳} タイマー')
   await picker.press({ key: 'timer' })
   await picker.unmount()

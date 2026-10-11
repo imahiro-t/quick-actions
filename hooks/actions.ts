@@ -99,6 +99,17 @@ type ActionBase<T> = {
    * or neither (`none`, a standalone action: its argument alone, if any).
    */
   target?: Target
+  /**
+   * A built-in's place in the action catalog (docs/index.html): the ID of one of
+   * CATEGORIES in ./catalog. Every built-in has one (tests/catalog.test.ts);
+   * resolveSpec drops it, so the hint line, the pane and the runner never see it.
+   */
+  category?: string
+  /**
+   * A built-in's one-line description in the catalog (the README's table says
+   * the same). Every built-in has one; resolveSpec drops it as well.
+   */
+  summary?: Localized
 }
 
 /** What an action works on: see ActionBase's `target`. */
@@ -514,12 +525,12 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
   if (spec.kind === 'local') {
     // No prompt: `compute` is handed on as it is.
-    const { label: _l, runningText: _r, arg, ...rest } = spec
+    const { label: _l, runningText: _r, category: _c, summary: _s, arg, ...rest } = spec
     return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }) }
   }
   const prompt = localizePrompt(spec.prompt, lang)
   if (spec.kind === 'subagent') {
-    const { label: _l, runningText: _r, description, arg, ...rest } = spec
+    const { label: _l, runningText: _r, category: _c, summary: _s, description, arg, ...rest } = spec
     return {
       ...rest,
       ...texts,
@@ -530,11 +541,11 @@ export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
     }
   }
   if (spec.kind === 'complete') {
-    const { label: _l, runningText: _r, arg, ...rest } = spec
+    const { label: _l, runningText: _r, category: _c, summary: _s, arg, ...rest } = spec
     return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }), prompt }
   }
   // A fork carries no other text to resolve.
-  const { label: _l, runningText: _r, ...rest } = spec
+  const { label: _l, runningText: _r, category: _c, summary: _s, ...rest } = spec
   return { ...rest, ...texts, prompt }
 }
 
@@ -577,10 +588,18 @@ export const timerCompute = ({ arg, now, lang }: LocalInput): LocalOutput => {
  * A translation on the selection into the language named, in the words of
  * translate-ja and translate-en: the translation alone, no answer style.
  */
-export const translateInto = (id: string, icon: string, label: Localized, language: string): CompleteAction<Localized> => ({
+export const translateInto = (
+  id: string,
+  icon: string,
+  label: Localized,
+  language: string,
+  summary: Localized,
+): CompleteAction<Localized> => ({
   id,
   icon,
   label,
+  category: 'translation',
+  summary,
   kind: 'complete',
   model: 'haiku',
   prompt: [
@@ -600,6 +619,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'translate-ja',
     icon: '🌐',
     label: { ja: '日本語訳', en: 'To Japanese' },
+    category: 'translation',
+    summary: { ja: '日本語に訳す（コード・識別子・パス・コマンドはそのまま）', en: 'Translates into Japanese (code, identifiers, paths and commands kept as they are)' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -612,6 +633,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'translate-en',
     icon: '🔤',
     label: { ja: '英訳', en: 'To English' },
+    category: 'translation',
+    summary: { ja: '英語に訳す（コード・識別子・パス・コマンドはそのまま）', en: 'Translates into English (code, identifiers, paths and commands kept as they are)' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -620,18 +643,47 @@ export const ACTIONS: readonly ActionSpec[] = [
       'Reply with the translation alone.',
     ].join(' '),
   },
-  translateInto('translate-zh', '🀄', { ja: '中国語訳（簡体字）', en: 'To Chinese (Simplified)' }, 'Simplified Chinese'),
-  translateInto('translate-zh-tw', '🏮', { ja: '中国語訳（繁体字）', en: 'To Chinese (Traditional)' }, 'Traditional Chinese as used in Taiwan'),
-  translateInto('translate-ko', '🌏', { ja: '韓国語訳', en: 'To Korean' }, 'Korean'),
-  translateInto('translate-es', '💃', { ja: 'スペイン語訳', en: 'To Spanish' }, 'Spanish'),
-  translateInto('translate-fr', '🥐', { ja: 'フランス語訳', en: 'To French' }, 'French'),
-  translateInto('translate-de', '🥨', { ja: 'ドイツ語訳', en: 'To German' }, 'German'),
-  translateInto('translate-pt', '⚽', { ja: 'ポルトガル語訳', en: 'To Portuguese' }, 'Brazilian Portuguese'),
-  translateInto('translate-vi', '🛵', { ja: 'ベトナム語訳', en: 'To Vietnamese' }, 'Vietnamese'),
+  translateInto('translate-zh', '🀄', { ja: '中国語訳（簡体字）', en: 'To Chinese (Simplified)' }, 'Simplified Chinese', {
+    ja: '中国語（簡体字）に訳す',
+    en: 'Translates into Simplified Chinese',
+  }),
+  translateInto('translate-zh-tw', '🏮', { ja: '中国語訳（繁体字）', en: 'To Chinese (Traditional)' }, 'Traditional Chinese as used in Taiwan', {
+    ja: '中国語（繁体字・台湾）に訳す',
+    en: 'Translates into Traditional Chinese as used in Taiwan',
+  }),
+  translateInto('translate-ko', '🌏', { ja: '韓国語訳', en: 'To Korean' }, 'Korean', {
+    ja: '韓国語に訳す',
+    en: 'Translates into Korean',
+  }),
+  translateInto('translate-es', '💃', { ja: 'スペイン語訳', en: 'To Spanish' }, 'Spanish', {
+    ja: 'スペイン語に訳す',
+    en: 'Translates into Spanish',
+  }),
+  translateInto('translate-fr', '🥐', { ja: 'フランス語訳', en: 'To French' }, 'French', {
+    ja: 'フランス語に訳す',
+    en: 'Translates into French',
+  }),
+  translateInto('translate-de', '🥨', { ja: 'ドイツ語訳', en: 'To German' }, 'German', {
+    ja: 'ドイツ語に訳す',
+    en: 'Translates into German',
+  }),
+  translateInto('translate-pt', '⚽', { ja: 'ポルトガル語訳', en: 'To Portuguese' }, 'Brazilian Portuguese', {
+    ja: 'ポルトガル語（ブラジル）に訳す',
+    en: 'Translates into Brazilian Portuguese',
+  }),
+  translateInto('translate-vi', '🛵', { ja: 'ベトナム語訳', en: 'To Vietnamese' }, 'Vietnamese', {
+    ja: 'ベトナム語に訳す',
+    en: 'Translates into Vietnamese',
+  }),
   {
     id: 'easy-japanese',
     icon: '🌱',
     label: { ja: 'やさしい日本語に', en: 'Plain Japanese' },
+    category: 'translation',
+    summary: {
+      ja: '日本語でも他の言語でも、短い文と基本的な語彙の「やさしい日本語」に書き直す',
+      en: 'Rewrites it, in Japanese or another language, as Easy Japanese: short sentences and basic words',
+    },
     kind: 'complete',
     model: 'haiku',
     // Always answers in Japanese, whatever the setting: the rewrite is the answer.
@@ -646,6 +698,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'furigana',
     icon: '🈁',
     label: { ja: '読みがな', en: 'Readings (furigana)' },
+    category: 'translation',
+    summary: { ja: '読みにくい語・漢字の語の後ろに、ひらがなの読みを括弧で添える', en: 'Adds the reading in hiragana, in parentheses, after each hard-to-read or kanji word' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -659,6 +713,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'translation-variants',
     icon: '🔀',
     label: { ja: '直訳と意訳', en: 'Literal vs natural' },
+    category: 'translation',
+    summary: {
+      ja: '日本語なら英語へ、英語なら日本語へ、直訳と意訳の 2 通りに訳して違いを示す',
+      en: 'Translates Japanese into English or English into Japanese twice, literally and naturally, and shows how they differ',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -671,6 +730,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'check-translation',
     icon: '🪞',
     label: { ja: '訳文チェック', en: 'Check a translation' },
+    category: 'translation',
+    summary: {
+      ja: '原文と訳文を比べ、誤訳・訳抜け・不自然な表現を修正案つきで挙げる',
+      en: 'Compares a source text with its translation: mistranslations, omissions and unnatural phrases, each with a fix',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -684,6 +748,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain',
     icon: '💡',
     label: { ja: '意味', en: 'Explain' },
+    category: 'meaning',
+    summary: { ja: '意味・出てきた理由・対処を説明する', en: 'What it means, why it likely appeared, what to do about it' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -697,6 +763,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'eli5',
     icon: '🧸',
     label: { ja: 'やさしく説明', en: 'Explain simply' },
+    category: 'meaning',
+    summary: { ja: '前提知識ゼロ向けに、たとえを使ってやさしく説明する', en: 'Explains it to someone with no background, with an everyday analogy' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -709,6 +777,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'deep-dive',
     icon: '🔬',
     label: { ja: '詳しく解説', en: 'Deep dive' },
+    category: 'meaning',
+    summary: { ja: '仕組み・背景まで踏み込んで詳しく解説する', en: 'Goes into how it works, the background and why it is so' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -721,6 +791,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'ask',
     icon: '💬',
     label: { ja: 'Claudeに聞く', en: 'Ask Claude' },
+    category: 'meaning',
+    summary: { ja: '今の作業の文脈で説明する', en: 'Explains it in the context of the current work' },
     kind: 'fork',
     prompt: 'Explain the selected text in the context of what we are working on in this session.',
   },
@@ -728,6 +800,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'define-terms',
     icon: '📖',
     label: { ja: '用語の定義', en: 'Define terms' },
+    category: 'meaning',
+    summary: { ja: '専門用語・概念を 10 個ほど拾い、それぞれ 1〜2 行で定義する', en: 'Picks out about ten technical terms and concepts and defines each in a line or two' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -739,6 +813,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'examples',
     icon: '🧪',
     label: { ja: '具体例', en: 'Examples' },
+    category: 'meaning',
+    summary: {
+      ja: '概念や主張の具体例を 2〜3 個挙げる（合えば短いコードも）',
+      en: 'Two or three concrete examples of the concept or claim (with a short snippet where code suits)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -750,6 +829,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'analogy',
     icon: '🎭',
     label: { ja: 'たとえ話', en: 'Analogy' },
+    category: 'meaning',
+    summary: { ja: '日常のたとえ話で言い換え、たとえが当てはまらない点も添える', en: 'Puts it in an everyday analogy or two, with where the analogy breaks down' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -761,6 +842,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'background',
     icon: '📜',
     label: { ja: '背景と経緯', en: 'Background' },
+    category: 'meaning',
+    summary: {
+      ja: '技術・用語・慣習が生まれた背景、経緯、現在の位置づけを説明する',
+      en: 'Why the technology, term or convention came about, how it developed and where it stands today',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -773,6 +859,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'pros-cons',
     icon: '🪙',
     label: { ja: 'メリット・デメリット', en: 'Pros and cons' },
+    category: 'meaning',
+    summary: { ja: '方針・提案・技術のメリットとデメリットを並べ、向いている状況を添える', en: 'The advantages and disadvantages of the approach or technology, and when it suits' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -785,6 +873,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'compare-items',
     icon: '🆚',
     label: { ja: '違いを比較', en: 'Compare' },
+    category: 'meaning',
+    summary: {
+      ja: '出てくる選択肢・用語・バージョンを表で比べる（1 つだけなら定番の代替と比べる）',
+      en: 'Compares the options, terms or versions in a table (one alone: against its usual alternatives)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -797,6 +890,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'counterargument',
     icon: '🥊',
     label: { ja: '反論・別の見方', en: 'Counterpoints' },
+    category: 'meaning',
+    summary: { ja: '主張への反論・別の見方・前提が崩れるケースを 3〜5 個挙げる', en: 'Three to five counterarguments, other views and cases where its assumptions break down' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -808,6 +903,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'expand-acronyms',
     icon: '🔠',
     label: { ja: '略語の展開', en: 'Expand acronyms' },
+    category: 'meaning',
+    summary: { ja: '略語を正式名称に展開し、意味を 1 行で添える', en: 'Expands each abbreviation and acronym to its full name, with a line on its meaning' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -819,6 +916,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'summarize',
     icon: '📝',
     label: { ja: '要約', en: 'Summarize' },
+    category: 'summary-structure',
+    summary: { ja: '数文か 5 項目以内の箇条書きで要約する', en: 'A few sentences or up to five bullet points' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -830,6 +929,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'tldr',
     icon: '⚡',
     label: { ja: '一行で要約', en: 'TL;DR' },
+    category: 'summary-structure',
+    summary: { ja: '一行で要約する', en: 'One line' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -841,6 +942,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'key-points',
     icon: '📌',
     label: { ja: '要点3つ', en: 'Three key points' },
+    category: 'summary-structure',
+    summary: { ja: '最も重要な 3 点だけを、それぞれの理由と一緒に挙げる', en: 'The three most important points, each with why it matters' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -852,6 +955,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'to-bullets',
     icon: '🔘',
     label: { ja: '箇条書きに', en: 'As bullet points' },
+    category: 'summary-structure',
+    summary: { ja: '情報を落とさずに箇条書きに組み直す（要約はしない）', en: 'Restructured as bullet points, nothing dropped (not a summary)' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -863,6 +968,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'outline',
     icon: '📑',
     label: { ja: '見出し構成', en: 'Outline' },
+    category: 'summary-structure',
+    summary: { ja: '見出しの階層と、それぞれの要旨 1 行で構成を抜き出す', en: 'Its structure as an outline: nested headings, each with a one-line gist' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -874,6 +981,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'action-items',
     icon: '🎬',
     label: { ja: 'やることを抽出', en: 'Action items' },
+    category: 'summary-structure',
+    summary: {
+      ja: '議事録・メール・Issue などから、やること・担当・期限を抜き出す',
+      en: 'The things to be done, with who and by when where given (from notes, an email, an issue…)',
+    },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -886,6 +998,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'extract-numbers',
     icon: '🔢',
     label: { ja: '数値・日付を抽出', en: 'Numbers and dates' },
+    category: 'summary-structure',
+    summary: { ja: '数値・金額・日付・期間を、それぞれが何を表すかと一緒に表にする', en: 'The numbers, amounts, dates and durations in a table, each with what it stands for' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -897,6 +1011,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'extract-entities',
     icon: '📇',
     label: { ja: '固有名詞を抽出', en: 'Names and entities' },
+    category: 'summary-structure',
+    summary: { ja: '人・組織・製品・ファイル名・URL などの固有名詞を種類別に一覧にする', en: 'The proper nouns by kind: people, organizations, products, file names, URLs…' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -908,6 +1024,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'title-ideas',
     icon: '🪧',
     label: { ja: 'タイトル案', en: 'Title ideas' },
+    category: 'summary-structure',
+    summary: { ja: '見出し・タイトル・件名の案を 5 つ、短い順に出す', en: 'Five headings, titles or subject lines, shortest first' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -919,6 +1037,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'to-faq',
     icon: '🙋',
     label: { ja: 'FAQにする', en: 'As an FAQ' },
+    category: 'summary-structure',
+    summary: { ja: '内容を想定問答（Q&A）3〜7 組に組み直す', en: 'Reworked into three to seven likely questions with their answers' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -929,6 +1049,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'to-timeline',
     icon: '📅',
     label: { ja: '時系列に並べる', en: 'As a timeline' },
+    category: 'summary-structure',
+    summary: { ja: 'ログ・経緯・議事録などの出来事を時系列に 1 行ずつ並べる', en: 'The events (a log, a history, notes…) in order of time, one line each' },
     kind: 'complete',
     model: 'haiku',
     // No current date reaches the model: the order is the text's own, never one relative to today.
@@ -941,6 +1063,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'to-diagram',
     icon: '🌳',
     label: { ja: '図にする（Mermaid）', en: 'As a diagram' },
+    category: 'summary-structure',
+    summary: { ja: '手順・関係・構造を Mermaid の図にする', en: 'The steps, relations or structure as a Mermaid diagram' },
     kind: 'complete',
     model: 'sonnet',
     prompt: [
@@ -956,6 +1080,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'check-writing',
     icon: '🧐',
     label: { ja: '校正', en: 'Proofread' },
+    category: 'writing',
+    summary: { ja: '誤字脱字・文法・表記ゆれを指摘し、直した全文を示す', en: 'Typos, grammar and inconsistent notation, each with the fix, then the whole text corrected' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -969,6 +1095,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'check-english',
     icon: '🔍',
     label: { ja: '英文チェック', en: 'Check English' },
+    category: 'writing',
+    summary: {
+      ja: '英文の文法の誤りと不自然な表現を、ネイティブの言い方と理由つきで指摘する',
+      en: 'Grammar mistakes and unnatural phrases in English prose, with what a native speaker would write and why',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -983,6 +1114,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'keigo',
     icon: '🎩',
     label: { ja: '敬語に', en: 'Make it polite' },
+    category: 'writing',
+    summary: { ja: '日本語は敬語、英語は丁寧なビジネス英語に書き直す', en: 'Rewritten politely: keigo for Japanese, polite business English for English' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -997,6 +1130,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'casual-tone',
     icon: '👕',
     label: { ja: 'くだけた表現に', en: 'Make it casual' },
+    category: 'writing',
+    summary: { ja: '意味を変えずに、チャット向けのくだけた表現に書き直す', en: 'Rewritten in a relaxed tone for a chat, the meaning kept' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1010,6 +1145,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'make-concise',
     icon: '🤏',
     label: { ja: '簡潔に', en: 'Make it concise' },
+    category: 'writing',
+    summary: { ja: '意味を落とさずに半分ほどの長さに書き直す', en: 'Rewritten to about half its length, no meaning lost' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1023,6 +1160,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'rewrite-clear',
     icon: '🪟',
     label: { ja: '分かりやすく書き直す', en: 'Rewrite clearly' },
+    category: 'writing',
+    summary: {
+      ja: '詳しさと技術的な内容はそのままに、構成と言い回しを分かりやすく書き直す',
+      en: 'Rewritten to read more easily for the same readers: structure and wording, not detail or content',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: [
@@ -1038,6 +1180,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'paraphrase',
     icon: '🔁',
     label: { ja: '言い換え案', en: 'Paraphrase' },
+    category: 'writing',
+    summary: { ja: 'ニュアンスの違う言い換えを 3 つ、それぞれの違いの説明つきで出す', en: 'Three paraphrases with different nuances, each with a note on its nuance' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1052,6 +1196,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'tone-check',
     icon: '👂',
     label: { ja: 'トーン確認', en: 'Tone check' },
+    category: 'writing',
+    summary: {
+      ja: '読み手にどう伝わりそうか（きつい・曖昧・失礼など）を判定し、和らげた表現を示す',
+      en: 'How it is likely to come across (harsh, vague, rude…), with softer versions of the phrases that may land badly',
+    },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -1065,6 +1214,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'draft-reply',
     icon: '📨',
     label: { ja: '返信の下書き', en: 'Draft a reply' },
+    category: 'writing',
+    summary: {
+      ja: 'メール・チャット・レビューコメントなどへの返信を、同じトーンで下書きする',
+      en: 'A reply to the message (an email, a chat, a review comment…) in its tone, covering its points',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: [
@@ -1079,6 +1233,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'fill-in-blanks',
     icon: '🧩',
     label: { ja: '足りない情報', en: 'What is missing' },
+    category: 'writing',
+    summary: {
+      ja: '文書・依頼・Issue に足りない情報（目的・前提・期限・再現手順など）を、確認すべき質問として挙げる',
+      en: 'The information the document, request or issue lacks (purpose, assumptions, deadline, steps to reproduce…), as questions to ask',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1092,6 +1251,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-code',
     icon: '💻',
     label: { ja: 'コードを読み解く', en: 'Walk through code' },
+    category: 'code',
+    summary: { ja: 'コードを実行順に読み解き、入力・出力・副作用をまとめる', en: 'Walks through the code in the order it runs, then its inputs, outputs and side effects' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1103,6 +1264,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'code-complexity',
     icon: '📈',
     label: { ja: '計算量', en: 'Complexity' },
+    category: 'code',
+    summary: { ja: '時間計算量と空間計算量を、根拠の箇所とボトルネックと一緒に示す', en: 'Its time and space complexity, with the parts each rests on and any bottleneck' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1114,6 +1277,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'find-bugs',
     icon: '🐛',
     label: { ja: 'バグの可能性', en: 'Possible bugs' },
+    category: 'code',
+    summary: {
+      ja: '境界値・null・競合・リソースリークなどのバグの可能性を重い順に、修正案つきで挙げる',
+      en: 'Possible bugs (boundaries, null, races, leaks…), most serious first, each with a fix',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1128,6 +1296,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'security-check',
     icon: '🔐',
     label: { ja: 'セキュリティ観点', en: 'Security check' },
+    category: 'code',
+    summary: {
+      ja: 'コードや設定の脆弱性の可能性（インジェクション・認可漏れ・秘密情報など）を重い順に、対処つきで挙げる',
+      en: 'Possible vulnerabilities in code or configuration (injection, missing authorization, secrets…), most serious first, with fixes',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1140,6 +1313,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'perf-check',
     icon: '🚀',
     label: { ja: '性能の改善点', en: 'Performance tips' },
+    category: 'code',
+    summary: {
+      ja: '無駄なループ・N+1・無駄な確保などの性能の問題を、改善案つきで挙げる',
+      en: 'Performance problems (needless loops, N+1 queries, wasted allocations…), each with an improvement',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1153,6 +1331,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'suggest-refactor',
     icon: '🧹',
     label: { ja: 'リファクタ案', en: 'Refactoring ideas' },
+    category: 'code',
+    summary: { ja: '読みやすく保守しやすい書き方の案をコードで示し、各変更の理由を説明する', en: 'A more readable, maintainable rewrite in a code block, each change explained' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1166,6 +1346,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'edge-cases',
     icon: '🧗',
     label: { ja: 'エッジケース', en: 'Edge cases' },
+    category: 'code',
+    summary: { ja: '扱うべきエッジケースを挙げ、それぞれ対処済みか・未対処か・不明かを示す', en: 'The edge cases to handle, each marked handled, not handled or unclear' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1178,6 +1360,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'unit-test-ideas',
     icon: '🧫',
     label: { ja: 'テストケース案', en: 'Unit test ideas' },
+    category: 'code',
+    summary: {
+      ja: '入力と期待結果の表でテストケースを提案する（必要なら短いテストコードも）',
+      en: 'Test cases as a table of input and expected result (with a short test snippet where it helps)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1192,6 +1379,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'pseudocode',
     icon: '📐',
     label: { ja: '疑似コードに', en: 'As pseudocode' },
+    category: 'code',
+    summary: { ja: '言語に依存しない疑似コード（または番号つきの手順）に書き直す', en: 'Rewritten as language-neutral pseudocode, or numbered steps' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1205,6 +1394,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'port-code',
     icon: '🔄',
     label: { ja: '別言語で書くと', en: 'Port to another language' },
+    category: 'code',
+    summary: {
+      ja: '別の言語で書き直す（指定がなければ TypeScript、TypeScript なら Python）',
+      en: 'Rewritten in another language (the one asked for; else TypeScript, or Python for TypeScript code)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: [
@@ -1220,6 +1414,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-types',
     icon: '🧬',
     label: { ja: '型を読み解く', en: 'Read the types' },
+    category: 'code',
+    summary: { ja: '型定義・型エラー・ジェネリクスを平易に説明する', en: 'Explains a type definition, type error or generics in plain words' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1231,6 +1427,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'name-ideas',
     icon: '🔖',
     label: { ja: '命名案', en: 'Naming ideas' },
+    category: 'code',
+    summary: { ja: '変数・関数・クラスの名前の案を 5 つ、理由つきで出す', en: 'Five names for the variable, function or class, each with its reason' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -1244,6 +1442,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'docstring',
     icon: '📓',
     label: { ja: 'ドキュメントコメント案', en: 'Doc comment' },
+    category: 'code',
+    summary: { ja: '言語に合った形式（JSDoc・docstring など）のドキュメントコメントを書く', en: 'A documentation comment in the language\'s form (JSDoc, a docstring…)' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1257,6 +1457,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-regex',
     icon: '🧵',
     label: { ja: '正規表現の解説', en: 'Explain regex' },
+    category: 'code',
+    summary: { ja: '正規表現を部分ごとに説明し、一致する例・しない例を示す', en: 'Explains a regular expression part by part, with strings it matches and does not' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1268,6 +1470,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-sql',
     icon: '💾',
     label: { ja: 'SQLの解説', en: 'Explain SQL' },
+    category: 'code',
+    summary: { ja: 'SQL が読む・変えるものを句ごとに説明し、性能の注意点を添える', en: 'What the SQL reads or changes, clause by clause, with the performance points to watch' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1279,6 +1483,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-shell',
     icon: '🐚',
     label: { ja: 'コマンドの解説', en: 'Explain command' },
+    category: 'code',
+    summary: {
+      ja: 'シェルのコマンドやパイプラインを 1 つずつ説明し、危険な操作は警告する',
+      en: 'A shell command or pipeline, one command and option at a time, warning of anything dangerous',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1290,6 +1499,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-stacktrace',
     icon: '🥞',
     label: { ja: 'スタックトレースの解説', en: 'Read a stack trace' },
+    category: 'code',
+    summary: {
+      ja: 'スタックトレースから例外の種類・発生箇所・呼び出し経路・考えられる原因を読み解く',
+      en: 'Reads a stack trace: the exception, where it was thrown, the call path and likely causes',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1301,6 +1515,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-diff',
     icon: '➕',
     label: { ja: '差分の解説', en: 'Explain a diff' },
+    category: 'code',
+    summary: { ja: '差分（git diff など）をファイルごとに、目的と影響を説明する', en: 'Explains a diff file by file: what each change is for and what it affects' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1312,6 +1528,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-config',
     icon: '🔧',
     label: { ja: '設定の解説', en: 'Explain config' },
+    category: 'code',
+    summary: {
+      ja: '設定ファイル（YAML・JSON・TOML・Dockerfile など）の各設定の意味と注意点を説明する',
+      en: 'Each setting in a configuration (YAML, JSON, TOML, a Dockerfile…), its meaning and what to watch',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1323,6 +1544,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-cron',
     icon: '⏰',
     label: { ja: 'cron式の解説', en: 'Explain cron' },
+    category: 'code',
+    summary: { ja: 'cron 式をフィールドに分け、いつ実行されるかを言葉と例で説明する', en: 'Breaks a cron expression into its fields and says when it runs, with examples' },
     kind: 'complete',
     model: 'haiku',
     // No current date reaches the model: the examples hold for any date, never the next run from today.
@@ -1338,6 +1561,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-http',
     icon: '📡',
     label: { ja: 'HTTPの解説', en: 'Explain HTTP' },
+    category: 'code',
+    summary: {
+      ja: 'HTTP のリクエスト・レスポンス・ステータス・ヘッダーの意味と、おかしな点の原因を説明する',
+      en: 'An HTTP request, response, status or headers: what each part means and the likely causes of anything wrong',
+    },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -1349,6 +1577,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'explain-log',
     icon: '🪵',
     label: { ja: 'ログの読み解き', en: 'Read the logs' },
+    category: 'code',
+    summary: {
+      ja: 'ログを読み、起きたことを順にまとめ、異常な行と次に確かめることを示す',
+      en: 'Sums up what the log lines show in order, pointing out the abnormal ones and what to check next',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1360,6 +1593,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'code',
     icon: '🔎',
     label: { ja: 'コードの根拠', en: 'Find the code' },
+    category: 'evidence',
+    summary: { ja: 'リポジトリ内でその文言・挙動の出どころを探す', en: 'Finds where the text or behaviour comes from in the repository' },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'リポジトリを調査中…', en: 'Searching the repository…' },
@@ -1380,6 +1615,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'why',
     icon: '🧾',
     label: { ja: '根拠を説明', en: 'Why so?' },
+    category: 'evidence',
+    summary: { ja: '会話の中の Claude の発言について、そう言える根拠を説明する', en: 'Explains the grounds for something Claude said in the conversation' },
     kind: 'fork',
     prompt: [
       'The selected text is something you (Claude) said earlier in this session.',
@@ -1393,6 +1630,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'web-check',
     icon: '📚',
     label: { ja: 'Webで裏どり', en: 'Check on the web' },
+    category: 'evidence',
+    summary: {
+      ja: '主張を Web の出典で確かめ、裏づけられた点と、裏づけが取れない・食い違う点を出典 URL つきで分けて示す',
+      en: 'Checks the claims against web sources, with their URLs: what they support apart from what they do not support or contradict',
+    },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'Webで調査中…', en: 'Checking the web…' },
@@ -1421,6 +1663,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'find-usages',
     icon: '🎯',
     label: { ja: '使用箇所を探す', en: 'Find usages' },
+    category: 'research',
+    summary: {
+      ja: '識別子（関数・型・変数・設定キーなど）の定義と使用箇所をリポジトリから探す',
+      en: 'Finds the definition and every use of the identifier (a function, type, variable, setting key…) in the repository',
+    },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'リポジトリを調査中…', en: 'Searching the repository…' },
@@ -1442,6 +1689,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'find-tests',
     icon: '🧯',
     label: { ja: '関連テストを探す', en: 'Find related tests' },
+    category: 'research',
+    summary: { ja: 'コード・識別子・エラーメッセージに関係するテストをリポジトリから探す', en: 'Finds the tests in the repository related to the code, identifier or error message' },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'リポジトリを調査中…', en: 'Searching the repository…' },
@@ -1461,6 +1710,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'official-docs',
     icon: '📘',
     label: { ja: '公式ドキュメント', en: 'Official docs' },
+    category: 'research',
+    summary: { ja: 'API・オプション・エラーの公式ドキュメントを Web で探す', en: 'Finds the official documentation of the API, option or error on the web' },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'Webで調査中…', en: 'Checking the web…' },
@@ -1486,6 +1737,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'search-error',
     icon: '🚑',
     label: { ja: 'エラーを調べる', en: 'Search the error' },
+    category: 'research',
+    summary: {
+      ja: 'エラーメッセージの既知の原因と対処を Web（Issue・Q&A・公式ドキュメント）で探す',
+      en: 'Finds the known causes and fixes of the error on the web (issue trackers, Q&A sites, official docs)',
+    },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'Webで調査中…', en: 'Checking the web…' },
@@ -1509,6 +1765,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'package-info',
     icon: '📦',
     label: { ja: 'パッケージ情報', en: 'Package info' },
+    category: 'research',
+    summary: {
+      ja: 'ライブラリ・パッケージの用途・最新版・保守状況・注意点を Web で調べる',
+      en: 'Looks up a library or package on the web: what it is for, its latest version, its maintenance and caveats',
+    },
     kind: 'subagent',
     model: 'sonnet',
     runningText: { ja: 'Webで調査中…', en: 'Checking the web…' },
@@ -1541,6 +1802,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'to-table',
     icon: '📊',
     label: { ja: '表にする', en: 'As a table' },
+    category: 'data',
+    summary: { ja: '箇条書き・ログ・文中の列挙を、情報を落とさずに Markdown の表にする', en: 'A list, a log or items in prose as a Markdown table, nothing left out or added' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1555,6 +1818,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'json-to-yaml',
     icon: '📄',
     label: { ja: 'JSON→YAML', en: 'JSON to YAML' },
+    category: 'data',
+    summary: { ja: 'JSON を同じ内容の YAML に変換する', en: 'Converts JSON into YAML with the same content' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1568,6 +1833,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'yaml-to-json',
     icon: '📃',
     label: { ja: 'YAML→JSON', en: 'YAML to JSON' },
+    category: 'data',
+    summary: { ja: 'YAML を同じ内容の JSON に変換する', en: 'Converts YAML into JSON with the same content' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1581,6 +1848,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'json-to-types',
     icon: '🧷',
     label: { ja: 'JSONから型定義', en: 'Types from JSON' },
+    category: 'data',
+    summary: { ja: 'JSON から TypeScript の型定義を推定する', en: 'Infers TypeScript type definitions from JSON' },
     kind: 'complete',
     model: 'haiku',
     prompt: [
@@ -1596,6 +1865,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'infer-schema',
     icon: '🧱',
     label: { ja: 'スキーマ推定', en: 'Infer a schema' },
+    category: 'data',
+    summary: {
+      ja: 'データからスキーマを推定する（JSON なら JSON Schema、表形式なら CREATE TABLE）',
+      en: 'Infers a schema from the data (a JSON Schema for JSON, CREATE TABLE for tabular data)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: [
@@ -1606,28 +1880,30 @@ export const ACTIONS: readonly ActionSpec[] = [
       'each with a short reason (one sample only, every value empty, mixed types and the like).',
     ].join(' '),
   },
-  { id: 'count-text', icon: '🧮', label: { ja: '文字数を数える', en: 'Count characters' }, kind: 'local', compute: countText },
-  { id: 'format-json', icon: '🎀', label: { ja: 'JSON整形', en: 'Format JSON' }, kind: 'local', compute: formatJson },
-  { id: 'minify-json', icon: '🪶', label: { ja: 'JSON圧縮', en: 'Minify JSON' }, kind: 'local', compute: minifyJson },
-  { id: 'csv-to-table', icon: '📋', label: { ja: 'CSV→表', en: 'CSV to table' }, kind: 'local', compute: csvToTable },
-  { id: 'sort-lines', icon: '🔽', label: { ja: '行を並べ替え', en: 'Sort lines' }, kind: 'local', compute: sortLines },
-  { id: 'dedupe-lines', icon: '👯', label: { ja: '重複行を除く', en: 'Remove duplicate lines' }, kind: 'local', compute: dedupeLines },
-  { id: 'case-variants', icon: '🔡', label: { ja: '命名形式の変換', en: 'Case variants' }, kind: 'local', compute: caseVariants },
-  { id: 'base64-decode', icon: '🔓', label: { ja: 'Base64デコード', en: 'Base64 decode' }, kind: 'local', compute: base64DecodeText },
-  { id: 'base64-encode', icon: '🔒', label: { ja: 'Base64エンコード', en: 'Base64 encode' }, kind: 'local', compute: base64EncodeText },
-  { id: 'url-decode', icon: '🔗', label: { ja: 'URLデコード', en: 'URL decode' }, kind: 'local', compute: urlDecode },
-  { id: 'url-encode', icon: '🔣', label: { ja: 'URLエンコード', en: 'URL encode' }, kind: 'local', compute: urlEncode },
-  { id: 'parse-url', icon: '🧭', label: { ja: 'URLを分解', en: 'Parse a URL' }, kind: 'local', compute: parseUrl },
-  { id: 'decode-jwt', icon: '🎫', label: { ja: 'JWTを読む', en: 'Decode a JWT' }, kind: 'local', compute: decodeJwt },
-  { id: 'epoch-to-date', icon: '⌛', label: { ja: 'UNIX時刻を日時に', en: 'Epoch to date' }, kind: 'local', compute: epochToDate },
-  { id: 'hash-text', icon: '🆔', label: { ja: 'ハッシュ値', en: 'Hash' }, kind: 'local', compute: hashText },
-  { id: 'color-convert', icon: '🎨', label: { ja: '色コード変換', en: 'Convert a color' }, kind: 'local', compute: colorConvert },
+  { id: 'count-text', icon: '🧮', label: { ja: '文字数を数える', en: 'Count characters' }, category: 'data', summary: { ja: '文字数（空白あり・なし）・単語数・行数・UTF-8 のバイト数を数える', en: 'Counts characters (with and without white space), words, lines and UTF-8 bytes' }, kind: 'local', compute: countText },
+  { id: 'format-json', icon: '🎀', label: { ja: 'JSON整形', en: 'Format JSON' }, category: 'data', summary: { ja: 'JSON を 2 スペースのインデントで整形する', en: 'Lays JSON out with two-space indentation' }, kind: 'local', compute: formatJson },
+  { id: 'minify-json', icon: '🪶', label: { ja: 'JSON圧縮', en: 'Minify JSON' }, category: 'data', summary: { ja: 'JSON を空白なしの 1 行に詰める', en: 'Puts JSON on one line with no white space' }, kind: 'local', compute: minifyJson },
+  { id: 'csv-to-table', icon: '📋', label: { ja: 'CSV→表', en: 'CSV to table' }, category: 'data', summary: { ja: 'CSV（TSV）を、1 行目を見出しにした Markdown の表にする', en: 'CSV (or TSV) as a Markdown table, its first record the header' }, kind: 'local', compute: csvToTable },
+  { id: 'sort-lines', icon: '🔽', label: { ja: '行を並べ替え', en: 'Sort lines' }, category: 'data', summary: { ja: '行を並べ替える（大文字小文字を区別しない、コードポイント順）', en: 'Sorts the lines (case ignored, by code point)' }, kind: 'local', compute: sortLines },
+  { id: 'dedupe-lines', icon: '👯', label: { ja: '重複行を除く', en: 'Remove duplicate lines' }, category: 'data', summary: { ja: '重複した行を除き、除いた行数を示す', en: 'Removes repeated lines and says how many' }, kind: 'local', compute: dedupeLines },
+  { id: 'case-variants', icon: '🔡', label: { ja: '命名形式の変換', en: 'Case variants' }, category: 'data', summary: { ja: '単語・識別子を camelCase・PascalCase・snake_case・kebab-case・CONSTANT_CASE に変換する', en: 'The word or identifier in camelCase, PascalCase, snake_case, kebab-case and CONSTANT_CASE' }, kind: 'local', compute: caseVariants },
+  { id: 'base64-decode', icon: '🔓', label: { ja: 'Base64デコード', en: 'Base64 decode' }, category: 'data', summary: { ja: 'Base64（標準・URL セーフ）を UTF-8 のテキストにデコードする', en: 'Decodes Base64 (standard or URL-safe) as UTF-8 text' }, kind: 'local', compute: base64DecodeText },
+  { id: 'base64-encode', icon: '🔒', label: { ja: 'Base64エンコード', en: 'Base64 encode' }, category: 'data', summary: { ja: 'テキストを Base64 にエンコードする', en: 'Encodes the text in Base64' }, kind: 'local', compute: base64EncodeText },
+  { id: 'url-decode', icon: '🔗', label: { ja: 'URLデコード', en: 'URL decode' }, category: 'data', summary: { ja: 'パーセントエンコードをデコードする', en: 'Decodes percent-encoding' }, kind: 'local', compute: urlDecode },
+  { id: 'url-encode', icon: '🔣', label: { ja: 'URLエンコード', en: 'URL encode' }, category: 'data', summary: { ja: 'テキストをパーセントエンコードする', en: 'Percent-encodes the text' }, kind: 'local', compute: urlEncode },
+  { id: 'parse-url', icon: '🧭', label: { ja: 'URLを分解', en: 'Parse a URL' }, category: 'data', summary: { ja: 'URL をスキーム・ユーザー（パスワードは伏せる）・ホスト・ポート・パス・クエリ・フラグメントに分解する', en: 'Takes a URL apart: scheme, user (password hidden), host, port, path, query and fragment' }, kind: 'local', compute: parseUrl },
+  { id: 'decode-jwt', icon: '🎫', label: { ja: 'JWTを読む', en: 'Decode a JWT' }, category: 'data', summary: { ja: 'JWT のヘッダーとペイロードをデコードする（exp・iat・nbf は日時で。署名は検証しない）', en: 'Decodes a JWT\'s header and payload (exp, iat, nbf as dates; the signature is not verified)' }, kind: 'local', compute: decodeJwt },
+  { id: 'epoch-to-date', icon: '⌛', label: { ja: 'UNIX時刻を日時に', en: 'Epoch to date' }, category: 'data', summary: { ja: 'UNIX 時刻（秒・ミリ秒）を UTC とローカルの日時（ISO 8601）にする', en: 'A UNIX time (seconds or milliseconds) as a date in UTC and local time (ISO 8601)' }, kind: 'local', compute: epochToDate },
+  { id: 'hash-text', icon: '🆔', label: { ja: 'ハッシュ値', en: 'Hash' }, category: 'data', summary: { ja: 'テキストの SHA-256 と SHA-1 を求める', en: 'The SHA-256 and SHA-1 of the text' }, kind: 'local', compute: hashText },
+  { id: 'color-convert', icon: '🎨', label: { ja: '色コード変換', en: 'Convert a color' }, category: 'data', summary: { ja: '色（#RGB・#RRGGBB・rgb()・hsl()）を HEX・RGB・HSL で示す', en: 'A colour (#RGB, #RRGGBB, rgb(), hsl()) as HEX, RGB and HSL' }, kind: 'local', compute: colorConvert },
 
   // Learning.
   {
     id: 'make-quiz',
     icon: '❔',
     label: { ja: 'クイズにする', en: 'Make a quiz' },
+    category: 'learning',
+    summary: { ja: '内容の理解を確かめるクイズを 3〜5 問つくる（答えは最後にまとめて）', en: 'A three-to-five-question quiz on the text, the answers together at the end' },
     kind: 'complete',
     model: 'haiku',
     prompt: sys(
@@ -1640,6 +1916,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'learn-more',
     icon: '🎓',
     label: { ja: '次に学ぶこと', en: 'What to learn next' },
+    category: 'learning',
+    summary: { ja: '理解したあとに次に学ぶとよい関連テーマを 3〜5 個、検索キーワードつきで挙げる', en: 'Three to five related topics worth learning next, with keywords to search' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1653,6 +1931,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'weak-claims',
     icon: '🚩',
     label: { ja: '根拠の弱い主張', en: 'Weak claims' },
+    category: 'checks',
+    summary: {
+      ja: '根拠のない・言い過ぎ・確認が要る主張を、確かめるべき理由つきで拾う（調べはしない）',
+      en: 'The claims with no evidence, overstated or needing a check, each with why (nothing is looked up)',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1666,6 +1949,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'logic-check',
     icon: '🧠',
     label: { ja: '論理の確認', en: 'Check the logic' },
+    category: 'checks',
+    summary: { ja: '論理の飛躍・矛盾・循環論法・前提の抜けを指摘する', en: 'Points out leaps in logic, contradictions, circular reasoning and missing premises' },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1678,6 +1963,11 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'calc-check',
     icon: '➗',
     label: { ja: '計算の検算', en: 'Check the math' },
+    category: 'checks',
+    summary: {
+      ja: '計算と数値の整合（合計・割合・単位換算など）を検算し、誤りは正しい値と途中式を示す',
+      en: 'Recomputes the calculations and checks the figures (totals, percentages, units…), showing the working for each mistake',
+    },
     kind: 'complete',
     model: 'sonnet',
     prompt: sys(
@@ -1695,6 +1985,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'recap',
       icon: '🧭',
       label: { ja: '会話の要約', en: 'Recap' },
+      category: 'essentials',
+      summary: { ja: '会話の目的・経緯・現状を短くまとめる', en: 'What the conversation set out to do, how it went and where things stand' },
       prompt: conversation(
         'Recap this conversation so far: what we set out to do, how it went, and where things stand now.',
         'Keep it to about 10 lines.',
@@ -1704,6 +1996,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'decisions',
       icon: '✅',
       label: { ja: 'ここまでの決定事項', en: 'Decisions so far' },
+      category: 'essentials',
+      summary: { ja: '決まったこと・合意したことを箇条書きにする', en: 'The decisions made and points agreed on, as bullets' },
       prompt: conversation(
         'List the decisions made and the points agreed on in this conversation so far, one bullet each, most important first.',
         'If nothing has been decided yet, say so.',
@@ -1714,6 +2008,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'todo',
       icon: '📋',
       label: { ja: '次にやること', en: 'Next steps' },
+      category: 'essentials',
+      summary: { ja: '残っている作業を、実行順の TODO として並べる', en: 'The work left, as a to-do list in the order to do it' },
       prompt: conversation(
         'List the work still left to do in this conversation as a to-do list, in the order it should be done.',
         'If nothing is left, say so.',
@@ -1724,6 +2020,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'open-questions',
       icon: '❓',
       label: { ja: '未解決の疑問', en: 'Open questions' },
+      category: 'essentials',
+      summary: { ja: 'まだ答えの出ていない問い・保留点を並べる', en: 'The questions still unanswered and the points on hold' },
       prompt: conversation(
         'List the questions in this conversation that are still unanswered and the points left on hold, one bullet each.',
         'If there are none, say so.',
@@ -1734,6 +2032,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'simplify-last',
       icon: '🧸',
       label: { ja: '直前の回答をやさしく', en: 'Last answer, simply' },
+      category: 'essentials',
+      summary: { ja: 'Claude の直前の回答を、前提知識のない人向けに言い直す', en: 'Claude\'s last answer restated for someone with no background' },
       prompt: conversation(
         'Restate your (Claude\'s) last answer in this conversation for someone with no background in the topic:',
         'use everyday words and an analogy, and explain any technical term that cannot be avoided right where it appears.',
@@ -1744,6 +2044,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'translate-last',
       icon: '🌐',
       label: { ja: '直前の回答を翻訳', en: 'Translate last answer' },
+      category: 'essentials',
+      summary: {
+        ja: 'Claude の直前の回答を訳す。主に日本語なら英語へ、それ以外なら日本語へ（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`)',
+      },
       prompt: conversation(
         'Translate your (Claude\'s) last answer in this conversation:',
         'if it is mainly in Japanese, into natural English; otherwise into natural Japanese.',
@@ -1755,6 +2060,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'assumptions',
       icon: '🧱',
       label: { ja: '前提・仮定の洗い出し', en: 'Assumptions' },
+      category: 'essentials',
+      summary: { ja: '作業が頼っている前提・仮定を挙げ、確かめていないものを示す', en: 'The premises and assumptions the work relies on, marking those not checked' },
       prompt: conversation(
         'List the premises and assumptions this conversation and the work in it rely on, stated or not, one bullet each,',
         'and mark the ones that have not been checked.',
@@ -1765,6 +2072,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'risks',
       icon: '⚠️',
       label: { ja: 'リスク・懸念点', en: 'Risks' },
+      category: 'essentials',
+      summary: { ja: '今の方針・変更のリスクと懸念点を、重要度の高い順に挙げる', en: 'The risks and concerns of the current approach and changes, most serious first' },
       prompt: conversation(
         'List the risks and concerns in the current approach and the changes made in this conversation, most serious first,',
         'each with a line on why it matters.',
@@ -1775,6 +2084,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'changed-files',
       icon: '🗂️',
       label: { ja: '変更したファイルとその内容', en: 'Changed files' },
+      category: 'essentials',
+      summary: {
+        ja: 'セッションで作成・変更・削除したファイルと変更内容を、会話から分かる範囲で並べる',
+        en: 'The files created, changed or deleted in the session and what changed, as far as the conversation shows',
+      },
       prompt: conversation(
         'List the files created, changed or deleted in this session, each with a line or two on what changed in it.',
         'Only list what the conversation shows: do not guess at files or changes it does not mention.',
@@ -1786,6 +2100,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'next-questions',
       icon: '💭',
       label: { ja: '次に聞くとよい質問', en: 'Questions to ask next' },
+      category: 'essentials',
+      summary: { ja: '次に Claude に聞くとよい質問を 3〜5 個提案する', en: 'Three to five questions worth asking Claude next' },
       prompt: conversation(
         'Suggest three to five questions worth asking you (Claude) next in this conversation, each with a short reason.',
         'Keep it to about 10 lines.',
@@ -1795,6 +2111,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'handoff',
       icon: '📝',
       label: { ja: '引き継ぎメモ', en: 'Handoff note' },
+      category: 'essentials',
+      summary: {
+        ja: '別の人・別のセッションに渡す引き継ぎメモ（目的・現状・決定事項・残作業・注意点）',
+        en: 'A note to hand the work to another person or session: goal, status, decisions, work left, caveats',
+      },
       prompt: conversation(
         'Write a handoff note for another person or a new session to pick up this work:',
         'the goal, where things stand, the decisions made, the work left, and anything to watch out for.',
@@ -1807,6 +2128,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'recap-oneline',
       icon: '🪶',
       label: { ja: '会話を一行で', en: 'One-line recap' },
+      category: 'looking-back',
+      summary: { ja: '会話の目的と現状を一行で言う', en: 'What the conversation is for and where it stands, in one line' },
       prompt: lookBack(
         'Say in one sentence on one line what this conversation is for and where it stands now.',
         'Reply with that sentence alone, with no preamble.',
@@ -1816,6 +2139,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'recap-recent',
       icon: '🔁',
       label: { ja: '直近のやりとりの要約', en: 'Recent recap' },
+      category: 'looking-back',
+      summary: { ja: '直近 3〜5 往復のやりとりだけを要約する', en: 'A recap of the last three to five exchanges alone' },
       prompt: lookBack(
         'Recap only the last few exchanges of this conversation (about three to five back-and-forths), not the whole of it:',
         'what was talked about and what happened.',
@@ -1826,6 +2151,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-timeline',
       icon: '🕒',
       label: { ja: '会話の経緯（時系列）', en: 'Session timeline' },
+      category: 'looking-back',
+      summary: {
+        ja: '依頼・調査・変更・判明した事実・方針転換を、起きた順に並べる',
+        en: 'What happened in order: requests, investigations, changes, facts found, changes of direction',
+      },
       prompt: lookBack(
         'List what happened in this conversation in the order it happened, one bullet each:',
         'the requests, the investigations, the changes made, the facts found and the changes of direction.',
@@ -1836,6 +2166,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'goal',
       icon: '🎯',
       label: { ja: 'この会話の目的', en: 'Session goal' },
+      category: 'looking-back',
+      summary: {
+        ja: '会話の最終目的と、何をもって完了とするかを示す（不明ならそう言う）',
+        en: 'The final goal of the conversation and what would count as done (saying what is unclear)',
+      },
       prompt: lookBack(
         'State the final goal of this conversation as it reads from what was said, and what would count as done.',
         'If either is unclear, say so and say what is unclear.',
@@ -1846,6 +2181,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'my-requests',
       icon: '🙋',
       label: { ja: '依頼ごとの対応状況', en: 'Status by request' },
+      category: 'looking-back',
+      summary: { ja: 'ユーザーの依頼を 1 つずつ並べ、対応済み・一部・未対応を示す', en: 'Each thing the user asked for, in order, marked done, partly done or not done' },
       prompt: lookBack(
         'Go through the user\'s messages in this conversation and list each thing the user asked for, in the order asked, one request per line.',
         'Mark each as done, partly done or not done, and for partly done or not done, say what is still left.',
@@ -1857,6 +2194,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'key-facts',
       icon: '📌',
       label: { ja: '判明した事実', en: 'Key facts' },
+      category: 'looking-back',
+      summary: {
+        ja: '調査やコマンドの結果で確かめられた事実を、裏づけと一緒に挙げる',
+        en: 'The facts established by investigation or command results, each with what backs it',
+      },
       prompt: lookBack(
         'List the facts established in this conversation by investigation or by command results, one bullet each,',
         'each with what backs it (the file read or the result seen).',
@@ -1868,6 +2210,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'commands-run',
       icon: '📟',
       label: { ja: '実行したコマンド', en: 'Commands run' },
+      category: 'looking-back',
+      summary: {
+        ja: 'セッションで実行したシェルのコマンドを、目的と成否つきで実行順に並べる',
+        en: 'The shell commands run in the session, in order, each with its purpose and whether it worked',
+      },
       prompt: lookBack(
         'List the shell commands run in this session, in the order they were run,',
         'each with one line on what it was for and whether it succeeded or failed.',
@@ -1879,6 +2226,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'errors-seen',
       icon: '🧯',
       label: { ja: '出たエラーと対処', en: 'Errors and fixes' },
+      category: 'looking-back',
+      summary: { ja: '出たエラーごとに、原因・対処・解決したかをまとめる', en: 'Each error that came up: its cause, what was done and whether it is solved' },
       prompt: lookBack(
         'For each error that came up in this conversation, give one bullet with what the error was,',
         'its cause as far as it is known, what was done about it, and whether it is solved.',
@@ -1890,6 +2239,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'files-read',
       icon: '📖',
       label: { ja: '読んだファイル', en: 'Files read' },
+      category: 'looking-back',
+      summary: { ja: '読んだだけで変更していないファイルを、何を確かめるためかと一緒に並べる', en: 'The files read but not changed, each with what it was read to check' },
       prompt: lookBack(
         'List the files read but not changed in this session, each with one line on what it was read to check.',
         'If no file was read, say so.',
@@ -1900,6 +2251,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'failed-attempts',
       icon: '🔙',
       label: { ja: 'うまくいかなかった試み', en: 'Failed attempts' },
+      category: 'looking-back',
+      summary: { ja: 'うまくいかなかった・やめた試みと、その理由を並べる', en: 'The approaches that failed or were dropped, and why' },
       prompt: lookBack(
         'List the approaches tried in this conversation that failed or were dropped,',
         'each with one or two lines on why it did not work.',
@@ -1911,6 +2264,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'alternatives-considered',
       icon: '🔀',
       label: { ja: '検討した代替案', en: 'Alternatives considered' },
+      category: 'looking-back',
+      summary: { ja: '検討した選択肢と、採用・不採用とその理由を並べる', en: 'The options weighed, each taken or turned down, and why' },
       prompt: lookBack(
         'List the options weighed in this conversation, each with whether it was taken or turned down and why.',
         'If no alternatives were weighed, say so.',
@@ -1921,6 +2276,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'constraints',
       icon: '📏',
       label: { ja: '制約・要件の一覧', en: 'Constraints' },
+      category: 'looking-back',
+      summary: {
+        ja: '技術的な制約・仕様・ユーザーの指示などの要件を並べ、まだ満たしていないものを示す',
+        en: 'The constraints and requirements set out (technical, the spec, the user\'s instructions), marking those not yet met',
+      },
       prompt: lookBack(
         'List the constraints and requirements set out in this conversation (technical ones, the spec and the user\'s instructions), one bullet each,',
         'and mark the ones not met yet.',
@@ -1934,6 +2294,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'translate-last-en',
       icon: '🔤',
       label: { ja: '直前の回答を英訳', en: 'Last answer to English' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を英語に訳す（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated into English (this target comes before `language`)',
+      },
       prompt: lookBack(
         'Translate your (Claude\'s) last answer in this conversation into natural English, whatever language it is in.',
         'This choice of target language takes precedence over any instruction below about the answer language.',
@@ -1944,6 +2309,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'translate-last-ja',
       icon: '🗾',
       label: { ja: '直前の回答を日本語訳', en: 'Last answer to Japanese' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を日本語に訳す（訳す先は `language` より優先）',
+        en: 'Claude\'s last answer translated into Japanese (this target comes before `language`)',
+      },
       prompt: lookBack(
         'Translate your (Claude\'s) last answer in this conversation into natural Japanese, whatever language it is in.',
         'This choice of target language takes precedence over any instruction below about the answer language.',
@@ -1954,6 +2324,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'summarize-last',
       icon: '📄',
       label: { ja: '直前の回答を要約', en: 'Summarize last answer' },
+      category: 'last-answer',
+      summary: { ja: 'Claude の直前の回答を数文か 5 項目以内で要約する', en: 'Claude\'s last answer in a few sentences or up to five bullets' },
       prompt: lookBack(
         'Summarize your (Claude\'s) last answer in this conversation in a few sentences or at most five bullets,',
         'keeping the key facts, figures and names.',
@@ -1963,6 +2335,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'tldr-last',
       icon: '⚡',
       label: { ja: '直前の回答を一行で', en: 'Last answer TL;DR' },
+      category: 'last-answer',
+      summary: { ja: 'Claude の直前の回答を一行で要約する', en: 'Claude\'s last answer in one line' },
       prompt: lookBack(
         'Sum up your (Claude\'s) last answer in this conversation in one sentence on one line,',
         'and reply with that sentence alone.',
@@ -1972,6 +2346,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'explain-last',
       icon: '🔬',
       label: { ja: '直前の回答を詳しく', en: 'Last answer in depth' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を、背景・仕組み・理由・注意点を補って詳しく説明する',
+        en: 'Claude\'s last answer in more depth: background, how it works, why, what to watch',
+      },
       prompt: lookBack(
         'Explain your (Claude\'s) last answer in this conversation in more depth,',
         'filling in the background, how it works, why it is so, and what to watch out for.',
@@ -1983,6 +2362,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'example-last',
       icon: '📎',
       label: { ja: '直前の回答の具体例', en: 'Examples for last answer' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を、具体例（コード・入出力・場面）2〜3 個で示す',
+        en: 'Two or three concrete examples for Claude\'s last answer (code, input and output, situations)',
+      },
       prompt: lookBack(
         'Show what your (Claude\'s) last answer in this conversation says through two or three concrete examples:',
         'code samples, input and output samples, or situations where it applies, whichever fit.',
@@ -1993,6 +2377,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'steps-last',
       icon: '🪜',
       label: { ja: '直前の回答を手順に', en: 'Last answer as steps' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を、確認方法つきの番号つき手順にする',
+        en: 'Claude\'s last answer as numbered steps to follow, each with how to check it worked',
+      },
       prompt: lookBack(
         'Rework your (Claude\'s) last answer in this conversation into numbered steps that can be followed in order as they stand,',
         'adding to each step how to check it worked where there is a way.',
@@ -2004,6 +2393,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'table-last',
       icon: '📊',
       label: { ja: '直前の回答を表に', en: 'Last answer as table' },
+      category: 'last-answer',
+      summary: { ja: 'Claude の直前の回答を Markdown の表に整理する', en: 'Claude\'s last answer organized as a Markdown table' },
       prompt: lookBack(
         'Organize what your (Claude\'s) last answer in this conversation says into a Markdown table.',
         'A table is wanted here, whatever the style below says.',
@@ -2014,6 +2405,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'diagram-last',
       icon: '🌳',
       label: { ja: '直前の回答を図に', en: 'Last answer as diagram' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答の構造や流れを、テキストの図（ASCII か Mermaid）にする',
+        en: 'The structure or flow of Claude\'s last answer as a text diagram (ASCII or Mermaid)',
+      },
       prompt: lookBack(
         'Show the structure or flow of your (Claude\'s) last answer in this conversation as a text diagram,',
         'either an ASCII diagram or Mermaid code in a code block, and add one or two lines on how to read it.',
@@ -2024,6 +2420,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'terms-last',
       icon: '🔠',
       label: { ja: '直前の回答の用語解説', en: 'Terms in last answer' },
+      category: 'last-answer',
+      summary: { ja: 'Claude の直前の回答に出てくる専門用語・略語を解説する', en: 'The technical terms and abbreviations in Claude\'s last answer, explained' },
       prompt: lookBack(
         'List the technical terms and abbreviations in your (Claude\'s) last answer in this conversation,',
         'each with one or two lines on what it means.',
@@ -2035,6 +2433,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'counter-last',
       icon: '🥊',
       label: { ja: '直前の回答への反論', en: 'Counterpoints to last answer' },
+      category: 'last-answer',
+      summary: { ja: 'Claude の直前の回答への反論・別の見方を 3〜5 個挙げる', en: 'Three to five counterarguments or other views on Claude\'s last answer' },
       prompt: lookBack(
         'Give three to five counterarguments or different views that could be raised against your (Claude\'s) last answer in this conversation,',
         'most important first, each with a short reason.',
@@ -2045,6 +2445,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'verify-last',
       icon: '🔍',
       label: { ja: '直前の回答の確からしさ', en: 'Check last answer' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答の主張を、会話に根拠がある・一般知識・推測に分け、確からしさの低い点を示す',
+        en: 'Sorts the claims in Claude\'s last answer into backed by the conversation, general knowledge or a guess, pointing out the shaky parts',
+      },
       prompt: lookBack(
         'Go through the claims in your (Claude\'s) last answer in this conversation and sort each into',
         'backed by something in the conversation, general knowledge, or a guess.',
@@ -2056,6 +2461,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'caveats-last',
       icon: '🚸',
       label: { ja: '直前の回答の注意点', en: 'Caveats of last answer' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答をそのまま使うときの注意点・前提条件・当てはまらないケースを挙げる',
+        en: 'What to watch when using Claude\'s last answer as it stands: caveats, preconditions, cases it does not fit',
+      },
       prompt: lookBack(
         'List what to watch out for when using your (Claude\'s) last answer in this conversation as it stands:',
         'the caveats, the preconditions, and the cases it does not fit, one bullet each.',
@@ -2066,6 +2476,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'alternatives-last',
       icon: '🚏',
       label: { ja: '直前の回答の別解', en: 'Alternatives to last answer' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答とは別のやり方を 2〜3 個、長所と短所つきで挙げる',
+        en: 'Two or three other ways than Claude\'s last answer, each with its strengths and weaknesses',
+      },
       prompt: lookBack(
         'Give two or three other ways or solutions than the one in your (Claude\'s) last answer in this conversation,',
         'and compare each in one line on its strengths and weaknesses.',
@@ -2076,6 +2491,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'questions-last',
       icon: '❔',
       label: { ja: '直前の回答への確認質問', en: 'Questions on last answer' },
+      category: 'last-answer',
+      summary: {
+        ja: 'Claude の直前の回答を理解・判断するために聞き返すとよい質問を 3〜5 個挙げる',
+        en: 'Three to five questions worth asking back to understand or judge Claude\'s last answer',
+      },
       prompt: lookBack(
         'Suggest three to five questions worth asking you (Claude) back in order to understand or judge your last answer in this conversation,',
         'each with a short reason.',
@@ -2086,6 +2506,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'code-explain-last',
       icon: '💻',
       label: { ja: '直前のコードを解説', en: 'Explain last code' },
+      category: 'last-answer',
+      summary: { ja: '会話で最後に示された・書かれたコードを、ブロックごとに解説する', en: 'The code last shown or written in the conversation, explained block by block' },
       prompt: lookBack(
         'Take the code last shown or written in this conversation and explain, block by block, what it does.',
         'If the conversation has no code, say so.',
@@ -2096,6 +2518,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'command-explain-last',
       icon: '🐚',
       label: { ja: '直前のコマンドを解説', en: 'Explain last command' },
+      category: 'last-answer',
+      summary: {
+        ja: '会話で最後に実行された・提案されたコマンドの、オプションと実行内容を解説する',
+        en: 'The shell command last run or suggested: each option and what running it does',
+      },
       prompt: lookBack(
         'Take the shell command last run or suggested in this conversation and explain what each of its options means',
         'and what running it does.',
@@ -2107,6 +2534,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'error-explain-last',
       icon: '🚨',
       label: { ja: '直前のエラーを解説', en: 'Explain last error' },
+      category: 'last-answer',
+      summary: {
+        ja: '会話で最後に出たエラーの意味・原因・次に確かめることを解説する',
+        en: 'The last error in the conversation: what it means, its likely cause, what to check next',
+      },
       prompt: lookBack(
         'Take the error that came up last in this conversation and explain what it means,',
         'what may have caused it, and what to check next.',
@@ -2118,6 +2550,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'change-explain-last',
       icon: '🧾',
       label: { ja: '直前の変更を解説', en: 'Explain last change' },
+      category: 'last-answer',
+      summary: { ja: '会話で最後に行ったファイルの変更の内容・理由・挙動の違いを解説する', en: 'The last file change: what changed and why, and how the behaviour differs' },
       prompt: lookBack(
         'Take the file change made last in this conversation and explain what was changed and why,',
         'and how the behaviour differs as a result.',
@@ -2129,6 +2563,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'review-last',
       icon: '🧐',
       label: { ja: '直前の変更のレビュー', en: 'Review last change' },
+      category: 'last-answer',
+      summary: {
+        ja: '会話で最後に行ったファイルの変更を、バグ・読みやすさ・テスト不足の観点でレビューする（直しはしない）',
+        en: 'Reviews the last file change for possible bugs, readability and missing tests (it fixes nothing)',
+      },
       prompt: lookBack(
         'Review, as a code reviewer, the file change made last in this conversation:',
         'point out possible bugs, readability problems and missing tests, most important first.',
@@ -2141,6 +2580,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'next-move',
       icon: '👣',
       label: { ja: '次の一手', en: 'Next move' },
+      category: 'work-ahead',
+      summary: { ja: '今まずやるべきことを 1 つだけ、理由と具体的なやり方つきで示す', en: 'The one thing to do first right now, with why and how' },
       prompt: lookBack(
         'Name the one thing that should be done first right now in the work of this conversation, only one,',
         'with why it comes first and concretely how to do it.',
@@ -2151,6 +2592,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'blind-spots',
       icon: '🔦',
       label: { ja: '見落としチェック', en: 'Blind spots' },
+      category: 'work-ahead',
+      summary: { ja: 'まだ考えていない観点や抜けていそうな作業を挙げる', en: 'The points of view not yet considered and the work that seems missing' },
       prompt: lookBack(
         'List the points of view not yet considered and the work that seems to be missing in what this conversation has done so far,',
         'one bullet each, each with one line on why it is needed.',
@@ -2161,6 +2604,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'unstuck',
       icon: '🆘',
       label: { ja: '行き詰まりの打開策', en: 'Get unstuck' },
+      category: 'work-ahead',
+      summary: {
+        ja: 'どこで行き詰まっているかを特定し、まだ試していない打開策を 3 つ、試す順に示す',
+        en: 'Where the work is stuck, and three ways out not yet tried, in the order to try them',
+      },
       prompt: lookBack(
         'Pin down where the work in this conversation is stuck right now,',
         'then give three ways out that have not been tried yet in the conversation, in the order to try them, each with a short reason.',
@@ -2172,6 +2620,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'root-cause',
       icon: '🌱',
       label: { ja: '原因の仮説', en: 'Root-cause hypotheses' },
+      category: 'work-ahead',
+      summary: {
+        ja: '追っている問題の原因の仮説を、可能性の高い順に、根拠と確かめ方つきで挙げる',
+        en: 'Hypotheses about the cause of the problem being chased, most likely first, each with its grounds and how to check it',
+      },
       prompt: lookBack(
         'For the problem being chased in this conversation, list hypotheses about its cause, most likely first,',
         'each with what in the conversation backs it and how to check it.',
@@ -2183,6 +2636,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'debug-plan',
       icon: '🐞',
       label: { ja: 'デバッグの進め方', en: 'Debug plan' },
+      category: 'work-ahead',
+      summary: {
+        ja: '追っているバグについて、次に確かめること（ログ・再現手順・切り分け）を順に示す',
+        en: 'What to check next for the bug being chased: logs, steps to reproduce, how to narrow it down',
+      },
       prompt: lookBack(
         'For the bug being chased in this conversation, give in numbered order what to check next:',
         'logs to look at, steps to reproduce it, and how to narrow down where it comes from.',
@@ -2194,6 +2652,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'simpler-approach',
       icon: '🪄',
       label: { ja: 'もっと簡単な方法', en: 'Simpler approach' },
+      category: 'work-ahead',
+      summary: {
+        ja: '今の方針より簡単・小さなやり方があるかを検討し、あれば失うものと一緒に示す',
+        en: 'Whether there is a simpler or smaller way than the current approach, and what taking it would give up',
+      },
       prompt: lookBack(
         'Consider whether there is a simpler or smaller way to do what the current approach in this conversation does.',
         'If there is, describe it and what would be given up by taking it; if there is not, say why.',
@@ -2204,6 +2667,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'devil-advocate',
       icon: '😈',
       label: { ja: 'あえて反対意見', en: "Devil's advocate" },
+      category: 'work-ahead',
+      summary: {
+        ja: 'あえて反対の立場から、方針への最も強い批判を 3 つ挙げる',
+        en: 'The three strongest criticisms of the overall approach, taking the opposing side on purpose',
+      },
       prompt: lookBack(
         'Take the opposing side on purpose against the overall approach taken in this conversation,',
         'and give the three strongest criticisms of it, strongest first, each with a short reason.',
@@ -2214,6 +2682,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'premortem',
       icon: '🪦',
       label: { ja: '失敗の事前検討', en: 'Pre-mortem' },
+      category: 'work-ahead',
+      summary: {
+        ja: '作業が後で失敗したと仮定し、ありうる失敗の筋書きと今できる予防策を挙げる',
+        en: 'Supposing the work later failed: the ways it could have, and what to do now to prevent them',
+      },
       prompt: lookBack(
         'Suppose the work in this conversation turns out later to have failed.',
         'List the ways it could plausibly have failed, each with what could be done now to prevent it.',
@@ -2224,6 +2697,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'tradeoffs',
       icon: '🤝',
       label: { ja: 'トレードオフ', en: 'Trade-offs' },
+      category: 'work-ahead',
+      summary: {
+        ja: '今の方針で得るものと失うものを、観点（速度・保守性・複雑さなど）ごとに整理する',
+        en: 'What the current approach gains and gives up, aspect by aspect (speed, maintainability, complexity…)',
+      },
       prompt: lookBack(
         'Sort out what the current approach in this conversation gains and what it gives up,',
         'one bullet per aspect (such as speed, maintainability and complexity), each saying the gain and the cost.',
@@ -2234,6 +2712,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'scope-check',
       icon: '🧩',
       label: { ja: 'スコープの確認', en: 'Scope check' },
+      category: 'work-ahead',
+      summary: {
+        ja: '元の依頼と比べ、範囲内か・広がりすぎていないか・抜けがないかを確かめる',
+        en: 'Compares the work with the original request: within scope, grown too wide, anything missing',
+      },
       prompt: lookBack(
         'Compare the work done in this conversation with the original request:',
         'check whether it stays within scope, whether it has grown too wide, and whether anything asked for is missing,',
@@ -2245,6 +2728,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'done-check',
       icon: '🏁',
       label: { ja: '完了条件の確認', en: 'Done check' },
+      category: 'work-ahead',
+      summary: {
+        ja: '依頼やチケットに書かれた完了条件を 1 つずつ、満たした・満たしていない・不明で示す',
+        en: 'Goes through the stated completion criteria one by one: met, not met or unclear',
+      },
       prompt: lookBack(
         'Go through the stated completion criteria, one criterion per line:',
         'the completion or acceptance criteria written in the request or the ticket shown in this conversation.',
@@ -2259,6 +2747,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'verify-plan',
       icon: '🩺',
       label: { ja: '確認手順', en: 'How to verify' },
+      category: 'work-ahead',
+      summary: {
+        ja: '変更が正しく動くかを確かめる手順を、実行するものと期待する結果つきで示す（実行はしない）',
+        en: 'Numbered steps to check the changes work, each with what to run and the expected result (nothing is run)',
+      },
       prompt: lookBack(
         'Give numbered steps the user can follow to check that the changes made in this conversation work correctly:',
         'the command to run or the action to take, and the expected result, for each step.',
@@ -2270,6 +2763,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'rollback-plan',
       icon: '⏪',
       label: { ja: '戻し方', en: 'Rollback plan' },
+      category: 'work-ahead',
+      summary: { ja: '変更を元に戻す手順と注意点を示す（実行はしない）', en: 'The steps to undo the changes, with what to watch (nothing is run)' },
       prompt: lookBack(
         'Give the steps to undo the changes made in this conversation and put things back as they were,',
         'with what to watch out for while doing so.',
@@ -2281,6 +2776,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'impact',
       icon: '💥',
       label: { ja: '影響範囲', en: 'Impact' },
+      category: 'work-ahead',
+      summary: { ja: '変更が影響しうる箇所（呼び出し元・設定・利用者・他の機能）を挙げる', en: 'The places the changes could affect: callers, settings, users, other features' },
       prompt: lookBack(
         'List the places the changes made in this conversation could affect: callers, settings, users and other features, one bullet each.',
         'Start the bullets that need checking with [check].',
@@ -2292,6 +2789,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'effort-estimate',
       icon: '⏳',
       label: { ja: '残作業の見積もり', en: 'Effort estimate' },
+      category: 'work-ahead',
+      summary: {
+        ja: '残作業を項目ごとに大・中・小で見積もり、見積もりの前提を添える',
+        en: 'The remaining work item by item as large, medium or small, with the assumptions behind it',
+      },
       prompt: lookBack(
         'Estimate the remaining work in this conversation item by item as large, medium or small,',
         'and add the assumptions the estimates rest on.',
@@ -2303,6 +2805,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'task-dependencies',
       icon: '🧶',
       label: { ja: '作業の依存関係', en: 'Task dependencies' },
+      category: 'work-ahead',
+      summary: {
+        ja: '残りの作業の依存関係を整理し、並行できるものと順序が決まっているものを分ける',
+        en: 'The dependencies among the remaining work: what can run in parallel and what must come in order',
+      },
       prompt: lookBack(
         'Sort out the dependencies among the remaining work and parts in this conversation (what has to come before what),',
         'and show separately the items that can be done in parallel and the items whose order is fixed.',
@@ -2316,6 +2823,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-tests',
       icon: '🧪',
       label: { ja: '会話のテスト観点', en: 'Session test ideas' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話での変更について確かめるべきテストケースを、正常・異常・境界値に分けて挙げる',
+        en: 'The test cases worth checking for the changes, as normal cases, error cases and boundary values',
+      },
       prompt: lookBack(
         'List the test cases worth checking for the changes made in this conversation,',
         'grouped into normal cases, error cases and boundary values.',
@@ -2327,6 +2839,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-edge-cases',
       icon: '🧷',
       label: { ja: '会話のエッジケース', en: 'Session edge cases' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '今の実装・方針で扱いを確かめるべき境界条件・珍しい入力や状況を挙げる',
+        en: 'The boundary conditions and unusual inputs or situations the current approach should be checked for',
+      },
       prompt: lookBack(
         'List the boundary conditions and the unusual inputs or situations whose handling should be checked',
         'in the current implementation or approach in this conversation, one bullet each.',
@@ -2337,6 +2854,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-security',
       icon: '🔐',
       label: { ja: '会話のセキュリティ点検', en: 'Session security review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話での変更と方針を、入力検証・権限・秘密情報・インジェクションの観点で点検する',
+        en: 'Checks the changes and approach for security: input validation, permissions, secrets, injection',
+      },
       prompt: lookBack(
         'Check the changes and the approach in this conversation for security:',
         'input validation, permissions, secrets and injection.',
@@ -2348,6 +2870,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-perf',
       icon: '🚄',
       label: { ja: '会話の性能点検', en: 'Session performance review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話での変更と方針を、計算量・I/O・メモリ・無駄な処理の観点で点検し、改善案を示す',
+        en: 'Checks the changes and approach for performance (cost, I/O, memory, needless work), with improvements',
+      },
       prompt: lookBack(
         'Check the changes and the approach in this conversation for performance:',
         'computational cost, I/O, memory and needless work.',
@@ -2359,6 +2886,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-error-handling',
       icon: '🦺',
       label: { ja: '会話のエラー処理点検', en: 'Session error handling review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '変更した箇所のエラー処理（失敗時の動き・メッセージ・後始末）の抜けを点検する',
+        en: 'Checks the error handling in the changed places for gaps: behaviour on failure, messages, cleanup',
+      },
       prompt: lookBack(
         'Check the error handling in the places changed in this conversation for gaps:',
         'how they behave when something fails, the messages they give, and the cleanup they do.',
@@ -2370,6 +2902,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-compat',
       icon: '🧬',
       label: { ja: '会話の互換性点検', en: 'Session compatibility review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '変更が既存の利用者・設定・API・データとの互換性に与える影響と、破壊的変更の有無を確かめる',
+        en: 'How the changes affect compatibility with existing users, settings, APIs and data, and whether any is breaking',
+      },
       prompt: lookBack(
         'Check how the changes made in this conversation affect compatibility with existing users, settings, APIs and data,',
         'and say whether any of them is a breaking change.',
@@ -2381,6 +2918,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-a11y',
       icon: '♿',
       label: { ja: '会話のアクセシビリティ点検', en: 'Session accessibility review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話で扱った UI・出力を、色・スクリーンリーダー・キーボード操作などのアクセシビリティの観点で点検する',
+        en: 'Checks the UI and output dealt with for accessibility: colour, screen readers, keyboard use…',
+      },
       prompt: lookBack(
         'Check the UI and the output dealt with in this conversation for accessibility:',
         'colour, screen readers, keyboard operation and the like. List what you find.',
@@ -2392,6 +2934,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-i18n',
       icon: '🌏',
       label: { ja: '会話の国際化点検', en: 'Session i18n review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話で扱った変更を、未翻訳の文言・日付や数値の書式・文字幅など国際化の観点で点検する',
+        en: 'Checks the changes for internationalization: untranslated text, date and number formats, character widths',
+      },
       prompt: lookBack(
         'Check the changes dealt with in this conversation for internationalization:',
         'untranslated text, date and number formats, and character widths. List what you find.',
@@ -2403,6 +2950,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-observability',
       icon: '🪵',
       label: { ja: '会話のログ・監視点検', en: 'Session observability review' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '変更で問題が起きたときに気づけて原因を追えるか（ログ・エラー表示・計測）を点検する',
+        en: 'Checks whether a problem with the changes would be noticed and traced: logs, error display, measurements',
+      },
       prompt: lookBack(
         'Check whether, when something goes wrong with the changes made in this conversation, it would be noticed and its cause could be traced:',
         'logs, error display and measurements. List what would be worth adding.',
@@ -2414,6 +2966,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-refactor',
       icon: '🔨',
       label: { ja: '会話のリファクタリング案', en: 'Session refactor ideas' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話で触れたコードの読みやすさ・重複・責務分離の改善案を挙げる（変更はしない）',
+        en: 'Improvements to the code touched, for readability, duplication and separation of concerns (nothing is changed)',
+      },
       prompt: lookBack(
         'Suggest improvements to the code touched in this conversation for readability, duplication and separation of responsibilities,',
         'most worthwhile first.',
@@ -2425,6 +2982,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-tech-debt',
       icon: '🧹',
       label: { ja: '会話で生じた技術的負債', en: 'Session tech debt' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '会話で生じた・見つかった技術的負債（暫定対応・TODO・回避策）を、返済の目安つきで挙げる',
+        en: 'The technical debt created or found (stopgaps, TODOs, workarounds), with when to pay it back',
+      },
       prompt: lookBack(
         'List the technical debt created or found in this conversation (stopgaps, TODOs and workarounds),',
         'each with a rough idea of when it should be paid back.',
@@ -2436,6 +2998,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-docs',
       icon: '📚',
       label: { ja: '会話の変更で要るドキュメント更新', en: 'Session docs to update' },
+      category: 'viewpoint-checks',
+      summary: {
+        ja: '変更に合わせて更新が要りそうなドキュメント（README・コメント・設定例など）を挙げる',
+        en: 'The documentation likely to need updating with the changes (README, comments, sample settings…)',
+      },
       prompt: lookBack(
         'List the documentation that likely needs updating along with the changes made in this conversation (README, comments, sample settings and the like),',
         'each with one line on what to add.',
@@ -2447,6 +3014,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-naming',
       icon: '🪧',
       label: { ja: '会話の新規要素の命名案', en: 'Session naming ideas' },
+      category: 'viewpoint-checks',
+      summary: { ja: '会話で新しく作った・作るもの（関数・ファイル・機能）の名前の案を挙げる', en: 'Name ideas for what was or is about to be made (functions, files, features)' },
       prompt: lookBack(
         'For the things newly made or about to be made in this conversation (functions, files, features),',
         'suggest candidate names, each with a short reason.',
@@ -2458,6 +3027,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-release-check',
       icon: '🚀',
       label: { ja: '会話の変更のリリース前チェック', en: 'Session pre-release check' },
+      category: 'viewpoint-checks',
+      summary: { ja: '変更をリリース・マージする前に確かめることのチェックリストをつくる', en: 'A checklist of what to check before releasing or merging the changes' },
       prompt: lookBack(
         'Make a checklist, one item per bullet, of what to check before releasing or merging the changes made in this conversation:',
         'tests, settings, migration, announcements and the like.',
@@ -2471,6 +3042,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-commit',
       icon: '💾',
       label: { ja: 'コミットメッセージ案', en: 'Commit message draft' },
+      category: 'drafts',
+      summary: { ja: '変更のコミットメッセージ案（1 行の要約と本文）', en: 'A commit message for the changes: a one-line summary and a body' },
       prompt: lookBack(
         'Draft a commit message for the changes made in this session: a one-line summary, a blank line, then a short body on what changed and why.',
         'Show it in a code block, ready to paste, whatever the style below says.',
@@ -2482,6 +3055,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-pr',
       icon: '📬',
       label: { ja: 'PR 説明文の下書き', en: 'PR description draft' },
+      category: 'drafts',
+      summary: {
+        ja: '変更のプルリクエスト説明文の下書き（タイトル・概要・変更点・確認方法）',
+        en: 'A pull request description for the changes: title, summary, changes, how to verify',
+      },
       prompt: lookBack(
         'Draft a pull request description for the changes made in this session: a title, a summary, the changes, and how to verify them.',
         'Show it in a code block, ready to paste, whatever the style below says.',
@@ -2494,6 +3072,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-changelog',
       icon: '📰',
       label: { ja: '変更履歴の下書き', en: 'Changelog entry draft' },
+      category: 'drafts',
+      summary: { ja: '利用者向けの変更履歴・リリースノートの下書き', en: 'Changelog or release-note entries for the people who use the product' },
       prompt: lookBack(
         'Draft changelog or release-note entries for the changes made in this session, written for the people who use the product:',
         'what changes for them, not the implementation details, one entry per bullet, grouped as added, changed and fixed where that helps.',
@@ -2505,6 +3085,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-status',
       icon: '📣',
       label: { ja: '進捗報告の下書き', en: 'Status update draft' },
+      category: 'drafts',
+      summary: {
+        ja: 'チームや上司向けの進捗報告の下書き（やったこと・現状・次・懸念）',
+        en: 'A status update for the team or a manager: done, where things stand, next, blockers',
+      },
       prompt: lookBack(
         'Draft a short status update on this work for the team or a manager, in four parts:',
         'what was done, where things stand, what comes next, and what is blocking or worrying.',
@@ -2516,6 +3101,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-issue',
       icon: '🐛',
       label: { ja: 'Issue の下書き', en: 'Issue draft' },
+      category: 'drafts',
+      summary: { ja: '会話で見つかった問題・残作業の Issue の下書き', en: 'An issue for a problem or piece of work left over that the conversation found' },
       prompt: lookBack(
         'Draft an issue for a problem or a piece of work left over that this conversation found:',
         'a title, the steps to reproduce, what was expected and what happened instead, and any notes.',
@@ -2527,6 +3114,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-review-request',
       icon: '🙏',
       label: { ja: 'レビュー依頼文', en: 'Review request draft' },
+      category: 'drafts',
+      summary: { ja: 'レビュアーへのレビュー依頼文の下書き', en: 'A message asking a reviewer to review the changes' },
       prompt: lookBack(
         'Draft a message asking a reviewer to review the changes made in this session:',
         'the gist of the changes, the points you most want looked at, and how to verify them.',
@@ -2538,6 +3127,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-question',
       icon: '📨',
       label: { ja: '質問文の下書き', en: 'Question draft' },
+      category: 'drafts',
+      summary: { ja: '同僚やフォーラムに聞く、それだけで分かる質問文の下書き', en: 'A self-contained question about the current problem for a colleague or a forum' },
       prompt: lookBack(
         'Draft a question about the current problem to ask a colleague or a forum:',
         'the situation, what has been tried and what happened, and what exactly you want to know.',
@@ -2550,6 +3141,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-adr',
       icon: '📜',
       label: { ja: '設計判断の記録（ADR）', en: 'ADR draft' },
+      category: 'drafts',
+      summary: {
+        ja: '会話での主な設計判断の ADR（Context・Decision・Rationale・Consequences）の下書き',
+        en: 'An ADR for the main design decision made: Context, Decision, Rationale, Consequences',
+      },
       prompt: lookBack(
         'Draft an architecture decision record (ADR) for the main design decision made in this conversation',
         '(one record per decision if there are several): Context, Decision, Rationale and Consequences.',
@@ -2561,6 +3157,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-resume-prompt',
       icon: '🎬',
       label: { ja: '再開用プロンプト', en: 'Resume prompt' },
+      category: 'drafts',
+      summary: {
+        ja: '新しい Claude Code のセッションに貼って作業を再開するためのプロンプト',
+        en: 'A prompt to paste into a new Claude Code session to pick the work up again',
+      },
       prompt: lookBack(
         'Write a short, self-contained prompt to paste into a new Claude Code session to pick this work up again:',
         'written as instructions to Claude, not as a note for a person (that is the handoff note),',
@@ -2574,6 +3175,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-stakeholder-update',
       icon: '👔',
       label: { ja: '非エンジニア向け説明', en: 'For non-engineers' },
+      category: 'drafts',
+      summary: {
+        ja: '非エンジニア向けに、作業の目的・成果・影響を専門用語なしで説明する',
+        en: 'Explains the work to non-engineers: why, what it achieved, what changes for them, without jargon',
+      },
       prompt: lookBack(
         'Explain this work to people who are not engineers (stakeholders, managers, customers):',
         'why it was done, what it achieved and what it changes for them,',
@@ -2586,6 +3192,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'draft-retro',
       icon: '🔄',
       label: { ja: '振り返り（KPT）', en: 'Retrospective (KPT)' },
+      category: 'drafts',
+      summary: { ja: 'セッションを KPT（Keep・Problem・Try）で振り返る', en: 'A KPT retrospective of the session: Keep, Problem, Try' },
       prompt: lookBack(
         'Look back on this session as a KPT retrospective in three parts:',
         'Keep (what went well and is worth keeping), Problem (what went badly or slowed things down), and Try (what to try next time),',
@@ -2600,6 +3208,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'learnings',
       icon: '🎓',
       label: { ja: '今回の学び', en: 'Learnings' },
+      category: 'conversation-learning',
+      summary: { ja: '次に同じ場面で役立つ形で、今回の学びを挙げる', en: 'The lessons learned, written to help the next time the same situation comes up' },
       prompt: lookBack(
         'List the lessons learned in this conversation, one bullet each,',
         'written so that they help the next time the same situation comes up (what to do, or what to avoid, and when).',
@@ -2611,6 +3221,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-glossary',
       icon: '📒',
       label: { ja: '会話の用語集', en: 'Session glossary' },
+      category: 'conversation-learning',
+      summary: {
+        ja: '会話全体に出た専門用語・略語・プロジェクト固有の名前の用語集',
+        en: 'A glossary of the technical terms, abbreviations and project names that came up anywhere in the conversation',
+      },
       prompt: lookBack(
         'Make a glossary of the technical terms, abbreviations and project-specific names that came up anywhere in this conversation (not only the last answer),',
         'each with one line on what it means in this conversation.',
@@ -2622,6 +3237,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'concepts',
       icon: '🧠',
       label: { ja: '押さえるべき概念', en: 'Key concepts' },
+      category: 'conversation-learning',
+      summary: { ja: '会話を理解するのに必要な背景知識・概念を解説する', en: 'The background knowledge and concepts needed to follow the conversation' },
       prompt: lookBack(
         'List the background knowledge and concepts someone needs to understand this conversation,',
         'each explained in two or three lines.',
@@ -2632,6 +3249,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-cheatsheet',
       icon: '📇',
       label: { ja: '会話のチートシート', en: 'Session cheat sheet' },
+      category: 'conversation-learning',
+      summary: { ja: '会話で実際に使ったコマンド・API・設定を用途別にまとめたチートシート', en: 'A cheat sheet of the commands, APIs and settings actually used, by purpose' },
       prompt: lookBack(
         'Make a cheat sheet of the commands, APIs and settings actually used in this conversation, grouped by use (investigating, building, testing, configuring and the like).',
         'One item per line: the form to type and a few words on what it is for.',
@@ -2644,6 +3263,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-quiz',
       icon: '🎲',
       label: { ja: '会話の理解度クイズ', en: 'Session quiz' },
+      category: 'conversation-learning',
+      summary: { ja: '会話の内容の理解度を確かめるクイズを 3〜5 問（答えは最後に）', en: 'Three to five questions on what the conversation covered, the answers at the end' },
       prompt: lookBack(
         'Write three to five questions that check understanding of what this conversation covered.',
         'List the questions first, then put all the answers, each with a short explanation, together at the end.',
@@ -2653,6 +3274,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-faq',
       icon: '💁',
       label: { ja: '会話の FAQ', en: 'Session FAQ' },
+      category: 'conversation-learning',
+      summary: { ja: '会話の内容を、他の人が聞きそうな FAQ（Q&A）にまとめる', en: 'What the conversation covered as an FAQ others are likely to ask' },
       prompt: lookBack(
         'Turn what this conversation covered into an FAQ: the questions other people are likely to ask about it, each followed by its answer (Q and A).',
         'Keep it to about 15 lines.',
@@ -2662,6 +3285,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'study-next',
       icon: '🔖',
       label: { ja: '会話から次に学ぶテーマ', en: 'Next study topics from session' },
+      category: 'conversation-learning',
+      summary: {
+        ja: '会話の内容を深めるために次に学ぶとよいテーマを挙げる（Web は調べない）',
+        en: 'Topics worth studying next to go deeper, with why and how to look into them (no web search)',
+      },
       prompt: lookBack(
         'Suggest topics worth studying next to go deeper into what this conversation covered,',
         'each with why it is worth learning and a hint on how to look into it.',
@@ -2673,6 +3301,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'session-keywords',
       icon: '🔑',
       label: { ja: '会話のテーマの検索キーワード', en: 'Session search keywords' },
+      category: 'conversation-learning',
+      summary: { ja: '今の問題・テーマを調べるための検索キーワードを日英で挙げる', en: 'Search keywords for the current problem or topic, in Japanese and English' },
       prompt: lookBack(
         'Suggest search keywords for looking up the current problem or topic of this conversation on the web or in documentation,',
         'in both Japanese and English, each with a few words on what it should find.',
@@ -2683,6 +3313,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'tips',
       icon: '💡',
       label: { ja: '会話で知った小技', en: 'Tricks picked up' },
+      category: 'conversation-learning',
+      summary: { ja: '会話で出てきた、あまり知られていない小技だけを挙げる', en: 'The little-known or surprising tricks from the conversation alone' },
       prompt: lookBack(
         'List only the tricks from this conversation that are little known or surprising (an uncommon option, a way of writing something, a feature of a tool),',
         'each with one or two lines on why it is handy and when to use it.',
@@ -2695,6 +3327,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'mistakes',
       icon: '🙈',
       label: { ja: 'Claude の誤り', en: "Claude's mistakes" },
+      category: 'conversation-learning',
+      summary: { ja: 'Claude が会話で間違えた点・訂正された点と、正しかった内容を挙げる', en: 'The mistakes Claude made and where it was corrected, with what was right' },
       prompt: lookBack(
         'List the mistakes you (Claude) made in this conversation and the points where you were corrected,',
         'each with what was actually right.',
@@ -2706,6 +3340,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'prompt-tips',
       icon: '💬',
       label: { ja: '指示の出し方の改善', en: 'Prompting tips' },
+      category: 'conversation-learning',
+      summary: {
+        ja: 'ユーザーの指示を振り返り、より速く正確に進む頼み方を提案する',
+        en: 'How the user\'s instructions could be put so the work goes faster and more accurately',
+      },
       prompt: lookBack(
         'Looking at the instructions the user gave in this conversation, suggest how they could be put',
         'so that the work goes faster and more accurately (what to say up front, what was ambiguous, what was missing),',
@@ -2717,6 +3356,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'claude-md-ideas',
       icon: '📐',
       label: { ja: 'CLAUDE.md に書くとよいこと', en: 'CLAUDE.md ideas' },
+      category: 'conversation-learning',
+      summary: {
+        ja: 'ユーザーが繰り返した指示・慣習から、CLAUDE.md に書くとよい内容を文案つきで提案する（編集はしない）',
+        en: 'From instructions the user had to repeat, what is worth putting in CLAUDE.md, with the text (CLAUDE.md is not edited)',
+      },
       prompt: lookBack(
         'From the instructions and conventions the user had to repeat in this conversation, pick the ones worth writing in CLAUDE.md,',
         'each with the text to add.',
@@ -2730,6 +3374,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'contradictions',
       icon: '🔃',
       label: { ja: '矛盾の検出', en: 'Contradictions' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: '会話の中で食い違う発言・方針・事実と、どちらが新しい・正しそうかを挙げる',
+        en: 'The statements, policies or facts that contradict each other, and which is newer or more likely right',
+      },
       prompt: lookBack(
         'List the statements, policies or facts in this conversation that contradict each other,',
         'each with which one is newer or more likely to be right.',
@@ -2741,6 +3390,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'code-map',
       icon: '🏠',
       label: { ja: '登場したコードの地図', en: 'Code map' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: '会話に出たファイル・関数・モジュールと、その関係（呼び出し・import・包含）の地図',
+        en: 'A map of the files, functions and modules that came up and how they relate (calls, imports, contains)',
+      },
       prompt: lookBack(
         'Map the files, functions and modules that came up in this conversation and how they relate to each other',
         '(which calls, imports or contains which), as a tree in a code block or as nested bullets.',
@@ -2752,6 +3406,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'workflow-diagram',
       icon: '🧵',
       label: { ja: '作業の流れ図', en: 'Workflow diagram' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: '会話全体の作業の流れ（調査・変更・確認と手戻り）をテキストの図にする',
+        en: 'The flow of the work as a whole (investigating, changing, checking, loops back) as a text diagram',
+      },
       prompt: lookBack(
         'Show the flow of the work done in this conversation as a whole (investigating, changing, checking and so on, with any loops back)',
         'as a text diagram, either an ASCII diagram or Mermaid code in a code block, and add one or two lines on how to read it.',
@@ -2762,6 +3421,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'environment',
       icon: '💽',
       label: { ja: '環境情報の整理', en: 'Environment' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: '会話から分かる環境（OS・言語やツールのバージョン・関係する設定）をまとめる',
+        en: 'The environment the conversation shows: OS, versions of languages and tools, relevant settings',
+      },
       prompt: lookBack(
         'Sum up the environment this conversation shows: the OS, the versions of languages and tools, and the relevant settings,',
         'one item per line.',
@@ -2773,6 +3437,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'packages',
       icon: '📦',
       label: { ja: '追加・変更したパッケージ', en: 'Packages changed' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: 'セッションで追加・更新・削除したパッケージ・依存関係を、用途つきで挙げる',
+        en: 'The packages and dependencies added, updated or removed in the session, each with what it is for',
+      },
       prompt: lookBack(
         'List the packages and dependencies added, updated or removed in this session,',
         'each with whether it was added, updated or removed and one line on what it is for.',
@@ -2784,6 +3453,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'links',
       icon: '🔗',
       label: { ja: '登場した URL・資料', en: 'Links mentioned' },
+      category: 'conversation-analysis',
+      summary: {
+        ja: '会話に出た URL・資料・Issue や PR の番号などを、それが何かと一緒に挙げる',
+        en: 'The references that came up (URLs, documents, issue and PR numbers…), each with what it is',
+      },
       prompt: lookBack(
         'List the references that came up in this conversation (URLs, documents, issue and pull request numbers and the like),',
         'each with one line on what it is.',
@@ -2800,6 +3474,8 @@ export const ACTIONS: readonly ActionSpec[] = [
     id: 'timer',
     icon: '⏳',
     label: TIMER_LABEL,
+    category: 'timers',
+    summary: { ja: '指定した時間をカウントダウンし、終わるとトーストで知らせる', en: 'Counts down the time given and tells you with a toast when it is up' },
     kind: 'local',
     target: 'none',
     arg: {
@@ -2821,11 +3497,13 @@ export const ACTIONS: readonly ActionSpec[] = [
   ...(
     [
       // Runs over time: once a second, the generic toast when done.
-      { id: 'stopwatch', icon: '🏃', label: { ja: 'ストップウォッチ', en: 'Stopwatch' }, compute: stopwatch },
+      { id: 'stopwatch', icon: '🏃', label: { ja: 'ストップウォッチ', en: 'Stopwatch' }, category: 'timers', summary: { ja: '0 から時間を数える（自分では終わらない。停止ボタンで止める）', en: 'Counts up from zero (it never ends by itself: press Stop)' }, compute: stopwatch },
       {
         id: 'pomodoro',
         icon: '🍅',
         label: { ja: 'ポモドーロ', en: 'Pomodoro' },
+        category: 'timers',
+        summary: { ja: '作業 25 分＋休憩 5 分を指定回数くり返す', en: 'Rounds of 25 minutes of work and 5 of break' },
         arg: {
           type: 'int',
           min: 1,
@@ -2839,6 +3517,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'countdown-to',
         icon: '🔜',
         label: { ja: '指定時刻まで', en: 'Count down to a time' },
+        category: 'timers',
+        summary: { ja: '指定した時刻までの残り時間をカウントダウンする', en: 'Counts down to the time given' },
         arg: {
           type: 'time',
           default: '18:00',
@@ -2850,6 +3530,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'breathing',
         icon: '🫁',
         label: { ja: '呼吸ガイド', en: 'Breathing guide' },
+        category: 'timers',
+        summary: { ja: '呼吸のリズム（吸う・止める・吐く）を秒ごとに示す（4 サイクル）', en: 'Says each second which way to breathe and for how long (four cycles)' },
         arg: {
           type: 'choice',
           choices: ['box', '478'],
@@ -2858,13 +3540,15 @@ export const ACTIONS: readonly ActionSpec[] = [
         },
         compute: breathing,
       },
-      { id: 'eye-rest', icon: '👀', label: { ja: '目の休憩（20秒）', en: 'Eye rest (20 s)' }, compute: eyeRest },
+      { id: 'eye-rest', icon: '👀', label: { ja: '目の休憩（20秒）', en: 'Eye rest (20 s)' }, category: 'timers', summary: { ja: '20-20-20 ルールの目の休憩として 20 秒を数える', en: 'Counts down a 20-second eye break (the 20-20-20 rule)' }, compute: eyeRest },
       // The clock and the calendar.
-      { id: 'clock', icon: '🕙', label: { ja: '現在時刻', en: 'Current time' }, compute: clock },
+      { id: 'clock', icon: '🕙', label: { ja: '現在時刻', en: 'Current time' }, category: 'clock-calendar', summary: { ja: '現在時刻（ローカル・UTC、ISO 8601、UNIX 時刻）と曜日・ISO 週番号・年内の日数', en: 'The time now (local and UTC, ISO 8601, UNIX time) with the weekday, ISO week and day of the year' }, compute: clock },
       {
         id: 'calendar',
         icon: '📆',
         label: { ja: 'カレンダー', en: 'Calendar' },
+        category: 'clock-calendar',
+        summary: { ja: '指定した日を含む月のカレンダー（日曜始まり、その日に印）', en: 'The month holding the date given, Sunday first, the date marked' },
         arg: { type: 'date', default: 'today', hint: DATE_HINT },
         compute: calendar,
       },
@@ -2872,6 +3556,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'date-info',
         icon: '📅',
         label: { ja: '日付の情報', en: 'Date info' },
+        category: 'clock-calendar',
+        summary: {
+          ja: '指定した日の曜日・ISO 週・年内の日数・残り日数・今日からの日数・和暦・干支',
+          en: 'What the date is: weekday, ISO week, day of the year, days left in it and from today, Japanese era and sexagenary year',
+        },
         arg: { type: 'date', default: 'today', hint: DATE_HINT },
         compute: dateInfo,
       },
@@ -2879,6 +3568,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'date-offset',
         icon: '🛫',
         label: { ja: 'N日後の日付', en: 'Date after N days' },
+        category: 'clock-calendar',
+        summary: { ja: '今日から N 日後（負なら前）の日付と、週・月での目安', en: 'The date N days from today (before it when negative), with N in weeks and months' },
         arg: {
           type: 'int',
           min: -36500,
@@ -2892,6 +3583,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'business-days',
         icon: '💼',
         label: { ja: '営業日数', en: 'Business days' },
+        category: 'clock-calendar',
+        summary: { ja: '今日から指定した日までの日数と、そのうちの平日（月〜金）の数', en: 'The days from today to the date given and the weekdays (Monday to Friday) among them' },
         arg: {
           type: 'date',
           default: '+1m',
@@ -2906,17 +3599,21 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'wareki',
         icon: '🎌',
         label: { ja: '和暦・西暦', en: 'Japanese era' },
+        category: 'clock-calendar',
+        summary: { ja: '西暦と和暦（明治以降）を相互に変換する', en: 'Converts between Western years and Japanese era years (from Meiji on)' },
         arg: textArg(
           '西暦か和暦（例: 2026, 令和8, R8, H31。省くと今年と元号の一覧）',
           'a year or a Japanese era year, e.g. 2026, 令和8, R8, H31; this year and the eras when left out',
         ),
         compute: wareki,
       },
-      { id: 'year-progress', icon: '📶', label: { ja: '今年の経過', en: 'Year progress' }, compute: yearProgress },
+      { id: 'year-progress', icon: '📶', label: { ja: '今年の経過', en: 'Year progress' }, category: 'clock-calendar', summary: { ja: '今年・今月・今週・今日の経過をバーと割合で示す', en: 'How much of this year, month, week and day has gone by, as bars and percentages' }, compute: yearProgress },
       {
         id: 'time-after',
         icon: '⏩',
         label: { ja: 'N時間後の時刻', en: 'Time after' },
+        category: 'clock-calendar',
+        summary: { ja: '今から指定した時間後の時刻', en: 'The time a duration from now' },
         arg: {
           type: 'duration',
           default: '1h',
@@ -2928,6 +3625,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'duration-convert',
         icon: '⌚',
         label: { ja: '時間の換算', en: 'Convert a duration' },
+        category: 'clock-calendar',
+        summary: { ja: '時間を時・分・秒と、各単位での合計、ISO 8601 で示す', en: 'A duration as hours, minutes and seconds, as a total in each unit, and in ISO 8601' },
         arg: {
           type: 'duration',
           default: '90m',
@@ -2939,6 +3638,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'sleep-calc',
         icon: '😴',
         label: { ja: '就寝時刻の目安', en: 'Bedtime calculator' },
+        category: 'clock-calendar',
+        summary: {
+          ja: '起床時刻から、90 分の睡眠サイクル（6〜3 回）と寝つく 15 分で就寝時刻の目安を出す',
+          en: 'Bedtimes for a wake-up time: 6 down to 3 sleep cycles of 90 minutes, plus 15 minutes to fall asleep',
+        },
         arg: {
           type: 'time',
           default: '07:00',
@@ -2946,12 +3650,14 @@ export const ACTIONS: readonly ActionSpec[] = [
         },
         compute: sleepCalc,
       },
-      { id: 'moon-phase', icon: '🌕', label: { ja: '月齢', en: 'Moon phase' }, compute: moonPhase },
+      { id: 'moon-phase', icon: '🌕', label: { ja: '月齢', en: 'Moon phase' }, category: 'clock-calendar', summary: { ja: '今の月齢と月相、次の新月・満月までの日数（平均朔望月による目安）', en: 'The moon\'s age and phase now, and the days to the next new and full moon (roughly)' }, compute: moonPhase },
       // Random and generated (SELM-00036): from LocalInput.randomBytes (and now), nothing else.
       {
         id: 'uuid',
         icon: '🆕',
         label: { ja: 'UUID生成', en: 'UUID' },
+        category: 'random-generated',
+        summary: { ja: 'UUID を 5 個つくる', en: 'Five UUIDs' },
         arg: {
           type: 'choice',
           choices: ['v4', 'v7'],
@@ -2960,11 +3666,13 @@ export const ACTIONS: readonly ActionSpec[] = [
         },
         compute: uuid,
       },
-      { id: 'ulid', icon: '🧿', label: { ja: 'ULID生成', en: 'ULID' }, compute: ulid },
+      { id: 'ulid', icon: '🧿', label: { ja: 'ULID生成', en: 'ULID' }, category: 'random-generated', summary: { ja: 'ULID を 5 個つくる', en: 'Five ULIDs' }, compute: ulid },
       {
         id: 'nanoid',
         icon: '🔟',
         label: { ja: '短いID生成', en: 'Short ID (Nano ID)' },
+        category: 'random-generated',
+        summary: { ja: 'URL で使える文字の短い ID（Nano ID）を 5 個つくる', en: 'Five short IDs of URL-safe characters (Nano ID)' },
         arg: { type: 'int', min: 4, max: 64, default: '21', hint: { ja: '長さ（4〜64。省くと 21）', en: 'a length from 4 to 64; 21 when left out' } },
         compute: nanoid,
       },
@@ -2972,6 +3680,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'password',
         icon: '🔑',
         label: { ja: 'パスワード生成', en: 'Password' },
+        category: 'random-generated',
+        summary: {
+          ja: '英大文字・小文字・数字・記号を含むパスワードを 3 個、推定エントロピーつきでつくる',
+          en: 'Three passwords with every kind of character, with their estimated entropy',
+        },
         arg: { type: 'int', min: 8, max: 128, default: '20', hint: { ja: '長さ（8〜128。省くと 20）', en: 'a length from 8 to 128; 20 when left out' } },
         compute: password,
       },
@@ -2979,6 +3692,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'passphrase',
         icon: '🔏',
         label: { ja: 'パスフレーズ生成', en: 'Passphrase' },
+        category: 'random-generated',
+        summary: {
+          ja: '組み込みの単語をハイフンでつないだパスフレーズを 3 個、推定エントロピーつきでつくる',
+          en: 'Three passphrases of built-in words joined by hyphens, with their estimated entropy',
+        },
         arg: { type: 'int', min: 3, max: 10, default: '5', hint: { ja: '語数（3〜10。省くと 5）', en: 'a number of words from 3 to 10; 5 when left out' } },
         compute: passphrase,
       },
@@ -2986,6 +3704,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'random-token',
         icon: '🎫',
         label: { ja: 'ランダムトークン', en: 'Random token' },
+        category: 'random-generated',
+        summary: { ja: 'ランダムなバイト列を 16 進と Base64URL で示す', en: 'Random bytes in hexadecimal and Base64URL' },
         arg: { type: 'int', min: 8, max: 256, default: '32', hint: { ja: 'バイト数（8〜256。省くと 32）', en: 'a number of bytes from 8 to 256; 32 when left out' } },
         compute: randomToken,
       },
@@ -2993,6 +3713,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'dice',
         icon: '🎲',
         label: { ja: 'サイコロ', en: 'Roll dice' },
+        category: 'random-generated',
+        summary: { ja: 'サイコロを振り、各目と合計を示す', en: 'Rolls dice: each die and the total' },
         arg: textArg(
           'NdM か NdM+K（例: 2d6+1。N は 1〜100、M は 2〜1000、K は 0〜10000。省くと 1d6）',
           'NdM or NdM+K, e.g. 2d6+1 (N from 1 to 100, M from 2 to 1000, K from 0 to 10000); 1d6 when left out',
@@ -3000,11 +3722,13 @@ export const ACTIONS: readonly ActionSpec[] = [
         ),
         compute: dice,
       },
-      { id: 'coin-flip', icon: '🪙', label: { ja: 'コイントス', en: 'Flip a coin' }, compute: coinFlip },
+      { id: 'coin-flip', icon: '🪙', label: { ja: 'コイントス', en: 'Flip a coin' }, category: 'random-generated', summary: { ja: 'コインを 1 回投げる', en: 'Flips a coin once' }, compute: coinFlip },
       {
         id: 'random-number',
         icon: '🔢',
         label: { ja: '乱数（1〜N）', en: 'Random number' },
+        category: 'random-generated',
+        summary: { ja: '1〜N の整数を 1 つ選ぶ', en: 'A whole number from 1 to N' },
         arg: {
           type: 'int',
           min: 2,
@@ -3018,6 +3742,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'pick-one',
         icon: '👉',
         label: { ja: 'ひとつ選ぶ', en: 'Pick one' },
+        category: 'random-generated',
+        summary: { ja: '候補から 1 つ選ぶ', en: 'Picks one of the candidates' },
         arg: textArg(
           '候補（カンマ・読点・空白で区切って 2〜100 個。例: 寿司, ラーメン, カレー。省くと「はい／いいえ」）',
           '2 to 100 candidates separated by commas or spaces, e.g. sushi, ramen, curry; yes or no when left out',
@@ -3028,17 +3754,21 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'shuffle',
         icon: '🔀',
         label: { ja: '順番を決める', en: 'Shuffle' },
+        category: 'random-generated',
+        summary: { ja: '候補をランダムな順に並べて番号をつける', en: 'The candidates in a random order, numbered' },
         arg: textArg(
           '候補（カンマ・読点・空白で区切って 2〜100 個。例: 佐藤 鈴木 高橋。省くと 1〜10）',
           '2 to 100 candidates separated by commas or spaces, e.g. Alice Bob Carol; 1 to 10 when left out',
         ),
         compute: shuffle,
       },
-      { id: 'random-color', icon: '🌈', label: { ja: 'ランダムな色', en: 'Random colors' }, compute: randomColor },
+      { id: 'random-color', icon: '🌈', label: { ja: 'ランダムな色', en: 'Random colors' }, category: 'random-generated', summary: { ja: 'ランダムな色を 5 個、HEX・RGB・HSL で示す', en: 'Five random colours as HEX, RGB and HSL' }, compute: randomColor },
       {
         id: 'lorem',
         icon: '📃',
         label: { ja: 'ダミー文（英語）', en: 'Lorem ipsum' },
+        category: 'random-generated',
+        summary: { ja: '英語のダミー文（Lorem ipsum）', en: 'Paragraphs of Lorem ipsum' },
         arg: { type: 'int', min: 1, max: 20, default: '3', hint: { ja: '段落数（1〜20。省くと 3）', en: 'a number of paragraphs from 1 to 20; 3 when left out' } },
         compute: lorem,
       },
@@ -3046,15 +3776,19 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'dummy-ja',
         icon: '🎎',
         label: { ja: 'ダミー文（日本語）', en: 'Japanese dummy text' },
+        category: 'random-generated',
+        summary: { ja: 'レイアウト確認用の、意味のない日本語のダミー文', en: 'Paragraphs of meaningless Japanese, for checking a layout' },
         arg: { type: 'int', min: 1, max: 20, default: '3', hint: { ja: '段落数（1〜20。省くと 3）', en: 'a number of paragraphs from 1 to 20; 3 when left out' } },
         compute: dummyJa,
       },
-      { id: 'break-idea', icon: '🧘', label: { ja: '休憩のヒント', en: 'Break idea' }, compute: breakIdea },
+      { id: 'break-idea', icon: '🧘', label: { ja: '休憩のヒント', en: 'Break idea' }, category: 'random-generated', summary: { ja: '休憩の過ごし方のヒントを 1 つ出す', en: 'One short way to spend a break' }, compute: breakIdea },
       // Calculations and conversions (SELM-00036): calc reads its expression with its own parser.
       {
         id: 'calc',
         icon: '🧮',
         label: { ja: '電卓', en: 'Calculator' },
+        category: 'calc-convert',
+        summary: { ja: '数式を計算する', en: 'Works out an expression' },
         arg: textArg(
           '数式（例: (1+2)*3, 2^10, sqrt(2)。省くと書ける式の一覧と例）',
           'an expression, e.g. (1+2)*3, 2^10, sqrt(2); what can be written, with examples, when left out',
@@ -3065,6 +3799,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'unit-convert',
         icon: '📏',
         label: { ja: '単位換算', en: 'Convert units' },
+        category: 'calc-convert',
+        summary: { ja: '同じ量の単位どうしで換算する（長さ・重さ・温度など）', en: 'Converts a value between units of one quantity (length, weight, temperature…)' },
         arg: textArg(
           '<値> <単位> <単位>（例: 10 km mi, 100 F C, 5 kg lb。省くとよく使う換算の早見表）',
           '<value> <unit> <unit>, e.g. 10 km mi, 100 F C, 5 kg lb; a table of common conversions when left out',
@@ -3075,6 +3811,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'base-convert',
         icon: '🔃',
         label: { ja: '進数変換', en: 'Number bases' },
+        category: 'calc-convert',
+        summary: { ja: '整数を 2・8・10・16 進で示す', en: 'A whole number in bases 2, 8, 10 and 16' },
         arg: textArg('整数（例: 255, 0xff, 0b1010, 0o17。省くと 255）', 'a whole number, e.g. 255, 0xff, 0b1010, 0o17; 255 when left out', '255'),
         compute: baseConvert,
       },
@@ -3082,6 +3820,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'byte-size',
         icon: '💽',
         label: { ja: 'データ量の換算', en: 'Data size' },
+        category: 'calc-convert',
+        summary: { ja: 'データ量をバイト・10 進単位（KB…）・2 進単位（KiB…）で示す', en: 'A data size in bytes and in decimal (KB…) and binary (KiB…) units' },
         arg: textArg('データ量（例: 1GiB, 500MB, 123456789。省くと 1GiB）', 'a data size, e.g. 1GiB, 500MB, 123456789; 1GiB when left out', '1GiB'),
         compute: byteSize,
       },
@@ -3089,6 +3829,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'tax-calc',
         icon: '💴',
         label: { ja: '消費税の計算', en: 'Consumption tax' },
+        category: 'calc-convert',
+        summary: {
+          ja: '10%・8% の消費税を、税抜き・税込みの両方から計算する（1 円未満は切り捨て）',
+          en: 'Japanese consumption tax at 10% and 8%, from the amount before and with tax (fractions of a yen rounded down)',
+        },
         arg: {
           type: 'number',
           min: 0,
@@ -3102,6 +3847,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'split-bill',
         icon: '🧾',
         label: { ja: '割り勘', en: 'Split the bill' },
+        category: 'calc-convert',
+        summary: {
+          ja: '割り勘の 1 人分と端数、1 円・100 円単位で集めるときの額を出す',
+          en: 'Each person\'s share of a bill and the remainder, and how to collect it rounded up to 1 or 100 yen',
+        },
         arg: textArg(
           '<金額>/<人数>（例: 10000/3。人数は 2〜1000。省くと 10000/3）',
           '<amount>/<people>, e.g. 10000/3 (2 to 1000 people); 10000/3 when left out',
@@ -3113,6 +3863,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'factorize',
         icon: '🧩',
         label: { ja: '素因数分解', en: 'Factorize' },
+        category: 'calc-convert',
+        summary: { ja: '素因数分解と、約数の数と一覧（100 個まで）、素数かどうか', en: 'Prime factors, the count and list of divisors (up to 100), and whether it is prime' },
         arg: {
           type: 'int',
           min: 2,
@@ -3126,6 +3878,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'roman-numeral',
         icon: '🏺',
         label: { ja: 'ローマ数字', en: 'Roman numerals' },
+        category: 'calc-convert',
+        summary: { ja: '整数とローマ数字を相互に変換する', en: 'Converts between whole numbers and Roman numerals' },
         arg: textArg('1〜3999 の整数かローマ数字（例: 2024, MMXXIV。省くと 2024）', 'a whole number from 1 to 3999 or a Roman numeral, e.g. 2024, MMXXIV; 2024 when left out', '2024'),
         compute: romanNumeral,
       },
@@ -3133,6 +3887,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'number-reading',
         icon: '🔣',
         label: { ja: '数の読み方', en: 'Read a number' },
+        category: 'calc-convert',
+        summary: { ja: '数を桁区切り・万の単位・漢数字・英語の読みで示す', en: 'A number with grouped digits, in Japanese 万 units and kanji, and read in English' },
         arg: textArg('整数（例: 1234567, 1,234,567。絶対値は 10^24 未満。省くと 1234567）', 'a whole number, e.g. 1234567, 1,234,567, below 10^24; 1234567 when left out', '1234567'),
         compute: numberReading,
       },
@@ -3140,6 +3896,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'semver-bump',
         icon: '🔼',
         label: { ja: '次のバージョン', en: 'Next versions' },
+        category: 'calc-convert',
+        summary: {
+          ja: 'セマンティックバージョンの次の patch・minor・major・prerelease を示す',
+          en: 'The next patch, minor, major and prerelease versions after a semantic version',
+        },
         arg: textArg('セマンティックバージョン（例: 1.4.2, 2.0.0-rc.1。省くと 1.4.2）', 'a semantic version, e.g. 1.4.2, 2.0.0-rc.1; 1.4.2 when left out', '1.4.2'),
         compute: semverBump,
       },
@@ -3147,6 +3908,11 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'ip-calc',
         icon: '🌐',
         label: { ja: 'サブネット計算', en: 'Subnet calculator' },
+        category: 'calc-convert',
+        summary: {
+          ja: 'IPv4 の CIDR からネットワーク・ブロードキャスト・ホスト範囲と数・マスクを出す',
+          en: 'An IPv4 CIDR block\'s network, broadcast, host range and count, mask and wildcard',
+        },
         arg: textArg('IPv4 の CIDR（例: 10.0.0.0/8。省くと 192.168.0.0/24）', 'an IPv4 CIDR block, e.g. 10.0.0.0/8; 192.168.0.0/24 when left out', '192.168.0.0/24'),
         compute: ipCalc,
       },
@@ -3154,6 +3920,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'aspect-ratio',
         icon: '📐',
         label: { ja: '縦横比', en: 'Aspect ratio' },
+        category: 'calc-convert',
+        summary: { ja: '幅と高さの比（既約）と、同じ比のよくあるサイズ', en: 'The ratio of a width and height in lowest terms, with common sizes of that ratio' },
         arg: textArg('<幅>x<高さ>（例: 1280x720。各 1〜100000。省くと 1920x1080）', '<width>x<height>, e.g. 1280x720 (each from 1 to 100000); 1920x1080 when left out', '1920x1080'),
         compute: aspectRatio,
       },
@@ -3161,6 +3929,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'px-rem',
         icon: '🔍',
         label: { ja: 'px・rem換算', en: 'px and rem' },
+        category: 'calc-convert',
+        summary: { ja: 'px・rem・em・pt を相互に換算する（基準 16px）', en: 'A size in px, rem, em and pt, on a 16px root' },
         arg: textArg('値と単位（例: 16px, 1.5rem, 12pt, 2em。基準 16px。省くと 16px）', 'a value and unit, e.g. 16px, 1.5rem, 12pt, 2em, on a 16px root; 16px when left out', '16px'),
         compute: pxRem,
       },
@@ -3168,15 +3938,19 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'chmod-calc',
         icon: '🔐',
         label: { ja: 'パーミッション計算', en: 'File permissions' },
+        category: 'calc-convert',
+        summary: { ja: 'ファイルのパーミッションを 8 進と記号で相互に変換し、権限を説明する', en: 'File permissions between octal and symbols, each class\'s rights spelt out' },
         arg: textArg('8 進か記号のパーミッション（例: 644, 4755, rwxr-xr-x。省くと 755）', 'permissions in octal or symbols, e.g. 644, 4755, rwxr-xr-x; 755 when left out', '755'),
         compute: chmodCalc,
       },
       // Reference tables.
-      { id: 'ascii-table', icon: '🔡', label: { ja: 'ASCII表', en: 'ASCII table' }, compute: asciiTable },
+      { id: 'ascii-table', icon: '🔡', label: { ja: 'ASCII表', en: 'ASCII table' }, category: 'reference-tables', summary: { ja: '印字可能な ASCII 文字（10 進・16 進）と主な制御文字の表', en: 'The printable ASCII characters (decimal, hexadecimal) and the main control characters' }, compute: asciiTable },
       {
         id: 'http-status',
         icon: '🚦',
         label: { ja: 'HTTPステータス', en: 'HTTP status codes' },
+        category: 'reference-tables',
+        summary: { ja: 'HTTP ステータスコードの名前と意味', en: 'HTTP status codes: name and meaning' },
         arg: textArg('ステータスコードか名前の一部（例: 404, teapot。省くとよく使うコードの一覧）', 'a status code or part of its name, e.g. 404, teapot; the common codes when left out'),
         compute: httpStatus,
       },
@@ -3184,6 +3958,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'mime-types',
         icon: '📂',
         label: { ja: 'MIMEタイプ', en: 'MIME types' },
+        category: 'reference-tables',
+        summary: { ja: '拡張子と MIME タイプを相互に引く', en: 'Extensions to MIME types and back' },
         arg: textArg('拡張子か MIME タイプ（例: json, image/png。省くとよく使う拡張子の一覧）', 'an extension or a MIME type, e.g. json, image/png; the common extensions when left out'),
         compute: mimeTypes,
       },
@@ -3191,6 +3967,8 @@ export const ACTIONS: readonly ActionSpec[] = [
         id: 'port-numbers',
         icon: '🚪',
         label: { ja: 'ポート番号', en: 'Port numbers' },
+        category: 'reference-tables',
+        summary: { ja: 'ポート番号とサービスを相互に引く', en: 'Port numbers to services and back' },
         arg: textArg('ポート番号かサービス名（例: 5432, ssh。省くと主なポートの一覧）', 'a port number or a service name, e.g. 5432, ssh; the main ports when left out'),
         compute: portNumbers,
       },
@@ -3207,6 +3985,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'brainstorm',
       icon: '🌟',
       label: { ja: 'アイデア出し', en: 'Brainstorm' },
+      category: 'ideas',
+      summary: { ja: 'アイデアを 10 個出す', en: 'Ten ideas on a topic' },
       model: 'sonnet',
       arg: textArg(
         '題材（任意。例: 社内勉強会の企画。省くとソフトウェア開発のランダムな題材）',
@@ -3225,6 +4005,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'project-names',
       icon: '🔖',
       label: { ja: 'プロジェクト名の案', en: 'Project name ideas' },
+      category: 'ideas',
+      summary: { ja: 'プロジェクト・ツール・サービスの名前の案を 10 個出す', en: 'Ten names for a project, tool or service' },
       model: 'haiku',
       arg: textArg(
         'プロジェクトの説明（任意。例: ログを検索する CLI。省くと架空の開発ツール）',
@@ -3243,6 +4025,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'fermi',
       icon: '🤔',
       label: { ja: 'フェルミ推定', en: 'Fermi estimate' },
+      category: 'ideas',
+      summary: { ja: 'フェルミ推定を、仮定と計算の筋道つきで解く', en: 'A Fermi estimate, with its assumptions and working' },
       model: 'sonnet',
       arg: textArg(
         '見積もる問い（任意。例: 日本にあるエレベーターの数。省くと定番の問い）',
@@ -3261,6 +4045,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'decision-matrix',
       icon: '🧭',
       label: { ja: '意思決定表', en: 'Decision matrix' },
+      category: 'ideas',
+      summary: { ja: '選択肢を比べる重みつきの意思決定表をつくる', en: 'A weighted decision matrix for the options' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3282,6 +4068,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'color-palette',
       icon: '🎨',
       label: { ja: '配色案', en: 'Color palette' },
+      category: 'ideas',
+      summary: { ja: '配色案（5〜6 色）を表で示す', en: 'A colour palette of 5 or 6 colours, in a table' },
       model: 'haiku',
       arg: textArg(
         '雰囲気・用途（任意。例: 落ち着いた管理画面。省くと汎用の明るいテーマ）',
@@ -3300,6 +4088,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'sample-data',
       icon: '🍱',
       label: { ja: 'サンプルデータ', en: 'Sample data' },
+      category: 'ideas',
+      summary: { ja: '架空のサンプルデータを JSON でつくる', en: 'Fictional sample data as JSON' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3322,6 +4112,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'cron-build',
       icon: '⏰',
       label: { ja: 'cron式を作る', en: 'Build a cron expression' },
+      category: 'drafting',
+      summary: { ja: '実行したいタイミングから cron 式をつくり、各フィールドを説明する', en: 'A cron expression for when something should run, each field explained' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3344,6 +4136,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'regex-build',
       icon: '🧵',
       label: { ja: '正規表現を作る', en: 'Build a regex' },
+      category: 'drafting',
+      summary: { ja: '一致させたいパターンの正規表現をつくり、部分ごとに説明する', en: 'A regular expression for a pattern, explained part by part' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3365,6 +4159,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'shell-oneliner',
       icon: '🐚',
       label: { ja: 'コマンドを考える', en: 'Shell one-liner' },
+      category: 'drafting',
+      summary: { ja: 'やりたいことのシェルのコマンドを、各部分の説明と注意点つきで示す', en: 'A shell command that does what you need, each part explained, with pitfalls' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3386,6 +4182,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'git-recipe',
       icon: '🌿',
       label: { ja: 'gitの操作方法', en: 'Git recipe' },
+      category: 'drafting',
+      summary: { ja: 'git でやりたいことの手順を順に示す', en: 'The git steps to do something, in order' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3407,6 +4205,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'sql-build',
       icon: '💾',
       label: { ja: 'SQLを考える', en: 'Write SQL' },
+      category: 'drafting',
+      summary: { ja: 'やりたい処理の SQL を、前提とする方言・テーブルと一緒に示す', en: 'SQL for a query, with the dialect and tables it assumes' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3427,6 +4227,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'api-design',
       icon: '🔌',
       label: { ja: 'API設計案', en: 'API design' },
+      category: 'drafting',
+      summary: { ja: 'REST API のエンドポイント設計案を表で示す', en: 'A REST API design: its endpoints in a table' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3447,6 +4249,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'schema-design',
       icon: '🏢',
       label: { ja: 'テーブル設計案', en: 'Database schema' },
+      category: 'drafting',
+      summary: { ja: 'データベースのテーブル設計案を示す', en: 'A database schema: its tables and relations' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('業務の説明（任意。例: 図書館の貸出。省くとブログ）', 'the domain, e.g. lending at a library; a blog when left out'),
@@ -3466,6 +4270,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'gitignore-template',
       icon: '🙈',
       label: { ja: '.gitignore の雛形', en: '.gitignore template' },
+      category: 'templates',
+      summary: { ja: '.gitignore の雛形', en: 'A .gitignore template' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('言語・環境（例: node、python macos。省くと node）', 'languages or environments, e.g. node, python macos; node when left out', 'node'),
@@ -3482,6 +4288,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'dockerfile-template',
       icon: '🐳',
       label: { ja: 'Dockerfile の雛形', en: 'Dockerfile template' },
+      category: 'templates',
+      summary: { ja: 'マルチステージの Dockerfile の雛形', en: 'A multi-stage Dockerfile template' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('言語・用途（例: node、python fastapi。省くと node）', 'a language and use, e.g. node, python fastapi; node when left out', 'node'),
@@ -3499,6 +4307,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'ci-template',
       icon: '🤖',
       label: { ja: 'CI設定の雛形', en: 'CI workflow template' },
+      category: 'templates',
+      summary: { ja: 'テストとビルドを実行する GitHub Actions のワークフローの雛形', en: 'A GitHub Actions workflow template that runs the tests and the build' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('言語（例: node、go。省くと node）', 'a language, e.g. node, go; node when left out', 'node'),
@@ -3515,6 +4325,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'makefile-template',
       icon: '🔨',
       label: { ja: 'Makefileの雛形', en: 'Makefile template' },
+      category: 'templates',
+      summary: {
+        ja: 'よく使うターゲット（build・test・lint・clean など）の Makefile の雛形',
+        en: 'A Makefile template with the usual targets (build, test, lint, clean…)',
+      },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('プロジェクトの種類（任意。例: Go の CLI。省くと汎用）', 'the kind of project, e.g. a Go CLI; a general one when left out'),
@@ -3530,6 +4345,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'readme-template',
       icon: '📘',
       label: { ja: 'READMEの雛形', en: 'README template' },
+      category: 'templates',
+      summary: { ja: 'README の雛形（概要・インストール・使い方・設定・ライセンスなど）', en: 'A README template (overview, installation, usage, configuration, license…)' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('プロジェクトの説明（任意。例: 画像を圧縮する CLI。省くと汎用）', 'what the project is, e.g. a CLI that compresses images; a general one when left out'),
@@ -3546,6 +4363,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'pr-template',
       icon: '📬',
       label: { ja: 'PRテンプレート', en: 'PR template' },
+      category: 'templates',
+      summary: { ja: 'プルリクエストのテンプレート（概要・変更点・確認方法・チェックリスト）', en: 'A pull request template: summary, changes, how to verify, checklist' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('チームの事情（任意。例: モバイルアプリ。省くと汎用）', 'the team or project, e.g. a mobile app; a general one when left out'),
@@ -3561,6 +4380,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'issue-template',
       icon: '🐞',
       label: { ja: 'Issueテンプレート', en: 'Issue template' },
+      category: 'templates',
+      summary: { ja: 'Issue のテンプレート（バグ報告か機能要望）', en: 'An issue template, for a bug or a feature request' },
       model: 'haiku',
       maxTokens: 3000,
       arg: {
@@ -3582,6 +4403,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'adr-template',
       icon: '📒',
       label: { ja: 'ADRの雛形', en: 'ADR template' },
+      category: 'templates',
+      summary: { ja: 'ADR の雛形（タイトル・背景・決定・理由・結果）', en: 'An ADR template: title, context, decision, reasons, consequences' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3600,6 +4423,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'test-plan-template',
       icon: '🧪',
       label: { ja: 'テスト計画の雛形', en: 'Test plan template' },
+      category: 'templates',
+      summary: { ja: 'テスト計画の雛形（範囲・テスト対象・テストケース表・終了条件）', en: 'A test plan template: scope, what to test, test cases, exit criteria' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('機能（任意。例: パスワードの再設定。省くとログイン機能）', 'a feature, e.g. resetting a password; a login feature when left out'),
@@ -3615,6 +4440,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'meeting-agenda',
       icon: '📢',
       label: { ja: '会議のアジェンダ', en: 'Meeting agenda' },
+      category: 'templates',
+      summary: { ja: '会議のアジェンダ案', en: 'A meeting agenda' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3634,6 +4461,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'email-template',
       icon: '📧',
       label: { ja: 'メールの文例', en: 'Email template' },
+      category: 'templates',
+      summary: { ja: 'ビジネスメールの文例（件名と本文）', en: 'A business email: subject and body' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3656,6 +4485,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'commit-convention',
       icon: '📜',
       label: { ja: 'コミット規約', en: 'Commit conventions' },
+      category: 'conventions',
+      summary: {
+        ja: 'Conventional Commits の書き方（type・scope・本文・フッター・破壊的変更）を例つきでまとめる',
+        en: 'The Conventional Commits format (types, scope, body, footer, breaking changes), with examples',
+      },
       model: 'haiku',
       prompt: alone(
         'Summarize the Conventional Commits format: the list of types with what each is for, the scope,',
@@ -3667,6 +4501,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'naming-conventions',
       icon: '🔤',
       label: { ja: '命名規則', en: 'Naming conventions' },
+      category: 'conventions',
+      summary: { ja: 'プログラミング言語の一般的な命名規則をまとめる', en: 'The common naming conventions of a programming language' },
       model: 'haiku',
       arg: textArg('言語（例: typescript、python。省くと typescript）', 'a language, e.g. typescript, python; typescript when left out', 'typescript'),
       prompt: alone(
@@ -3680,6 +4516,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'code-review-checklist',
       icon: '✅',
       label: { ja: 'レビュー観点の一覧', en: 'Code review checklist' },
+      category: 'conventions',
+      summary: {
+        ja: 'コードレビューの観点のチェックリスト（正しさ・読みやすさ・テスト・性能・セキュリティ）',
+        en: 'A code review checklist: correctness, readability, tests, performance, security',
+      },
       model: 'haiku',
       arg: textArg('言語・領域（任意。例: フロントエンド。省くと汎用）', 'a language or area, e.g. frontend; general when left out'),
       prompt: alone(
@@ -3694,6 +4535,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'security-checklist',
       icon: '🔒',
       label: { ja: 'セキュリティの点検項目', en: 'Web security checklist' },
+      category: 'conventions',
+      summary: { ja: 'Web アプリ・API のセキュリティの点検項目', en: 'A security checklist for web apps and APIs' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('対象（任意。例: GraphQL API。省くと Web アプリ・API 全般）', 'the target, e.g. a GraphQL API; web apps and APIs in general when left out'),
@@ -3709,6 +4552,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'debug-checklist',
       icon: '🔦',
       label: { ja: 'デバッグの手順', en: 'Debugging checklist' },
+      category: 'conventions',
+      summary: {
+        ja: 'バグを切り分ける手順のチェックリスト（再現・最小化・仮説・二分探索・ログ）',
+        en: 'A checklist for isolating a bug: reproduce, minimize, hypothesize, bisect, read the logs',
+      },
       model: 'sonnet',
       arg: textArg('症状（任意。例: 本番だけで遅い。省くと汎用の手順）', 'the symptom, e.g. slow only in production; general steps when left out'),
       prompt: alone(
@@ -3722,6 +4570,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'release-checklist',
       icon: '🚢',
       label: { ja: 'リリース前の確認項目', en: 'Release checklist' },
+      category: 'conventions',
+      summary: { ja: 'リリース前に確かめることのチェックリスト', en: 'A checklist of what to confirm before a release' },
       model: 'haiku',
       arg: textArg('対象（任意。例: npm パッケージ。省くと汎用）', 'what is released, e.g. an npm package; general when left out'),
       prompt: alone(
@@ -3736,6 +4586,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'cheatsheet',
       icon: '📋',
       label: { ja: 'チートシート', en: 'Cheat sheet' },
+      category: 'conventions',
+      summary: { ja: 'ツール・言語のよく使うコマンドや構文のチートシート', en: 'A cheat sheet of a tool\'s or language\'s most used commands or syntax' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('ツール・言語（例: git、vim、docker、jq。省くと git）', 'a tool or language, e.g. git, vim, docker, jq; git when left out', 'git'),
@@ -3753,6 +4605,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'quick-answer',
       icon: '❓',
       label: { ja: 'ちょっと質問', en: 'Quick question' },
+      category: 'knowledge',
+      summary: { ja: 'ちょっとした質問に 5〜10 行で答える（質問がなければ豆知識）', en: 'Answers a quick question in 5 to 10 lines (with none, a bit of trivia)' },
       model: 'sonnet',
       arg: textArg('質問（任意。例: HTTP/2 と HTTP/3 の違い。省くと豆知識）', 'a question, e.g. how HTTP/2 and HTTP/3 differ; a bit of trivia when left out'),
       prompt: alone(
@@ -3765,6 +4619,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'compare-tech',
       icon: '🆚',
       label: { ja: '技術の比較', en: 'Compare technologies' },
+      category: 'knowledge',
+      summary: { ja: '技術・ツールを比べる', en: 'Compares technologies or tools' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('比べる技術（任意。例: REST GraphQL。省くと定番の比較）', 'what to compare, e.g. REST GraphQL; a classic comparison when left out'),
@@ -3781,6 +4637,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'learning-path',
       icon: '🪜',
       label: { ja: '学習の道筋', en: 'Learning path' },
+      category: 'knowledge',
+      summary: { ja: 'テーマを学ぶ順序を段階ごとに示す', en: 'The order in which to learn a subject, in stages' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('テーマ（任意。例: Kubernetes。省くとソフトウェア開発の基礎）', 'a subject, e.g. Kubernetes; the basics of software development when left out'),
@@ -3795,6 +4653,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'quiz',
       icon: '🎯',
       label: { ja: 'クイズを出題', en: 'Quiz me' },
+      category: 'knowledge',
+      summary: { ja: 'テーマの理解度を確かめるクイズを 5 問出す（答えは最後に）', en: 'A five-question quiz on a subject, the answers at the end' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg('テーマ（任意。例: HTTP。省くとプログラミング全般）', 'a subject, e.g. HTTP; programming in general when left out'),
@@ -3809,6 +4669,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'algorithm',
       icon: '🧠',
       label: { ja: 'アルゴリズムの解説', en: 'Explain an algorithm' },
+      category: 'knowledge',
+      summary: { ja: 'アルゴリズム・データ構造を解説する', en: 'Explains an algorithm or data structure' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg(
@@ -3825,6 +4687,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'design-patterns',
       icon: '🧱',
       label: { ja: '設計パターン', en: 'Design patterns' },
+      category: 'knowledge',
+      summary: { ja: '設計パターンを解説する（指定がなければ主なパターンの一覧）', en: 'Explains a design pattern (with none, the main ones)' },
       model: 'sonnet',
       maxTokens: 3000,
       arg: textArg('設計パターン（任意。例: Strategy。省くと主なパターンの一覧）', 'a design pattern, e.g. Strategy; a list of the main ones when left out'),
@@ -3839,6 +4703,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'english-phrase',
       icon: '💬',
       label: { ja: '英語の言い回し', en: 'English phrases' },
+      category: 'knowledge',
+      summary: { ja: '場面に合った英語の言い回しを 5 つ出す', en: 'Five English phrases for a situation' },
       model: 'haiku',
       arg: textArg(
         '場面（任意。例: レビューで修正をお願いする。省くと開発の仕事でよく使う表現）',
@@ -3856,6 +4722,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'keigo-phrases',
       icon: '🙇',
       label: { ja: '敬語の定型表現', en: 'Polite Japanese phrases' },
+      category: 'knowledge',
+      summary: { ja: '場面に合った敬語の定型表現を出す', en: 'Polite Japanese set phrases (keigo) for a situation' },
       model: 'haiku',
       arg: textArg('場面（任意。例: 依頼を断る。省くとよく使う定型表現）', 'the situation, e.g. turning down a request; common set phrases when left out'),
       prompt: alone(
@@ -3870,6 +4738,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'prompt-ideas',
       icon: '🪄',
       label: { ja: 'プロンプトの例', en: 'Prompt ideas' },
+      category: 'knowledge',
+      summary: { ja: 'Claude への頼み方の例を 3〜5 個出す', en: 'Three to five example prompts for asking Claude' },
       model: 'haiku',
       arg: textArg('目的（任意。例: テストを書かせたい。省くと開発でよく使う頼み方）', 'the goal, e.g. getting tests written; common requests in development when left out'),
       prompt: alone(
@@ -3886,6 +4756,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'interview-questions',
       icon: '🎤',
       label: { ja: '面接の質問案', en: 'Interview questions' },
+      category: 'team',
+      summary: { ja: '面接の質問案を 10 個出す', en: 'Ten questions for a job interview' },
       model: 'haiku',
       maxTokens: 3000,
       arg: textArg(
@@ -3903,6 +4775,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'icebreaker',
       icon: '🧊',
       label: { ja: 'アイスブレイク', en: 'Icebreakers' },
+      category: 'team',
+      summary: { ja: '会議の始めに使うアイスブレイクの質問を 5 つ出す', en: 'Five short icebreaker questions to open a meeting' },
       model: 'haiku',
       prompt: alone(
         'Give 5 short icebreaker questions to open a meeting with: light, quick to answer, and comfortable for anyone.',
@@ -3913,6 +4787,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'one-on-one',
       icon: '👥',
       label: { ja: '1on1の問い', en: '1:1 questions' },
+      category: 'team',
+      summary: { ja: '1on1 で聞く質問を 10 個、テーマ別に出す', en: 'Ten questions for a one-on-one, grouped by theme' },
       model: 'haiku',
       prompt: alone(
         'Give 10 questions to ask in a one-on-one meeting, grouped into how things are going, challenges, growth, and feedback,',
@@ -3924,6 +4800,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'retro-prompts',
       icon: '🔄',
       label: { ja: '振り返りの問い', en: 'Retro prompts' },
+      category: 'team',
+      summary: { ja: 'チームの振り返りの進め方と問いを出す', en: 'A plan and questions for a team retrospective' },
       model: 'haiku',
       arg: textArg('形式（任意。例: KPT。省くと 1 つ選ぶ）', 'a format, e.g. KPT; one is picked when left out'),
       prompt: alone(
@@ -3940,6 +4818,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'joke',
       icon: '🤣',
       label: { ja: 'ジョーク', en: 'Joke' },
+      category: 'break',
+      summary: { ja: 'プログラマー向けの短いジョークを 1 つ', en: 'One short joke for programmers' },
       model: 'haiku',
       arg: textArg('テーマ（任意。例: バグ。省くと自由）', 'a theme, e.g. bugs; any when left out'),
       prompt: alone(
@@ -3952,6 +4832,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'senryu',
       icon: '🎋',
       label: { ja: '川柳', en: 'Senryu' },
+      category: 'break',
+      summary: { ja: '開発者の日常を詠んだ川柳を 3 句（句は日本語）', en: 'Three senryu (5-7-5 verses, in Japanese) on a developer\'s day' },
       model: 'haiku',
       arg: textArg('テーマ（任意。例: デプロイ。省くと自由）', 'a theme, e.g. deploying; any when left out'),
       prompt: alone(
@@ -3966,6 +4848,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'puzzle',
       icon: '🧸',
       label: { ja: 'パズル', en: 'Puzzle' },
+      category: 'break',
+      summary: { ja: '論理パズル・なぞなぞを 1 問（答えは区切りの後に）', en: 'One logic puzzle or riddle (the answer after a separator)' },
       model: 'haiku',
       arg: {
         type: 'choice' as const,
@@ -3985,6 +4869,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'pep-talk',
       icon: '📣',
       label: { ja: 'ひとこと応援', en: 'Pep talk' },
+      category: 'break',
+      summary: { ja: '作業中の開発者への短い応援のひとこと', en: 'A short word of encouragement for a developer at work' },
       model: 'haiku',
       prompt: alone('Give a developer in the middle of their work a short word of encouragement, in 1 or 2 sentences.'),
     },
@@ -3998,6 +4884,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-overview',
       icon: '🏠',
       label: { ja: 'リポジトリの概要', en: 'Repository overview' },
+      category: 'repo-surveys',
+      summary: {
+        ja: '作業ディレクトリのリポジトリの目的・主なディレクトリ・技術・入口のファイルをまとめる',
+        en: 'Sums up the repository in the working directory: purpose, main directories, technologies, entry points',
+      },
       arg: textArg('ディレクトリや関心事（任意。例: src/api。省くと全体）', 'a directory or concern, e.g. src/api; the whole repository when left out'),
       description: {
         ja: '作業ディレクトリのリポジトリの目的・構成・技術・入口のファイルをまとめます（Quick Actions 専用）',
@@ -4014,6 +4905,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-todos',
       icon: '📌',
       label: { ja: 'TODOコメント一覧', en: 'TODO comments' },
+      category: 'repo-surveys',
+      summary: { ja: 'リポジトリの TODO・FIXME・HACK・XXX コメントを種類別に一覧にする', en: 'Lists the TODO, FIXME, HACK and XXX comments in the repository by kind' },
       arg: textArg('ディレクトリ（任意。例: src。省くと全体）', 'a directory, e.g. src; the whole repository when left out'),
       description: {
         ja: 'リポジトリ内の TODO・FIXME・HACK・XXX のコメントを種類別に一覧にします（Quick Actions 専用）',
@@ -4032,6 +4925,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-scripts',
       icon: '🏁',
       label: { ja: '実行できるタスク', en: 'Runnable tasks' },
+      category: 'repo-surveys',
+      summary: {
+        ja: 'package.json の scripts や Makefile などから、実行できるタスクを一覧にする',
+        en: 'Lists the tasks the repository defines (package.json scripts, a Makefile and the like)',
+      },
       description: {
         ja: 'package.json の scripts や Makefile などから実行できるタスクを一覧にします（Quick Actions 専用）',
         en: 'Lists the tasks the repository defines in package.json scripts, a Makefile and the like (Quick Actions only)',
@@ -4048,6 +4946,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-deps',
       icon: '📦',
       label: { ja: '依存パッケージ一覧', en: 'Repository dependencies' },
+      category: 'repo-surveys',
+      summary: { ja: '依存関係の定義ファイルから、直接の依存を本番用・開発用に分けて一覧にする', en: 'Lists the direct dependencies, for production and for development' },
       description: {
         ja: '依存関係の定義ファイルから直接の依存を本番用・開発用に分けて一覧にします（Quick Actions 専用）',
         en: 'Lists the direct dependencies of the repository, for production and for development (Quick Actions only)',
@@ -4065,6 +4965,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-config',
       icon: '🔩',
       label: { ja: '設定ファイル一覧', en: 'Config files' },
+      category: 'repo-surveys',
+      summary: {
+        ja: '設定ファイル（tsconfig・リンター・CI・Docker など）の役割と主な設定をまとめる',
+        en: 'Sums up the config files (tsconfig, linters, CI, Docker…): what each is for and its main settings',
+      },
       description: {
         ja: 'リポジトリの設定ファイルの役割と主な設定をまとめます（Quick Actions 専用）',
         en: 'Sums up what the repository\'s config files are for and what they set (Quick Actions only)',
@@ -4080,6 +4985,11 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-tests',
       icon: '🧫',
       label: { ja: 'テストの構成', en: 'Test layout' },
+      category: 'repo-surveys',
+      summary: {
+        ja: 'テストの置き場所・構成・フレームワーク・実行コマンド・手薄そうな箇所をまとめる',
+        en: 'Sums up the tests: where and how they are laid out, the framework, the command, thin spots',
+      },
       arg: textArg('ディレクトリ（任意。例: packages/core。省くと全体）', 'a directory, e.g. packages/core; the whole repository when left out'),
       description: {
         ja: 'テストのディレクトリ構成・フレームワーク・実行方法をまとめます（Quick Actions 専用）',
@@ -4097,6 +5007,8 @@ export const ACTIONS: readonly ActionSpec[] = [
       id: 'repo-onboarding',
       icon: '🎒',
       label: { ja: '開発の始め方', en: 'Getting started' },
+      category: 'repo-surveys',
+      summary: { ja: 'README や設定から、このリポジトリで開発を始める手順をまとめる', en: 'Works out from the README and config how to start developing in the repository' },
       description: {
         ja: 'README や設定から、このリポジトリで開発を始める手順をまとめます（Quick Actions 専用）',
         en: 'Works out from the README and config files how to start developing in the repository (Quick Actions only)',

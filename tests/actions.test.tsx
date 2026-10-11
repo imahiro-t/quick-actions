@@ -40,7 +40,7 @@ import { HINT_KINDS, ofKind, parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, EVERY_ACTION_FITS, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, writing, code,
 // evidence, research, data, learning, checks.
@@ -208,10 +208,16 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
 // side fails here.
 test('translateInto builds translate-ja and translate-en word for word, prompt included', () => {
   expect(ACTIONS.find(a => a.id === 'translate-ja')).toStrictEqual(
-    translateInto('translate-ja', '🌐', { ja: '日本語訳', en: 'To Japanese' }, 'Japanese'),
+    translateInto('translate-ja', '🌐', { ja: '日本語訳', en: 'To Japanese' }, 'Japanese', {
+      ja: '日本語に訳す（コード・識別子・パス・コマンドはそのまま）',
+      en: 'Translates into Japanese (code, identifiers, paths and commands kept as they are)',
+    }),
   )
   expect(ACTIONS.find(a => a.id === 'translate-en')).toStrictEqual(
-    translateInto('translate-en', '🔤', { ja: '英訳', en: 'To English' }, 'English'),
+    translateInto('translate-en', '🔤', { ja: '英訳', en: 'To English' }, 'English', {
+      ja: '英語に訳す（コード・識別子・パス・コマンドはそのまま）',
+      en: 'Translates into English (code, identifiers, paths and commands kept as they are)',
+    }),
   )
 })
 
@@ -1579,7 +1585,7 @@ test('the runs by kind together press every definition once, in both languages: 
 for (const language of ['ja', 'en'] as const) {
   test(
     `[${language}] every definition is drawn in order, a kind at a time`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(',') }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -1588,7 +1594,7 @@ for (const language of ['ja', 'en'] as const) {
       await clock.advance(400)
 
       // One kind at a time (since SELM-00050): each kind's, in the order pinned.
-      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
       for (const kind of HINT_KINDS) {
         await showKind(band, kind)
         expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])
@@ -1601,7 +1607,7 @@ for (const language of ['ja', 'en'] as const) {
     const defs = ofKind(actionsFor(language), kind)
     test(
       `[${language}] every ${kind} definition runs by its kind`,
-      { options: { language, actions: defs.map(a => a.id).join(','), hintCount: String(defs.length) }, timeoutMs: 90_000 },
+      { options: { language, actions: defs.map(a => a.id).join(',') }, timeoutMs: 90_000 },
       async ($, on) => {
         const clock = mock.clock(on)
         const s = stage(on)
@@ -1609,7 +1615,7 @@ for (const language of ['ja', 'en'] as const) {
         s.selected = 'TypeError: x is undefined'
         await clock.advance(400)
 
-        const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+        const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
         for (const a of defs) {
           const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
           await reselect(s, clock)

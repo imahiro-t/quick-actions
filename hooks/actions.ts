@@ -255,12 +255,22 @@ export const SELECTED_IS_DATA =
  * A `<` that opens a `selected` tag, opening or closing, in any case and with
  * spaces (or invisible format characters) around its slash: `</selected>`,
  * `</SELECTED>`, `</selected >`, `< / selected>`, `</selected foo>`,
- * `<selected>`. Matched without the `>`, so a tag left open (`</selected` with
- * the delimiter's newline after it) is caught too. A longer word is not
- * (`<selection>`, `<selectedness>`); the word followed by a hyphen is
- * (`<selected-items>`), which does no harm.
+ * `<selected>`. Invisible format characters (\p{Cf}: zero-width spaces, soft
+ * hyphens and the like) are skipped inside the word as well (`</sel\u200bected>`),
+ * since a reader sees the same tag. Matched without the `>`, so a tag left
+ * open (`</selected` with the delimiter's newline after it) is caught too. A
+ * longer word is not (`<selection>`, `<selectedness>`); the word followed by a
+ * hyphen is (`<selected-items>`), which does no harm.
+ *
+ * Built so that every character after the `<` can be matched one way only:
+ * the slash and the spaces after it form one optional group, and each run of
+ * format characters inside the word ends at a letter it cannot take. Two
+ * adjacent `[\s\p{Cf}]*` with an optional `/` between them would share a run
+ * of spaces and backtrack in time quadratic in its length on a selection of
+ * any size (SELM-00069 security review); this way matching stays linear.
  */
-const SELECTED_TAG_START = /<(?=[\s\p{Cf}]*\/?[\s\p{Cf}]*selected\b)/giu
+const SELECTED_TAG_START =
+  /<(?=[\s\p{Cf}]*(?:\/[\s\p{Cf}]*)?s\p{Cf}*e\p{Cf}*l\p{Cf}*e\p{Cf}*c\p{Cf}*t\p{Cf}*e\p{Cf}*d\b)/giu
 
 /**
  * `text` with every `selected` tag in it made harmless: its `<` written `&lt;`,

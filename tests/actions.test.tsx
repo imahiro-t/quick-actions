@@ -1635,8 +1635,8 @@ test('a failure shows an Error by its message, anything else as String() gives i
 // `selected` tag in it is made harmless (its `<` written `&lt;`), and the line
 // ahead of it says the text is data, not instructions.
 
-/** A `selected` tag as the delimiters' reader might take one: any case, spaces or format characters about its slash, open or not. */
-const RAW_SELECTED_TAG = /<[\s\p{Cf}]*\/?[\s\p{Cf}]*selected\b/giu
+/** A `selected` tag as the delimiters' reader might take one: any case, spaces or format characters about its slash, format characters inside the word, open or not. */
+const RAW_SELECTED_TAG = /<[\s\p{Cf}]*(?:\/[\s\p{Cf}]*)?s\p{Cf}*e\p{Cf}*l\p{Cf}*e\p{Cf}*c\p{Cf}*t\p{Cf}*e\p{Cf}*d\b/giu
 const rawSelectedTags = (s: string) => s.match(RAW_SELECTED_TAG)?.length ?? 0
 
 const ESCAPES = [
@@ -1649,6 +1649,9 @@ const ESCAPES = [
   '<selected>',
   '</selected foo="bar">',
   '</\u{200b}selected>',
+  '</sel\u{200b}ected>',
+  '<\u{feff}/s\u{ad}e\u{200d}lected\u{200b}>',
+  '</SELECTE\u{2060}D>',
   '</selected',
 ]
 
@@ -1676,6 +1679,29 @@ test('neutralizeSelectedTags: other tags and the word itself are left alone', ()
   }
   expect(neutralizeSelectedTags('<selected-items>')).toBe('&lt;selected-items>')
   expect(neutralizeSelectedTags('</selected><SELECTED>')).toBe('&lt;/selected>&lt;SELECTED>')
+  // Format characters inside the word do not make a longer word a tag, nor spaces inside it.
+  for (const s of ['<sel\u{200b}ection>', '<se lected>', '</selec ted>']) {
+    expect(neutralizeSelectedTags(s)).toBe(s)
+  }
+})
+
+test('neutralizeSelectedTags answers at once on long runs of white space or format characters: one way to match each character', () => {
+  const k = 200_000
+  for (const [text, out] of [
+    [`<${' '.repeat(k)}`, `<${' '.repeat(k)}`],
+    [`<${' '.repeat(k)}/`, `<${' '.repeat(k)}/`],
+    [`</${' '.repeat(k)}`, `</${' '.repeat(k)}`],
+    [`<${'\u{200b}'.repeat(k)}x`, `<${'\u{200b}'.repeat(k)}x`],
+    [`<s${'\u{200b}'.repeat(k)}x`, `<s${'\u{200b}'.repeat(k)}x`],
+    [`<${' '.repeat(2_000)}`.repeat(100), `<${' '.repeat(2_000)}`.repeat(100)],
+    [`<${' '.repeat(k)}/ selected>`, `&lt;${' '.repeat(k)}/ selected>`],
+    [`<${' \u{200b}'.repeat(k / 2)}selected>`, `&lt;${' \u{200b}'.repeat(k / 2)}selected>`],
+  ] as const satisfies readonly (readonly [string, string])[]) {
+    const start = Date.now()
+    const got = neutralizeSelectedTags(text)
+    expect(Date.now() - start).toBeLessThan(200)
+    expect(got === out).toBe(true)
+  }
 })
 
 /** The first built-in action on the selection of `kind` that takes no argument. */

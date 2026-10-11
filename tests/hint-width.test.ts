@@ -285,16 +285,17 @@ test('not measured: named kinds and UNMEASURED_COUNT', () => {
 
 // The hover label was cut to a cell or none on a full line (`要…`): room is kept for it.
 test('the hover label\'s room: TIP_RESERVE kept after ⋯, the kind buttons as they would be and two actions at least', () => {
-  // `選択範囲へのアクション` (22 cells) whole, with the space ahead of it.
-  expect(TIP_RESERVE).toBeGreaterThanOrEqual(textWidth(' 選択範囲へのアクション'))
+  // Short labels whole (`日本語訳`, `To English`), with the space ahead of it; a long one is cut.
+  expect(TIP_RESERVE).toBeGreaterThanOrEqual(textWidth(' To English'))
+  expect(TIP_RESERVE).toBeLessThan(textWidth(' 選択範囲へのアクション'))
   const widths = Array.from({ length: 20 }, () => 9)
   const at = (line: number, tip?: number) => hintLayout({ line, kindsLabeled: 30, kindsMarks: 21, ends: 10, widths, ...(tip === undefined ? {} : { tip }) })
-  // Wide: the whole reserve kept, the actions it costs left out (130 cells: 90 for actions, 66 with the reserve).
+  // Wide: the whole reserve kept, the actions it costs left out (130 cells: 90 for actions, 78 with the reserve).
   expect(at(130)).toEqual({ kinds: 'labeled', count: 10 })
-  expect(at(130, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: 7 })
-  // Narrower: as much of it as leaves two actions beside the named kinds (70 cells: 12 kept).
-  expect(at(70)).toEqual({ kinds: 'labeled', count: 3 })
-  expect(at(70, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: MIN_LABELED_ACTIONS })
+  expect(at(130, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: 8 })
+  // Narrower: as much of it as leaves two actions beside the named kinds (68 cells: 10 kept).
+  expect(at(68)).toEqual({ kinds: 'labeled', count: 3 })
+  expect(at(68, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: MIN_LABELED_ACTIONS })
   // Never the kind buttons drawn otherwise for it, nor fewer than two actions (50 cells: marks and two, as without).
   expect(at(50, TIP_RESERVE)).toEqual(at(50))
   // No reserve asked for: as before.

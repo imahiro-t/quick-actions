@@ -497,8 +497,8 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     await wide.unmount()
 
     const table = {
-      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 2], [160, 'labeled', 7]],
-      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 2], [160, 'labeled', 5]],
+      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 2], [160, 'labeled', 8]],
+      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 3], [160, 'labeled', 7]],
     } as const
     for (const [columns, kinds, count] of table[lang]) {
       const band = await mountBand($, columns)

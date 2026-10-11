@@ -14,8 +14,19 @@ export type Result = {
   quote: string
   /** A standalone action's argument as given, shortened; left out when it ran with none. */
   arg?: string
+  /**
+   * The argument as typed (trimmed), in full, for "again" to run with once more;
+   * left out when it ran with none. `arg` is its shortened quote, for the heading.
+   */
+  input?: string
   /** Set on a run over time (a timer): its text is the frame now, and it stops when the pane closes. */
   ticker?: true
+  /**
+   * Set as a run over time starts, before anything can refuse or end it: the
+   * entry is of a timer (or the like), so once it is no longer running the pane
+   * offers to run it again. Unlike `ticker`, it says nothing of a frame drawn.
+   */
+  timed?: true
   status: 'running' | 'done' | 'failed'
   text: string
   /**
@@ -37,6 +48,13 @@ export type ResultOrigin = {
   /** True until the entry's "Clear highlight" is pressed. */
   highlighted: boolean
 }
+
+/**
+ * The ⋯ dialog's argument screen: the action, what its field holds, and what
+ * the last Enter could not parse (trimmed), which ran nothing. Not its error:
+ * that is worded as the screen is drawn, in the language of the moment.
+ */
+export type ArgInput = { action: ActionId; value: string; invalid?: string }
 
 /**
  * The hint line `/quick-actions hint` opened. `text` is what was selected as
@@ -66,8 +84,11 @@ declare module 'claude-code' {
        * selection actions on (null: none, context and standalone actions only)
        * and what its filter field holds (empty as it opens: every action listed);
        * `requestId`, the transcript row that text lies in, when there is one.
+       * With `arg`, the tab shows the argument screen of that standalone action
+       * instead of the list: what its field holds, and why the last Enter did
+       * not run it (an argument that does not parse); without, the list.
        */
-      picking: { text: string | null; requestId?: string; filter: string } | null
+      picking: { text: string | null; requestId?: string; filter: string; arg?: ArgInput } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
       /**

@@ -22,6 +22,7 @@ import {
   findAction,
   isContext,
   isStandalone,
+  takesArg,
   markedIcon,
   messageOf,
   needsSelection,
@@ -36,7 +37,7 @@ import { ofKind, parsePins } from '../hooks/order'
 import type { ActionSpec, LocalInput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { ALLOWED_SUBAGENT_TOOLS } from '../hooks/custom'
-import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, showKind, stage, start } from './stage'
+import { ANSWER_LANGUAGE_ONLY, BAND, NO_STYLE, PANE, PLUGIN, hintIcons, promptOf, reselect, showKind, stage, start, submitArg } from './stage'
 
 // The built-ins on the selection, in the order of their purpose: translation, meaning, summary, writing, code,
 // evidence, research, data, learning, checks.
@@ -1556,7 +1557,7 @@ for (const language of ['ja', 'en'] as const) {
   const defs = actionsFor(language)
   test(
     `[${language}] every definition is drawn in order and runs by its kind`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 60_000 },
+    { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -1576,6 +1577,8 @@ for (const language of ['ja', 'en'] as const) {
         await reselect(s, clock)
         await showKind(band, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection')
         await band.press({ key: a.id })
+        // One that takes an argument asks for it first: Enter with the field empty, its default.
+        if (takesArg(a)) await submitArg($)
         if (a.kind === 'local') {
           // In the module: no model, no fork, no subagent.
           expect(s.models.length).toBe(before.models)

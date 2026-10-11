@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-A Claude Code plugin of icon actions for the text you select in the conversation (the transcript), for the conversation itself, and for small jobs that need neither. Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate, explain, summarize, proofread, read code, find the evidence, convert data and more), on the conversation (recap it, list the decisions, the next steps, restate the last answer, draft a commit message and more), or on neither (a timer, a calendar, a calculator, a password, a template, a repository overview and more), and read the result in a pane. There are 311 built-in actions of three kinds; the hint line shows one kind at a time, switched by the buttons at its start. With nothing selected, `/quick-actions hint` brings up the hint line, and `/quick-actions <id> [argument]` runs an action by its ID (e.g. `/quick-actions timer 5m`). The actions you use most come first, and you can pin your own to the front in settings; every action, shown on the hint line or not, can be picked from the ⋯ at its end, and its dialog finds one by its ID or name as you type. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
+A Claude Code plugin of icon actions for the text you select in the conversation (the transcript), for the conversation itself, and for small jobs that need neither. Select some text and icons appear on the hint line under the prompt; press one to run an action on the selection (translate, explain, summarize, proofread, read code, find the evidence, convert data and more), on the conversation (recap it, list the decisions, the next steps, restate the last answer, draft a commit message and more), or on neither (a timer, a calendar, a calculator, a password, a template, a repository overview and more), and read the result in a pane. There are 311 built-in actions of three kinds; the hint line shows one kind at a time, switched by the buttons at its start. With nothing selected, `/quick-actions hint` brings up the hint line, and `/quick-actions <id> [argument]` runs an action by its ID (e.g. `/quick-actions timer 5m`). An action that takes an argument asks for it on an argument screen when pressed on the hint line or in the ⋯ dialog too, and a timer's result has buttons to run it again with the same argument. The actions you use most come first, and you can pin your own to the front in settings; every action, shown on the hint line or not, can be picked from the ⋯ at its end, and its dialog finds one by its ID or name as you type. Labels, messages and answers come in English or Japanese (by default, following Claude Code's language setting and the locale).
 
 ## How it works
 
@@ -10,7 +10,7 @@ There are three kinds of action, and the hint line shows one kind at a time (swi
 
 - **Actions on the selection**, shown as `[icon]`: they run on the text you selected ([the list](#actions-on-the-selection))
 - **Context actions**, shown as `<icon>`: they run on the current conversation itself, with no selected text, in a branch (fork) of it ([the list](#context-actions))
-- **Standalone actions**, shown as `{icon}`: they use neither the selection nor the conversation. Some are worked out inside the plugin (local: timers, a calculator, ID generators); others ask a model (templates, ideas). `/quick-actions <id> <argument>` hands them an argument; with none they run on their default ([the list](#standalone-actions))
+- **Standalone actions**, shown as `{icon}`: they use neither the selection nor the conversation. Some are worked out inside the plugin (local: timers, a calculator, ID generators); others ask a model (templates, ideas). `/quick-actions <id> <argument>`, or the [argument screen](#the-argument-screen) that opens when one is pressed on the hint line or in the ⋯ dialog, hands them an argument; with none they run on their default ([the list](#standalone-actions))
 
 The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `{🧸}`, for one); the `[ ]`, `< >` or `{ }` tells them apart.
 
@@ -21,15 +21,16 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
    - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
    - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
-   - Pressing an action's icon (of any kind) or ✕ hides the icons for that selection (selecting other text brings them back)
+   - Pressing an action's icon (of any kind) or ✕ hides the icons for that selection (selecting other text brings them back). The icon of a standalone action that takes an argument opens its argument screen instead, and the icons go when it runs from there
    - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run), and it tells the plugin nothing when the highlight goes. Clicking away without pressing an icon therefore leaves the icons of the selection in place: press ✕ to close them, or switch to `<context>` or `{standalone}` to use the other kinds
    - Once Claude Code reports no selection (after your next prompt or command, for example), the icons go within about 0.3 seconds. This is for a hint line shown by a selection alone; one opened with `/quick-actions hint` closes as [described below](#opening-the-hint-line-without-a-selection-quick-actions-hint)
 3. Press an icon and the result is added at the top of the "Quick Actions" tab of the right pane (it keeps the newest 20). If you had scrolled the pane down, running an action brings it back to the top (the newest result)
-   - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command ("standalone" when there was none)
+   - A result's heading shows the icon and label, then the quoted selection for an action on the selection, "this conversation" for a context action, and for a standalone action the argument given to the command or on the argument screen ("standalone" when there was none)
    - For an action on a selection inside one transcript row, the row stays highlighted, and the result has "Go to selection" and "Clear highlight" buttons (see [Finding the selection again](#finding-the-selection-again-highlight-and-the-two-buttons))
    - In fullscreen with a terminal at least 110 columns wide the pane docks on the right; narrower, it shows above the prompt
    - The pane always has two tabs, "Quick Actions" (the results) and "Select an action" (the ⋯ dialog), and one Esc closes both (see [The right pane's two tabs](#the-right-panes-two-tabs))
-   - A standalone action pressed on the hint line or in the ⋯ dialog runs with no argument (on its default). To hand it an argument, use `/quick-actions <id> <argument>` (see [Command](#command))
+   - A standalone action that takes an argument (`{⏳}` the timer, say), pressed on the hint line, does not run at once: it opens the pane on its "Select an action" tab, on the action's [argument screen](#the-argument-screen). Enter with the field empty runs it on its default, Enter after typing runs it with what you typed. One that takes no argument (`{🏃}` the stopwatch, say) still runs as soon as it is pressed
+   - Where there is no input field (in the mobile app, for one), there is no argument screen: a press runs the action on its default at once. To hand it an argument there, use `/quick-actions <id> <argument>` (see [Command](#command))
 4. An action not on the hint line is under the ⋯ at its end: it opens the pane on its "Select an action" tab (so does `/quick-actions` without an ID), where typing in the filter finds it (see [The ⋯ dialog and its filter](#the--dialog-and-its-filter))
 
 The selected text itself is not shown on the hint line (so a multi-line selection does not make the line two rows tall).
@@ -80,7 +81,7 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and the legend reads `< > context  { } standalone`
 - The list fills the pane's height, and is laid out again when the terminal is resized (shrunk and grown back, it fills the height again)
 - The list shows the first 64 of the order. When there are more, a line under it says `N more: type in the filter to reach them`: find them with the filter
-- An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation; a standalone action runs with no argument (on its default). The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
+- An action on the selection picked runs on the text that was selected when the dialog opened; a context action runs on the conversation. A standalone action that takes an argument turns the list into its [argument screen](#the-argument-screen); one that takes none runs at once. The result shows in the "Quick Actions" tab, brought to the front; the dialog stays open behind it, keeping that text, with its filter emptied
 - ↑ / ↓ move, Enter runs. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard (it says so, except in the mobile app): click your pick, or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
@@ -129,16 +130,30 @@ No highlight and no buttons are shown, and the action runs as before, when:
 
 Highlighting and the buttons happen inside Claude Code and send nothing.
 
+#### The argument screen
+
+Pick a standalone action that takes an argument in the ⋯ dialog (a built-in whose Argument column in [the list](#standalone-actions) is not "none", or one of your [`customActions`](#customactions) with `target` `none`), from the list or with Enter in the filter, and the dialog turns from the list to that action's argument screen. Pressing its icon on the hint line, or a timer result's Set duration (or the like) button, opens the pane on the "Select an action" tab on this screen too.
+
+- The screen shows the action's icon and label, how to write the argument with examples (e.g. `a duration from 1 second to 24 hours, e.g. 25m, 90s, 1h30m, 5:00; 25 minutes when left out`), what an empty Enter does (`Enter with it empty: run with the default (25m)`, or `Enter with it empty: run with no argument` when there is no default), the field, and Back and Close buttons. The field has the keyboard when it opens
+- **Enter with the field empty** (or "run") runs it on its default; **Enter after typing** runs it with that argument, written as for `/quick-actions <id> <argument>`
+- **An argument written wrong** (`99h` for `timer`, say) runs nothing (and counts no use): the screen shows the same error the command gives, `Invalid argument for timer: 99h (a duration from 1 second to 24 hours, …)`. What you typed stays in the field, so fix it and press Enter. The error stays until the next Enter
+- **Esc** (or Back) goes back to the list running nothing (the filter keeps its text and gets the keyboard back). Esc again on the list closes the whole pane, both tabs. The tab's close mark (×) also goes back to the list first on this screen; the Close button closes the whole pane there and then
+- Running it from the screen turns the tab back to its list (the filter emptied, the text kept) and puts the result at the top of the "Quick Actions" tab, brought to the front, headed by the argument typed ("standalone" when the field was empty). Opened from the hint line, the run hides that selection's icons, and closes a hint line `/quick-actions hint` opened
+- **Where there is no input field** (in the mobile app, for one) there is no argument screen: picking (or pressing) the action runs it on its default at once, as before
+
 ### Actions that run over time
 
 `timer`, `stopwatch`, `pomodoro`, `countdown-to`, `breathing` and `eye-rest` do not answer at once: their result in the pane changes as time goes by (see [Timers](#timers)).
 
 - The time left or gone by shows in the result, with a Stop button under it. Pressing it stops the run there and then, showing `Stopped (after mm:ss)`
+- Once a run has ended or stopped (failed at the limit of runs at once, or stopped by a reload of the plugin, too), these buttons take the Stop button's place
+  - **Again** (all six): runs it once more with the same argument (with none, if it had none), as a new result at the top of the pane, under the same rules as any run (the limit of runs at once and the rest)
+  - **A button to set the argument** (`timer`, `pomodoro`, `countdown-to` and `breathing`, which take one): opens the [argument screen](#the-argument-screen) with the last argument filled in. It is named for the argument: Set duration for `timer`, Set count for `pomodoro`, Set time for `countdown-to`, Choose type for `breathing`. Where there is no input field (in the mobile app, for one) it is not shown, only Again
 - Closing the right pane (Esc, the close mark on either tab, or the Close button: each closes both tabs) stops every run (each shows "Stopped (after …)"). A run also stops when its result is pushed out of the pane's 20, and when the plugin reloads (after a change of settings, say)
 - Up to 5 can run at once. A sixth fails with `Up to 5 can run at once. Stop one, then run this again`
 - A run goes on for 24 hours at most, then stops (`stopwatch` never ends by itself, so it runs until you stop it or for 24 hours)
 - A run that comes to its end says so in a toast (e.g. `⏳ Timer 25:00 is done`). No toast is shown when you stop it, close the pane, or it stops at 24 hours
-- A timer takes its time as an argument, as in `/quick-actions timer 5m`; with none it is 25 minutes. Write `90s`, `5m`, `1h30m`, `5:00` (minutes:seconds), `1:30:00` (hours:minutes:seconds) or a number alone (minutes), from 1 second to 24 hours
+- A timer takes its time as an argument, as in `/quick-actions timer 5m`, or on the argument screen when pressed on the hint line or in the ⋯ dialog; with none (an empty field) it is 25 minutes. Write `90s`, `5m`, `1h30m`, `5:00` (minutes:seconds), `1:30:00` (hours:minutes:seconds) or a number alone (minutes), from 1 second to 24 hours
 
 ### What is sent, and when
 
@@ -148,7 +163,7 @@ What goes out depends on the kind of action and how it runs.
 - **Actions on the selection** (other than local ones): the selected text is sent through Claude Code to the model (the one the session uses, such as the Anthropic API) only when you press an icon or an action in the ⋯ dialog, or run `/quick-actions <id>`. Selecting alone, opening the ⋯ dialog, or running `/quick-actions hint` sends nothing
 - `fork` actions on the selection (💬 Ask Claude and 🧾 Why so?) pass the current conversation to the model along with the selection
 - **Context actions** pass the current conversation (a fork of the session) to the model, and no selected text, when you press one or run `/quick-actions <id>` with its ID. Everything in the conversation so far (your prompts, Claude's answers, tool results and the file contents read into it) goes with it, as for the next turn of the session
-- **Standalone actions that use a model** (of kind `complete` or `subagent`) send the model the action's prompt and the argument alone: neither the selected text nor the conversation (run with text selected, they leave the selection unused and hide its icons). An argument is sent, as written, only when you write it in `/quick-actions <id> <argument>`; without one, an action with a default sends that default (`node` for `gitignore-template`, say), and one without sends no argument
+- **Standalone actions that use a model** (of kind `complete` or `subagent`) send the model the action's prompt and the argument alone: neither the selected text nor the conversation (run with text selected, they leave the selection unused and hide its icons). An argument is sent, as written, only when you write it in `/quick-actions <id> <argument>` or on the argument screen; without one, an action with a default sends that default (`node` for `gitignore-template`, say), and one without sends no argument
 - **Repository surveys** (the seven whose IDs start with `repo-`, such as `repo-overview`) are subagents that read the repository in the working directory with read-only tools (Read / Grep / Glob). What they read goes to the model. They change no file and run no command
 - Only when the display language is detected (`language` is `auto`), the plugin reads Claude Code's `language` setting and the environment variables `LC_ALL`, `LC_MESSAGES` and `LANG`. The values are used to pick the language and nothing else; they are not sent anywhere
 - The selection is passed as the text to work on, not as instructions, but if you select untrusted text (a web page, tool output) the answer can be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). The built-in `complete` actions have no tools, and the built-in `subagent` actions have only read-only tools (Read / Grep / Glob) or the web tools (`WebSearch` / `WebFetch`): none of them can write files or run commands
@@ -361,7 +376,7 @@ It is read again whenever the plugin reloads, like `actions` and `language`: a c
 - **An unknown ID**: nothing runs, and it answers `Unknown action ID: <id> (candidates: …). Run /quick-actions (no ID) to search the list`. The candidates are up to ten actions that the ID matches in the ⋯ dialog's filter, in the order (none are listed when nothing matches)
 - The ID of a `customActions` definition that was ignored runs nothing and says why
 
-A standalone action pressed on the hint line or in the ⋯ dialog runs with no argument (on its default).
+A standalone action that takes an argument, pressed on the hint line or in the ⋯ dialog, asks for it on the [argument screen](#the-argument-screen) (empty: its default). The argument typed there is parsed and checked as this command's is, and one written wrong shows the same error on the screen. Where there is no input field (in the mobile app, for one) there is no screen, and it runs on its default.
 
 When `customActions` has problems, every result of the command (with or without an ID, with nothing selected too) ends with the list of the definitions ignored and why.
 
@@ -686,7 +701,7 @@ They run on the current conversation, with no selected text, as a fork of the se
 
 ### Standalone actions
 
-They use neither the selected text nor the conversation (105 of them). The Argument column says how to write the argument handed with `/quick-actions <id> <argument>`, and the default used without one (as when pressed on the hint line or in the ⋯ dialog); "none" means it takes no argument. For example `/quick-actions timer 5m` (25 minutes with no argument), `/quick-actions date-offset -7`, `/quick-actions password 32`, `/quick-actions gitignore-template python macos`.
+They use neither the selected text nor the conversation (105 of them). The Argument column says how to write the argument handed with `/quick-actions <id> <argument>`, and the default used without one (as when the [argument screen](#the-argument-screen) is run with the field empty, or when pressed on the hint line or in the ⋯ dialog in the mobile app); the argument screen takes the same writing; "none" means it takes no argument. For example `/quick-actions timer 5m` (25 minutes with no argument), `/quick-actions date-offset -7`, `/quick-actions password 32`, `/quick-actions gitignore-template python macos`.
 
 #### Timers
 
@@ -883,7 +898,7 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 
 Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored.
 
-**The argument of an action with `target` `none`**: a custom standalone action takes one optional free-text argument of up to 500 characters (its type and default cannot be defined). The argument written in `/quick-actions <id> <argument>` is passed in `<input>…</input>`: as the user's input for complete, after `task` for subagent. With none (and when pressed on the hint line or in the ⋯ dialog), complete is given only a set line saying there is no input, and subagent `task` alone.
+**The argument of an action with `target` `none`**: a custom standalone action takes one optional free-text argument of up to 500 characters (its type and default cannot be defined). The argument written in `/quick-actions <id> <argument>` is passed in `<input>…</input>`: as the user's input for complete, after `task` for subagent. Pressed on the hint line or in the ⋯ dialog, it asks for the argument on the [argument screen](#the-argument-screen) (with no default, an empty Enter says it runs with no argument, and the field shows "text"), and what is typed there is passed the same way. With none (an empty field, or a press in the mobile app too), complete is given only a set line saying there is no input, and subagent `task` alone.
 
 complete:
 

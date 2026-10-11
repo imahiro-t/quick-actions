@@ -1,6 +1,7 @@
 // The display and answer language: which one the `language` setting picks,
 // and every string the person reads, in both. Nothing here throws.
 
+import type { ArgType } from './args'
 import type { CustomReason } from './custom'
 
 export type Lang = 'ja' | 'en'
@@ -153,6 +154,32 @@ export type Messages = {
   timerLeft: (clock: string) => string
   /** The argument of a custom standalone action, when shown with an invalid one. */
   customArgHint: string
+  /** The ⋯ dialog's argument screen: what Enter with the field empty does, the action's default shown. */
+  argDefault: (value: string) => string
+  /** The same, for an argument with no default (a custom action's free text): it runs with none. */
+  argNoDefault: string
+  /** What Enter in the argument field does, drawn beside it while it has focus. */
+  argSubmit: string
+  /** The argument screen's button back to the list. */
+  argBack: string
+  /** Drawn dim in an empty argument field with no default to show: the kind of argument. */
+  argPlaceholder: (type: ArgType) => string
+  /** The result pane's button that runs a timer (or the like) again with the same argument. */
+  again: string
+  /** The result pane's button that opens the argument screen of a timer (or the like), named by its kind. */
+  setArg: (type: ArgType) => string
+}
+
+/** The kinds of argument by name, as an empty argument field with no default says what it takes. */
+const ARG_TYPE_NAMES: Record<Lang, Record<ArgType, string>> = {
+  ja: { duration: '時間', int: '整数', number: '数値', date: '日付', time: '時刻', choice: '種類', text: 'テキスト' },
+  en: { duration: 'duration', int: 'whole number', number: 'number', date: 'date', time: 'time', choice: 'choice', text: 'text' },
+}
+
+/** The result pane's button to the argument screen, in the words of the kind of argument it asks for. */
+const SET_ARG: Record<Lang, Record<ArgType, string>> = {
+  ja: { duration: '時間を指定', int: '回数を指定', number: '数値を指定', date: '日付を指定', time: '時刻を指定', choice: '種類を指定', text: '引数を指定' },
+  en: { duration: 'Set duration', int: 'Set count', number: 'Set number', date: 'Set date', time: 'Set time', choice: 'Choose type', text: 'Set argument' },
 }
 
 export const MESSAGES: Record<Lang, Messages> = {
@@ -250,6 +277,13 @@ export const MESSAGES: Record<Lang, Messages> = {
     timerFinishedToast: (label, duration) => `⏳ ${label} ${duration} が終了しました`,
     timerLeft: clock => `⏳ ${clock} 残り`,
     customArgHint: '自由テキスト（省略可、500 文字まで）',
+    argDefault: value => `空欄で Enter: 既定値（${value}）で実行`,
+    argNoDefault: '空欄で Enter: 引数なしで実行',
+    argSubmit: '実行',
+    argBack: '戻る',
+    argPlaceholder: type => ARG_TYPE_NAMES.ja[type],
+    again: 'もう一度',
+    setArg: type => SET_ARG.ja[type],
   },
   en: {
     thinking: 'Thinking…',
@@ -345,6 +379,13 @@ export const MESSAGES: Record<Lang, Messages> = {
     timerFinishedToast: (label, duration) => `⏳ ${label} ${duration} is done`,
     timerLeft: clock => `⏳ ${clock} left`,
     customArgHint: 'free text (optional, up to 500 characters)',
+    argDefault: value => `Enter with it empty: run with the default (${value})`,
+    argNoDefault: 'Enter with it empty: run with no argument',
+    argSubmit: 'run',
+    argBack: 'Back',
+    argPlaceholder: type => ARG_TYPE_NAMES.en[type],
+    again: 'Again',
+    setArg: type => SET_ARG.en[type],
   },
 }
 

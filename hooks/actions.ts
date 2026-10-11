@@ -268,6 +268,19 @@ export const isContext = (def: { target?: Target }) => def.target === 'context'
 /** Whether the action is standalone: on neither the selection nor the conversation. */
 export const isStandalone = (def: { target?: Target }) => def.target === 'none'
 
+/**
+ * The argument a standalone action takes, or undefined: none for an action on
+ * the selection or the conversation, nor for a fork (never standalone).
+ */
+export const argSpecOf = <T>(def: { target?: Target; kind: string; arg?: ArgSpec<T> }): ArgSpec<T> | undefined =>
+  isStandalone(def) && def.kind !== 'fork' ? def.arg : undefined
+
+/**
+ * Whether the action is standalone and takes an argument: the hint line and
+ * the ⋯ dialog then ask for it before it runs, where an Input can be drawn.
+ */
+export const takesArg = <T>(def: { target?: Target; kind: string; arg?: ArgSpec<T> }): boolean => argSpecOf(def) !== undefined
+
 /** Whether the action works on selected text (the default when `target` is left out). */
 export const needsSelection = (def: { target?: Target }) => !isContext(def) && !isStandalone(def)
 

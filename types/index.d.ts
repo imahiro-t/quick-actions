@@ -31,14 +31,14 @@ export type Result = {
   text: string
 }
 
+/** The ⋯ dialog's argument screen: the action, what its field holds, the error of the last Enter. */
+export type ArgInput = { action: ActionId; value: string; error?: string }
+
 /**
  * The hint line `/quick-actions hint` opened. `text` is what was selected as
  * the command ran (trimmed), or null with nothing selected; `armed` turns true
  * once a selection made after it opened is seen, whose going then closes it.
  */
-/** The ⋯ dialog's argument screen: the action, what its field holds, the error of the last Enter. */
-export type ArgInput = { action: ActionId; value: string; error?: string }
-
 export type HintState = { text: string | null; armed: boolean }
 
 declare module 'claude-code' {

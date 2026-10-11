@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, PaneCloseOrigin, Register, RenderSurface } from 'claude-code'
+import type { ButtonProps, ElementConstructor, EngineInterface, PaneCloseOrigin, Register, RenderSurface, TextProps } from 'claude-code'
 
 import type { ArgInput, Result } from '../types'
 import {
@@ -85,8 +85,10 @@ const PICKER_ARG_BACK_KEY = '_arg-back'
  * Whether an Input can be drawn here: everywhere the surface's table has one
  * but the mobile app. Without it, the argument screen is never shown and an
  * action that takes an argument runs at once with its default, as before.
+ * A type guard, so where it holds the table's Input can be taken as it is.
  */
-const canInput = (surface: RenderSurface, elements: object) => surface !== 'mobile' && 'Input' in elements
+const canInput = <T extends object>(surface: RenderSurface, elements: T): elements is Extract<T, { Input: unknown }> =>
+  surface !== 'mobile' && 'Input' in elements
 
 // The colours of the result pane and the ⋯ dialog (the `paneTheme` setting)
 // are worked out in ./palette, why they are as they are included. These two
@@ -98,6 +100,26 @@ const painted = (style: PaneStyle) => (style.background === undefined ? {} : { b
 
 /** The Text props of a secondary text: the palette's muted colour, or dimColor as before. */
 const muted = (style: PaneStyle) => (style.muted === undefined ? { dimColor: true } : { color: style.muted })
+
+/**
+ * A button of the result pane or the ⋯ dialog (stop, again, back, close, ...):
+ * as it always was, dimColor when `dim`; with a palette, its label a child
+ * Text in the palette's muted colour (a Button's own label takes no colour).
+ */
+const mutedButton = (
+  { Button, Text }: { Button: ElementConstructor<ButtonProps>; Text: ElementConstructor<TextProps> },
+  style: PaneStyle,
+  key: string,
+  props: ButtonProps & { label: string },
+  dim = false,
+) =>
+  style.background !== undefined ? (
+    <Button key={key} {...props}>
+      <Text color={style.muted}>{props.label}</Text>
+    </Button>
+  ) : (
+    <Button key={key} {...props} {...(dim && { dimColor: true })} />
+  )
 
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
@@ -978,7 +1000,7 @@ export const register: Register = (on, options) => {
     const fixed = style.background !== undefined
     const Select = e.surface !== 'mobile' && !fixed && 'Select' in elements ? elements.Select : undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
-    const Input = canInput(e.surface, elements) && 'Input' in elements ? elements.Input : undefined
+    const Input = canInput(e.surface, elements) ? elements.Input : undefined
     const input = Input !== undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
@@ -992,6 +1014,7 @@ export const register: Register = (on, options) => {
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     // The close button's props; it is drawn dimColor as before, or in the palette's muted colour.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closePicker($) }
+    const closeButton = mutedButton(elements, style, PICKER_CLOSE_KEY, close, true)
 
     const setFilter = (value: string) => update($, picking, p => (p === null ? p : { ...p, filter: value }))
     // Enter in the field: the first action its text leaves, worked out from
@@ -1060,20 +1083,8 @@ export const register: Register = (on, options) => {
           />
           {argState.error !== undefined && <Text color={style.failed}>{argState.error}</Text>}
           <Box flexDirection="row">
-            {fixed ? (
-              <Button key={PICKER_ARG_BACK_KEY} {...back}>
-                <Text color={style.muted}>{t.argBack}</Text>
-              </Button>
-            ) : (
-              <Button key={PICKER_ARG_BACK_KEY} {...back} />
-            )}
-            {fixed ? (
-              <Button key={PICKER_CLOSE_KEY} {...close}>
-                <Text color={style.muted}>{t.pickerClose}</Text>
-              </Button>
-            ) : (
-              <Button key={PICKER_CLOSE_KEY} {...close} dimColor />
-            )}
+            {mutedButton(elements, style, PICKER_ARG_BACK_KEY, back)}
+            {closeButton}
           </Box>
         </Box>
       )
@@ -1098,14 +1109,7 @@ export const register: Register = (on, options) => {
                 void submit(value)
               }}
             />
-            {filter !== '' &&
-              (fixed ? (
-                <Button key={PICKER_FILTER_CLEAR_KEY} {...clear}>
-                  <Text color={style.muted}>{t.pickerFilterClear}</Text>
-                </Button>
-              ) : (
-                <Button key={PICKER_FILTER_CLEAR_KEY} {...clear} />
-              ))}
+            {filter !== '' && mutedButton(elements, style, PICKER_FILTER_CLEAR_KEY, clear)}
           </Box>
         )}
         {state === null ? (
@@ -1142,13 +1146,7 @@ export const register: Register = (on, options) => {
             })}
           </Box>
         )}
-        {fixed ? (
-          <Button key={PICKER_CLOSE_KEY} {...close}>
-            <Text color={style.muted}>{t.pickerClose}</Text>
-          </Button>
-        ) : (
-          <Button key={PICKER_CLOSE_KEY} {...close} dimColor />
-        )}
+        {closeButton}
       </Box>
     )
   })
@@ -1195,7 +1193,6 @@ export const register: Register = (on, options) => {
     const input = canInput(e.surface, paneElements)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
-    const fixed = style.background !== undefined
     /** What the entry's heading says it ran on. */
     const onWhat = (r: Result) => {
       const target = r.target ?? (r.quote === '' ? 'context' : 'selection')
@@ -1211,13 +1208,7 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column">
           <Text color={style.body}>{r.text}</Text>
-          {fixed ? (
-            <Button key={stopKey(r.id)} {...stop}>
-              <Text color={style.muted}>{t.stop}</Text>
-            </Button>
-          ) : (
-            <Button key={stopKey(r.id)} {...stop} />
-          )}
+          {mutedButton(paneElements, style, stopKey(r.id), stop)}
         </Box>
       )
     }
@@ -1253,21 +1244,8 @@ export const register: Register = (on, options) => {
           : undefined
       return (
         <Box flexDirection="row">
-          {fixed ? (
-            <Button key={againKey(r.id)} {...againButton}>
-              <Text color={style.muted}>{t.again}</Text>
-            </Button>
-          ) : (
-            <Button key={againKey(r.id)} {...againButton} />
-          )}
-          {setArg !== undefined &&
-            (fixed ? (
-              <Button key={setArgKey(r.id)} {...setArg}>
-                <Text color={style.muted}>{setArg.label}</Text>
-              </Button>
-            ) : (
-              <Button key={setArgKey(r.id)} {...setArg} />
-            ))}
+          {mutedButton(paneElements, style, againKey(r.id), againButton)}
+          {setArg !== undefined && mutedButton(paneElements, style, setArgKey(r.id), setArg)}
         </Box>
       )
     }

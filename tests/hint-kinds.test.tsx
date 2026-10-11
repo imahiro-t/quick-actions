@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { LEAD_RESERVE, buttonWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from '../hooks/hint-width'
+import { LEAD_RESERVE, buttonWidth, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -17,8 +17,7 @@ import type { Clock, Stage } from './stage'
 // by three buttons at its start ([選択] <会話> {単独}), and opens on the
 // selection's actions when there is text to run on.
 //
-// How many icons follows the line's width: `hintCount` at 80 columns, more in
-// proportion on a wider line, never more than fit. The width is the viewport's
+// How many icons follows the line's width: as many as fit. The width is the viewport's
 // columns as the engine hands them: on the terminal the transcript's column, a
 // docked pane's already off (SELM-00066).
 
@@ -179,7 +178,7 @@ test('✕ and a run put the switch away with the line', async ($, on) => {
 // ---------------------------------------------------------------------------
 // The width
 
-test('wider, more icons: in proportion to hintCount at 80 columns, more than six on a wide terminal', { options: JA }, async ($, on) => {
+test('wider, more icons: as many as fit, more than six on a wide terminal', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -197,18 +196,6 @@ test('wider, more icons: in proportion to hintCount at 80 columns, more than six
   expect(counts[0]).toBe(2)
   for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeGreaterThan(counts[i - 1]!)
   expect(counts.at(-1)!).toBeGreaterThan(6)
-})
-
-test('a small hintCount keeps its proportion: 6 at 160 columns, 9 at 240, never more than fit (2 at 80)', { options: { ...JA, hintCount: '3' } }, async ($, on) => {
-  const clock = mock.clock(on)
-  const s = stage(on)
-  await start($)
-  await select(s, clock, SELECTED)
-  for (const [columns, want] of [[80, 2], [160, 6], [240, 9]] as const) {
-    const band = await mountBand($, columns)
-    expect(await actionCount(band)).toBe(want)
-    await band.unmount()
-  }
 })
 
 for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.en]] as const) {
@@ -318,7 +305,7 @@ test('a pane drawn docked, inline or at any width takes nothing more off the lin
   await pane.unmount()
 })
 
-test('not measured (no viewport): hintCount as it always was', async ($, on) => {
+test('not measured (no viewport): UNMEASURED_COUNT', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -441,15 +428,14 @@ const KIND_CELLS = {
 }
 
 /** What hintLayout gives for a viewport `columns` wide, with `lead` cells beside the buttons, every candidate 9 cells. */
-function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE, hintCount = 6) {
-  const target = hintTarget(hintLineColumns(columns), hintCount)
+function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE) {
+  const line = hintLineColumns(columns, lead)
   return hintLayout({
-    line: hintLineColumns(columns, lead),
-    target,
+    line,
     kindsLabeled: KIND_CELLS[lang],
     kindsMarks: KIND_CELLS.marks,
     ends: buttonWidth('✕') + buttonWidth('⋯'),
-    widths: Array.from({ length: target }, () => 9),
+    widths: Array.from({ length: hintMost(line) }, () => 9),
   })
 }
 
@@ -467,13 +453,13 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     await start($)
     await select(s, clock, SELECTED)
 
-    // Twelve candidates and more (hintTarget at 160 columns), each a single
-    // emoji in its mark (9 cells), so the count is never short of candidates.
-    expect(hintTarget(160, 6)).toBe(12)
+    // Thirteen candidates and more (as many as fit at 160 columns with nothing
+    // off the row), each a single emoji in its mark (9 cells), so the count is
+    // never short of candidates.
     const wide = await mountBand($, 400)
     const icons = (await hintIcons(wide)).slice(0, -2).map(String)
-    expect(icons.length).toBeGreaterThanOrEqual(12)
-    for (const icon of icons) expect(buttonWidth(icon)).toBe(9)
+    expect(icons.length).toBeGreaterThanOrEqual(13)
+    for (const icon of icons.slice(0, 13)) expect(buttonWidth(icon)).toBe(9)
     await wide.unmount()
 
     const table = {
@@ -526,17 +512,6 @@ test('45 columns: no action and no kind button, yet ✕ and ⋯, and ⋯ reaches
   await pickAction(picker, 'explain')
   await picker.unmount()
   expect(s.models.at(-1)?.prompt).toContain(SELECTED)
-})
-
-test('hintCount 1 on 100 columns: the kinds named and one action', { options: { ...JA, hintCount: '1' } }, async ($, on) => {
-  const clock = mock.clock(on)
-  const s = stage(on)
-  await start($)
-  await select(s, clock, SELECTED)
-  const band = await mountBand($, 100)
-  expect(await kindsDrawn(band)).toBe('labeled')
-  expect(await actionCount(band)).toBe(1)
-  await band.unmount()
 })
 
 test('the permission mode\'s room comes off on the terminal and the desktop alike, always', { options: JA }, async ($, on) => {

@@ -19,7 +19,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
 1. Select text in the transcript with the mouse (or, with nothing selected, run [`/quick-actions hint`](#opening-the-hint-line-without-a-selection-quick-actions-hint))
 2. The hint line appears under the prompt: the kind buttons `[selection] <context> {standalone}` first, then the icons of the kind shown, then ✕ and ⋯. Hover over an icon to see its label
    - With a selection it opens on the actions on the selection; with none, on the context actions (see [Switching the kind shown](#switching-the-kind-shown))
-   - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like), up to `hintCount × columns ÷ 80`: 2 on an 80-column line, 3 on 100 and 10 on 160 (see [`hintCount`](#hintcount))
+   - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like): 2 on an 80-column line, 3 on 100 and 10 on 160 (see [How many icons the hint line shows](#how-many-icons-the-hint-line-shows))
    - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
    - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
@@ -44,8 +44,20 @@ The hint line starts with a button per kind: `[selection]`, `<context>` and `{st
 - **Where it opens**: on the actions on the selection when there is text to run on (a selection, or the text `/quick-actions hint` took in), on the context actions otherwise. With no text there is no `[selection]` button
 - **How long a switch holds**: while the line is up. It opens on its starting kind again after a new selection (other text than before), `/quick-actions hint`, ✕, or running an action. Selecting exactly the same text again does not count as a new selection, so the kind you switched to stays
 - **Why the buttons**: Claude Code keeps answering the last selection after its highlight is gone and does not tell the plugin when it goes, so the line cannot tell a selection you can see from one you clicked away. When the actions on the selection are still shown after you clicked away, switch to `<context>` or `{standalone}`
-- **On a narrow line**: when drawn with their names they would leave room for fewer than two actions (or fewer than `hintCount` asks for, when that is less), the buttons are drawn as their marks alone (`[ ]`, `< >`, `{ }`; hover for which), as on an 80-column line. On a line too narrow for even those beside ✕ and ⋯, they are left out and the kind shown stays as it is
+- **On a narrow line**: when drawn with their names they would leave room for fewer than two actions (or fewer than there are, when that is less), the buttons are drawn as their marks alone (`[ ]`, `< >`, `{ }`; hover for which), as on an 80-column line. On a line too narrow for even those beside ✕ and ⋯, they are left out and the kind shown stays as it is
 - **Their names**: screen readers and the desktop app's native buttons read each button by what it shows, the one shown saying so, such as "Actions on the selection (shown)" ("選択範囲へのアクション（表示中）" in Japanese), whatever the button draws
+
+### How many icons the hint line shows
+
+How many actions the hint line shows follows its width; the rest are under the ⋯ at its end.
+
+- **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left, so the line never runs over and no button is split across two rows. When not even one fits, none is; ✕ and ⋯ always stay, and every action can be picked from ⋯. Should the row still be narrower than counted, only the end of the actions is cut: the kind buttons, ✕ and ⋯ stay whole
+- **Each button as drawn**: a button is drawn `[ label ]`, flush against the next, so each counts its label and the four cells of its frame
+- **What that comes to** (with a selection, each icon a single emoji): 2 at 80 columns (the kind buttons as their marks alone), 3 at 100 (4 in English, the kind buttons as their marks) and 10 at 160 (8 in English). At 60 columns, 2 with no kind buttons; at 45, none: only ✕ and ⋯
+- **Beside a docked pane**: while a pane docks on the right (this plugin's or another's), the hint line takes the transcript's width, the pane's taken off
+- **Beside the permission mode**: Claude Code draws the permission mode at the line's left (the one shift+tab cycles: `⏵⏵ auto mode on ·`, `⏵⏵ accept edits on ·`, `⏸ plan mode on ·` and the like), with two columns clear at each side of the row. The plugin cannot tell which mode is up, so 30 cells are always kept for it, enough for the longest, `⏵⏵ bypass permissions on ·`
+- Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
+- Where the width is not known, 6 icons are shown
 
 ### The right pane's two tabs
 
@@ -181,7 +193,7 @@ At the prompt of a Claude Code terminal session, run the following (replace `<ow
 
 1. Answer `y` to `Add marketplace?`
 2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
-3. On the settings screen, set `actions` (the actions to pin to the front; leave it empty for the order of use), `hintCount` (how many the hint line shows on an 80-column line; default 6), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
+3. On the settings screen, set `actions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
 4. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
 
 ## Settings (userConfig)
@@ -221,38 +233,7 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
 - **Your own actions**: the IDs of the valid definitions in [`customActions`](#customactions) can be written here like the built-ins'
 - **Changed and removed IDs**: see [Changed IDs](#changed-ids). An old ID left in the setting is ignored like an unknown one
 - Surrounding spaces and letter case are ignored; an ID written twice is used once, at its first place
-- When more of one kind are pinned than the hint line shows (see [`hintCount`](#hintcount)), it shows the first of them; the rest are under ⋯
-
-### `hintCount`
-
-How many actions the hint line shows on an 80-column line (default `6`); the rest are under the ⋯ at its end. Write a whole number of 1 or more: empty, `0`, a negative number, a fraction or anything not a number counts as the default 6.
-
-The number shown follows the width of the hint line:
-
-- **In proportion to the width, as an upper bound**: `hintCount × columns ÷ 80`, rounded down, at least 1 (with the default 6: 9 at 120 columns, 12 at 160). It is a bound, not the count: only as many as fit are shown
-- **Never more than fit**: icons are counted from the front while they fit on the one row beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left, so the line never runs over and no button is split across two rows. Where they do not fit, fewer are shown; when not even one fits, none is; ✕ and ⋯ always stay, and every action can be picked from ⋯. Should the row still be narrower than counted, only the end of the actions is cut: the kind buttons, ✕ and ⋯ stay whole
-- **Each button as drawn**: a button is drawn `[ label ]`, flush against the next, so each counts its label and the four cells of its frame
-- **What that comes to** (with the default 6, a selection, each icon a single emoji): 2 at 80 columns (the kind buttons as their marks alone), 3 at 100 (4 in English, the kind buttons as their marks) and 10 at 160 (8 in English). At 60 columns, 2 with no kind buttons; at 45, none: only ✕ and ⋯
-- **Beside a docked pane**: while a pane docks on the right (this plugin's or another's), the hint line takes the transcript's width, the pane's taken off
-- **Beside the permission mode**: Claude Code draws the permission mode at the line's left (the one shift+tab cycles: `⏵⏵ auto mode on ·`, `⏵⏵ accept edits on ·`, `⏸ plan mode on ·` and the like), with two columns clear at each side of the row. The plugin cannot tell which mode is up, so 30 cells are always kept for it, enough for the longest, `⏵⏵ bypass permissions on ·`
-- Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
-- Where the width is not known, `hintCount` icons are shown as before
-
-```sh
-echo '{"hintCount":"8"}' | claude plugin configure quick-actions@quick-actions --values-stdin
-```
-
-```json
-{
-  "pluginConfigs": {
-    "quick-actions@quick-actions": {
-      "options": { "actions": "explain,translate-ja", "hintCount": "8" }
-    }
-  }
-}
-```
-
-Like the other settings, a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code.
+- When more of one kind are pinned than the hint line shows (see [How many icons the hint line shows](#how-many-icons-the-hint-line-shows)), it shows the first of them; the rest are under ⋯
 
 ### `language`
 

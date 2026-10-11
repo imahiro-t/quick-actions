@@ -33,8 +33,8 @@ import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { pickerShownCount } from './picker-rows'
-import { buttonWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
-import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
+import { buttonWidth, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
+import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
 import { nextEntryId } from './entries'
@@ -863,9 +863,8 @@ export const register: Register = (on, options) => {
   const problems = custom.problems
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
-  // The pins and the count alone are read here: they do not depend on the language.
+  // The pins alone are read here: they do not depend on the language.
   const pins = parsePins(allSpecs, options.actions)
-  const hintCount = parseHintCount(options.hintCount)
   // Tall enough for every action in the ⋯ dialog, its notice, its legend, its
   // filter field and its button, up to PICKER_MAX_ROWS: with hundreds of
   // actions the pane scrolls rather than asks for more rows than there are.
@@ -899,7 +898,7 @@ export const register: Register = (on, options) => {
   const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
   const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
 
-  /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first hintCount, the hint line's. */
+  /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first that fit, the hint line's. */
   const inOrder = (ids: readonly string[], l: Lang): ActionDef[] => {
     const defs = defsFor(l)
     return ids.flatMap(id => findAction(defs, id) ?? [])
@@ -1082,10 +1081,9 @@ export const register: Register = (on, options) => {
   // only with text. A line left up after the highlight went is still of use:
   // switched to the conversation's or the standalone ones.
   //
-  // How many icons: the `hintCount` setting is the count on an 80-column line;
-  // the line's width (the transcript's column, a docked pane's already off) moves
-  // it in proportion, never past what fits beside the permission mode the
-  // engine draws at the row's left (./hint-width).
+  // How many icons: as many as fit in the line's width (the transcript's
+  // column, a docked pane's already off) beside the permission mode the engine
+  // draws at the row's left (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
     // Not while an AskUserQuestion dialog is up (see the tool.call hook).
@@ -1111,14 +1109,8 @@ export const register: Register = (on, options) => {
     // viewport of 123; taking the dock off again left no room for any action).
     // A change of them, the dock opening or closing, draws the line again.
     const viewport = e.viewport
-    // `width`: the line's, what hintCount is in proportion to; `columns`: that
-    // less the rest of the row (the mode at its left), what the buttons have.
-    let width: number | undefined
-    let columns: number | undefined
-    if (viewport !== undefined) {
-      width = hintLineColumns(viewport.columns)
-      columns = hintLineColumns(viewport.columns, leadFor(e.surface))
-    }
+    // `columns`: the line's less the rest of the row (the mode at its left), what the buttons have.
+    const columns = viewport === undefined ? undefined : hintLineColumns(viewport.columns, leadFor(e.surface))
     const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
     // What each kind button is named, whatever it draws (a desktop's native
     // button and assistive tech read the label, not the drawing): which actions
@@ -1131,10 +1123,9 @@ export const register: Register = (on, options) => {
     const ends = buttonWidth('✕') + buttonWidth('⋯')
     const kindsWidth = (compact: boolean) => kinds.reduce((sum, k) => sum + buttonWidth(kindMark(k, compact)), 0)
     // Widths measured for as many as the line could take at most, not every candidate.
-    const most = width === undefined ? hintCount : hintTarget(width, hintCount)
+    const most = hintMost(columns)
     const layout = hintLayout({
       line: columns,
-      target: most,
       kindsLabeled: kindsWidth(false),
       kindsMarks: kindsWidth(true),
       ends,

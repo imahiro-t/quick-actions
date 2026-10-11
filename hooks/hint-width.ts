@@ -1,11 +1,8 @@
 // How many actions the hint line under the prompt shows, from the width it
 // has: pure functions over plain numbers and strings, nothing here reaches `$`.
 //
-// The `hintCount` setting is the count on an 80-column line. A wider line
-// shows more in proportion (hintCount × columns / 80) and a narrower one fewer,
-// never more than fit beside the kind buttons, ✕ and ⋯, nor more than there
-// are. A person who set a small count keeps that proportion: 3 on 80 columns
-// is 6 on 160, not as many as fit.
+// As many as fit beside the kind buttons, ✕ and ⋯, never more than there
+// are; UNMEASURED_COUNT where the width is not known.
 //
 // The line sits under the prompt, which shares the transcript's column: its
 // width is the viewport's columns as the engine hands them to PromptHint. On
@@ -22,8 +19,7 @@
 // (`⏵⏵ auto mode on ·`, shift+tab cycles it), and the footer keeps two
 // columns clear at each side. No hook says which mode is up, so on the
 // surfaces that draw it LEAD_RESERVE, the widest mode's cells, always comes
-// off what the buttons may take, though not off the width the count is in
-// proportion to. (SessionMode, the footer's dim mode labels such as `focus`,
+// off what the buttons may take. (SessionMode, the footer's dim mode labels such as `focus`,
 // is drawn on the row above, not on this one: seen in a pseudo-terminal.)
 //
 // A button is drawn `[ label ]` on the terminal, flush against the next
@@ -32,8 +28,8 @@
 // the line was given more than it holds, and the row squeezed each button until
 // its closing `]` fell onto a second row, the mode at its left squeezed too).
 
-/** The width the `hintCount` setting is the count for. */
-export const BASE_COLUMNS = 80
+/** How many actions the hint line shows where its width is not known. */
+export const UNMEASURED_COUNT = 6
 
 /** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
 export const BUTTON_FRAME = 4
@@ -156,19 +152,20 @@ export function hintLineColumns(viewportColumns: number, lead = 0): number {
 }
 
 /**
- * How many the `hintCount` setting asks for on a line `columns` wide: in
- * proportion to BASE_COLUMNS, one at least.
+ * How many actions a line `columns` wide could take at most, each a button of
+ * one cell's label (UNMEASURED_COUNT when not measured): the candidates to
+ * measure, not every one of hundreds.
  */
-export function hintTarget(columns: number, hintCount: number): number {
-  return Math.max(1, Math.floor((hintCount * columns) / BASE_COLUMNS))
+export function hintMost(columns: number | undefined): number {
+  return columns === undefined ? UNMEASURED_COUNT : Math.floor(columns / (BUTTON_FRAME + BUTTON_GAP + 1))
 }
 
-/** How many of `widths`, in order, fit in `room`, at most `target`: the first that does not fit ends it. */
-function fitting(room: number, target: number, widths: readonly number[]): number {
+/** How many of `widths`, in order, fit in `room`: the first that does not fit ends it. */
+function fitting(room: number, widths: readonly number[]): number {
   let left = room
   let count = 0
   for (const width of widths) {
-    if (count >= target || width > left) break
+    if (width > left) break
     left -= width
     count++
   }
@@ -181,8 +178,6 @@ export type KindsDrawn = 'labeled' | 'marks' | 'none'
 export type HintLayoutInput = {
   /** The cells the buttons have (hintLineColumns); undefined when not measured. */
   line: number | undefined
-  /** How many actions at most (hintTarget, of the line before the mode comes off; the setting when not measured). */
-  target: number
   /** The kind buttons' cells drawn with their names. */
   kindsLabeled: number
   /** The kind buttons' cells drawn as their marks alone. */
@@ -195,21 +190,21 @@ export type HintLayoutInput = {
 
 /**
  * How the hint line is laid out: the kind buttons with their names while
- * MIN_LABELED_ACTIONS actions (or as many as `target` asks for or there are,
- * when fewer) still fit beside them; else as their marks alone; else, too
- * narrow even for those beside ✕ and ⋯, left out. Then as many actions as fit
- * and `target` asks for, none when not even one does: the buttons are never
+ * MIN_LABELED_ACTIONS actions (or as many as there are, when fewer) still fit
+ * beside them; else as their marks alone; else, too narrow even for those
+ * beside ✕ and ⋯, left out. Then as many actions as fit, none when not even
+ * one does (UNMEASURED_COUNT when not measured): the buttons are never
  * more than the line holds, so none is squeezed onto a second row, and ⋯
  * always stays to reach the rest. Should the estimate still fall short of
  * what is drawn, the row cuts the actions alone (./register PromptHint).
  */
-export function hintLayout({ line, target, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
-  if (line === undefined) return { kinds: 'labeled', count: Math.min(target, widths.length) }
-  const wanted = Math.min(MIN_LABELED_ACTIONS, target, widths.length)
+export function hintLayout({ line, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
+  if (line === undefined) return { kinds: 'labeled', count: Math.min(UNMEASURED_COUNT, widths.length) }
+  const wanted = Math.min(MIN_LABELED_ACTIONS, widths.length)
   if (ends + kindsLabeled <= line) {
-    const count = fitting(line - ends - kindsLabeled, target, widths)
+    const count = fitting(line - ends - kindsLabeled, widths)
     if (count >= wanted) return { kinds: 'labeled', count }
   }
-  if (ends + kindsMarks <= line) return { kinds: 'marks', count: fitting(line - ends - kindsMarks, target, widths) }
-  return { kinds: 'none', count: fitting(line - ends, target, widths) }
+  if (ends + kindsMarks <= line) return { kinds: 'marks', count: fitting(line - ends - kindsMarks, widths) }
+  return { kinds: 'none', count: fitting(line - ends, widths) }
 }

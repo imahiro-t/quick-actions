@@ -12,12 +12,6 @@
       "description": "Comma-separated action IDs to pin at the front of the hint line, in this order (e.g. explain,recap); each kind's pins lead that kind on the line. Actions of any kind can go here: on the selection, on the conversation (context actions, e.g. recap) and standalone actions that use neither (e.g. timer), and the IDs of your customActions too. The other actions follow in the order you use them, and every action is under ⋯. Leave empty for no pins (the first time: explain,recap,translate-ja,decisions,summarize,code,timer first); unknown IDs are ignored.",
       "default": ""
     },
-    "hintCount": {
-      "type": "string",
-      "title": "Hint count",
-      "description": "How many actions the hint line shows on an 80-column line (a whole number of 1 or more; default 6). A wider line shows more in proportion (up to 12 at 160 columns) and a narrower one fewer, never more than fit beside the kind buttons, ✕, ⋯ and the permission mode; the rest are under ⋯. Anything else counts as the default.",
-      "default": "6"
-    },
     "customActions": {
       "type": "string",
       "title": "Custom actions",

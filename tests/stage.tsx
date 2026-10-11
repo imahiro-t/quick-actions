@@ -50,6 +50,9 @@ export const BAND = {
   props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
 } as const
 
+/** A viewport wide enough for every action of a kind on the hint line. */
+export const EVERY_ACTION_FITS = { columns: 10_000, rows: 40, isFullscreen: false } as const
+
 export const PANE = {
   plugin: PLUGIN,
   component: 'Pane',

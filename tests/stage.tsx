@@ -160,6 +160,8 @@ export const PICKER_ROW = '_picker-row-'
 /** The dialog's filter field and the button that empties it. */
 export const PICKER_FILTER = '_filter'
 export const PICKER_FILTER_CLEAR = '_filter-clear'
+/** The dialog's kind buttons above its list are keyed by this and the kind. */
+export const PICKER_KIND = '_picker-kind-'
 
 /** What the helpers below need of a mounted ⋯ dialog. */
 type PickerView = {
@@ -223,6 +225,34 @@ export async function pickAction(picker: PickerView, id: string) {
   if (!listed.includes(id)) throw new Error(`pickAction: "${id}" is not listed after filtering by it; listed: ${listed.join(', ')}`)
   return picker.press({ key: id })
 }
+
+/**
+ * The ⋯ dialog's kind buttons as drawn, in order: each one's kind, its
+ * accessible name (the label), the text it draws, whether it stands out (its drawing a bold
+ * Text), whether it is drawn dim (dimColor, or a Text in `muted` when a
+ * palette is given) and the colour of the Text it draws, if any.
+ */
+export async function pickerKindButtons(picker: PickerView, muted?: string) {
+  const buttons = (await picker.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(PICKER_KIND))
+  return buttons.map(b => {
+    const text = b.children.find(c => typeof c === 'object' && c !== null && (c as { type?: unknown }).type === 'Text') as { props?: Record<string, unknown> } | undefined
+    const color = text?.props?.['color']
+    const drawnOf = (c: unknown): string =>
+      typeof c === 'string' ? c : typeof c === 'object' && c !== null ? ((c as { children?: unknown[] }).children ?? []).map(drawnOf).join('') : ''
+    return {
+      kind: String(b.key).slice(PICKER_KIND.length) as HintKindName,
+      label: String(b.props['label']),
+      drawn: b.children.map(drawnOf).join(''),
+      bold: text?.props?.['bold'] === true,
+      dim: b.props['dimColor'] === true || (muted !== undefined && color === muted),
+      color: typeof color === 'string' ? color : undefined,
+      dimColor: b.props['dimColor'] === true,
+    }
+  })
+}
+
+/** Lists the actions of `kind` alone in the ⋯ dialog (or, pressed again, every kind), as a press on its kind button does. */
+export const showPickerKind = (picker: PickerView, kind: HintKindName) => picker.press({ key: `${PICKER_KIND}${kind}` })
 
 export const PICKER_PANE = {
   ...PANE,

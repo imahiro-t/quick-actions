@@ -5,15 +5,33 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, PICKER_LIST, SURFACES, promptOf, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, SURFACES, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
-// The ⋯ dialog: every action, in the hint line's order, picked with the
+// The ⋯ dialog: every action, the most used first, picked with the
 // keyboard or a click, run on the text selected as it opened (with none, the
 // context actions alone, on the conversation). Opened by the hint line's ⋯
 // and by /quick-actions without an ID.
 
 const MORE = '_more'
+
+// The notice the dialog once drew while it did not hold the keyboard
+// (SELM-00068 took it off): never drawn, focused or not, in either language.
+const OLD_NOTICES = [
+  '入力欄が空のときに ⋯ を押すか /quick-actions を実行すると、キーボードで選べます。クリックでも選べます。',
+  'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.',
+]
+/** Whether any string drawn in `node` (a text, a label) holds a part of the old notice. */
+const holdsNotice = (node: unknown): boolean => {
+  const strings = (n: unknown): string[] => {
+    if (typeof n === 'string') return [n]
+    if (typeof n !== 'object' || n === null) return []
+    const o = n as { props?: Record<string, unknown>; children?: unknown[] }
+    const own = ['label', 'placeholder', 'submitLabel'].flatMap(k => (typeof o.props?.[k] === 'string' ? [String(o.props[k])] : []))
+    return [...own, ...(o.children ?? []).flatMap(strings)]
+  }
+  return strings(node).some(text => OLD_NOTICES.some(notice => text.includes(notice) || (text.length > 20 && notice.includes(text))) || /キーボードで選べます|pick with the keyboard/.test(text))
+}
 
 // Both tabs, as ⋯ and /quick-actions open them (SELM-00050): the results'
 // behind, then the dialog's, shown and asking for the keys; both closing on
@@ -70,7 +88,7 @@ for (const surface of SURFACES) {
     expect(dialog?.columns).toBe(results?.columns)
   })
 
-  test(`[${surface}] the dialog lists every action, custom ones too, in the hint line's order, as marked icon and label`, { options: { ...JA, ...CUSTOM } }, async ($, on) => {
+  test(`[${surface}] the dialog lists every action, custom ones too, in the order of definition while none is used, as marked icon and label`, { options: { ...JA, ...CUSTOM } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -86,20 +104,24 @@ for (const surface of SURFACES) {
     expect(options.length).toBeLessThan(total)
     expect(options.length).toBeGreaterThan(10)
     expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - options.length) })).toBeDefined()
-    // The hint line is the dialog's first few of the kind it shows (on the selection).
-    const onSelection = options.map(o => o.value).filter(v => needsSelection(defs.find(d => d.id === v) ?? {}))
-    expect(onSelection.slice(0, hint.length)).toEqual(hint)
+    // Nothing used yet and nothing pinned: every kind in the order of definition, the
+    // default set not led as on the hint line (SELM-00068), whose actions are all there.
+    expect(options.map(o => o.value)).toEqual(defs.slice(0, options.length).map(d => d.id))
+    expect(hint.length).toBeGreaterThan(0)
+    for (const id of hint) expect(defs.map(d => d.id)).toContain(id)
     for (const o of options) {
       const def = defs.find(d => d.id === o.value)
       if (def !== undefined) expect(o.label).toBe(`${markedIcon(def)} ${def.label}`)
     }
     expect(options.find(o => o.value === 'translate-ja')?.label).toBe('[🌐] 日本語訳')
-    expect(options.find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
     // The custom one is in the list too, past those listed: the filter reaches it.
     expect(options.map(o => o.value)).not.toContain('mine')
     await picker.input({ key: PICKER_FILTER, text: 'mine', kind: 'change' })
     const reached = await listedOptions(picker)
     expect(reached.find(o => o.value === 'mine')?.label).toBe('[🪄] 海賊風の要約')
+    await picker.input({ key: PICKER_FILTER, text: 'recap', kind: 'change' })
+    expect((await listedOptions(picker)).find(o => o.value === 'recap')?.label).toBe('<🧭> 会話の要約')
+    await picker.input({ key: PICKER_FILTER, text: '', kind: 'change' })
     // The filter field above the list takes the focus, so the list does not.
     for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
@@ -209,7 +231,7 @@ test('the close button runs nothing and leaves no text behind', async ($, on) =>
 })
 
 for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
-  test(`[${options.language}] without the keyboard: a line says how, and the close button closes it, running nothing`, { options }, async ($, on) => {
+  test(`[${options.language}] without the keyboard: no line about it (SELM-00068), the list still answers a click, and the close button closes it`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -217,11 +239,14 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     await band.unmount()
 
     const focused = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-    expect(await focused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    expect(holdsNotice(await focused.drawn())).toBe(false)
+    const focusedList = await listedActions(focused)
     await focused.unmount()
 
     const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
-    expect(await unfocused.find({ text: t.pickerNoFocus })).toBeDefined()
+    expect(holdsNotice(await unfocused.drawn())).toBe(false)
+    // The same list, focused or not: no row goes to a notice.
+    expect(await listedActions(unfocused)).toEqual(focusedList)
     expect((await listedActions(unfocused)).length).toBeGreaterThan(0)
     const close = await unfocused.find({ key: PICKER_CLOSE })
     expect(close?.props.label).toBe(t.pickerClose)
@@ -233,7 +258,24 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(s.models).toEqual([])
   })
 
-  test(`[${options.language}] [desktop] without the keyboard, the line says how too`, { options }, async ($, on) => {
+  test(`[${options.language}] [terminal] without the keyboard, a click on the list still runs the action`, { options }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock)
+    await band.unmount()
+
+    const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
+    expect(holdsNotice(await unfocused.drawn())).toBe(false)
+    const first = (await listedActions(unfocused))[0] ?? ''
+    expect(first).not.toBe('')
+    await unfocused.press({ key: first })
+    await unfocused.unmount()
+    expect(s.models).toHaveLength(1)
+    expect(s.shown).toBe(PANE.requestId)
+  })
+
+  test(`[${options.language}] [desktop] without the keyboard, no line about it either`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -241,11 +283,12 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     await band.unmount()
 
     const focused = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop' })
-    expect(await focused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    expect(holdsNotice(await focused.drawn())).toBe(false)
     await focused.unmount()
 
     const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop', props: { ...PICKER_PANE.props, isFocused: false } })
-    expect(await unfocused.find({ text: t.pickerNoFocus })).toBeDefined()
+    expect(holdsNotice(await unfocused.drawn())).toBe(false)
+    expect((await listedActions(unfocused)).length).toBeGreaterThan(0)
     await unfocused.unmount()
   })
 
@@ -257,14 +300,14 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     await band.unmount()
 
     const focused = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
-    expect(await focused.find({ text: t.pickerNoFocus })).toBeUndefined()
+    expect(holdsNotice(await focused.drawn())).toBe(false)
     await focused.unmount()
 
     const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile', props: { ...PICKER_PANE.props, isFocused: false } })
-    expect(await unfocused.find({ text: t.pickerNoFocus })).toBeUndefined()
-    // The rest of the dialog is drawn as usual: the actions' buttons, then Close.
+    expect(holdsNotice(await unfocused.drawn())).toBe(false)
+    // The rest of the dialog is drawn as usual: the kind buttons, the actions' buttons, then Close.
     const labels = (await unfocused.findAll({ type: 'Button' })).map(b => String(b.props.label))
-    expect(labels).toHaveLength(ACTIONS.length + 1)
+    expect(labels).toHaveLength(3 + ACTIONS.length + 1)
     const close = await unfocused.find({ key: PICKER_CLOSE })
     expect(close?.props.label).toBe(t.pickerClose)
     await unfocused.unmount()
@@ -321,8 +364,9 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(free.filter(isContext).length).toBeGreaterThan(0)
     expect(free.filter(isStandalone).map(d => d.id)).toEqual(ACTIONS.filter(isStandalone).map(a => a.id))
     for (const o of listed) expect(o.label.startsWith('<') || o.label.startsWith('{')).toBe(true)
-    // The legend names the kinds listed: no [ ] with no selection.
-    expect(await picker.find({ text: t.pickerLegend(false) })).toBeDefined()
+    // The kind buttons name the kinds listed: no selection's with no selection.
+    expect((await pickerKindButtons(picker)).map(b => b.kind)).toEqual(['context', 'standalone'])
+    expect(await picker.find({ key: `${PICKER_KIND}selection` })).toBeUndefined()
     // Picked, a context action runs on the conversation: a fork with no selection in it.
     await pickAction(picker, 'recap')
     await picker.unmount()
@@ -369,8 +413,8 @@ test('[mobile] the dialog lists every action as a button, and a press runs it', 
   expect(await picker.find({ type: 'Select' })).toBeUndefined()
   const labels = (await picker.findAll({ type: 'Button' })).map(b => String(b.props.label))
   const defs = actionsFor('ja')
-  // Every action, icon and label, then the close button.
-  expect(labels).toHaveLength(ACTIONS.length + 2)
+  // The kind buttons, every action, icon and label, then the close button.
+  expect(labels).toHaveLength(3 + ACTIONS.length + 2)
   expect(labels).toContain('[🪄] 海賊風の要約')
   for (const def of defs) expect(labels).toContain(`${markedIcon(def)} ${def.label}`)
   expect(labels.at(-1)).toBe(MESSAGES.ja.pickerClose)
@@ -478,10 +522,14 @@ test('the close button is a dismiss control', async ($, on) => {
   await picker.unmount()
 })
 
-// Without the keyboard, the notice names the way that needs no pointer.
+// The notice the dialog drew without the keyboard is gone from the messages (SELM-00068).
 for (const lang of ['ja', 'en'] as const) {
-  test(`[${lang}] the notice without the keyboard names /quick-actions`, () => {
-    expect(MESSAGES[lang].pickerNoFocus).toContain('/quick-actions')
+  test(`[${lang}] no message holds the notice without the keyboard any more`, () => {
+    expect('pickerNoFocus' in MESSAGES[lang]).toBe(false)
+    expect('pickerLegend' in MESSAGES[lang]).toBe(false)
+    for (const value of Object.values(MESSAGES[lang])) {
+      if (typeof value === 'string') expect(OLD_NOTICES).not.toContain(value)
+    }
   })
 }
 
@@ -538,9 +586,11 @@ for (const surface of SURFACES) {
       expect((await picker.find({ key: PICKER_FILTER }))?.props.submitLabel).toBe(t.pickerFilterSubmit)
       for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
       expect(await picker.find({ key: PICKER_FILTER_CLEAR })).toBeUndefined()
-      // Drawn after the legend and before the list.
-      const order = (await picker.findAll({})).map(f => (f.key === PICKER_FILTER ? 'field' : String(f.key).startsWith(PICKER_LIST) ? 'list' : f.text === t.pickerLegend(true) ? 'legend' : null)).filter(x => x !== null)
-      expect(order).toEqual(['legend', 'field', 'list'])
+      // Drawn after the kind buttons (where the legend was) and before the list.
+      const order = (await picker.findAll({}))
+        .map(f => (f.key === PICKER_FILTER ? 'field' : String(f.key).startsWith(PICKER_LIST) ? 'list' : String(f.key).startsWith(PICKER_KIND) ? 'kind' : null))
+        .filter(x => x !== null)
+      expect(order).toEqual(['kind', 'kind', 'kind', 'field', 'list'])
       await picker.unmount()
     })
   }
@@ -715,7 +765,7 @@ test('[mobile] no filter field: every action is a button, as before', { options:
   expect(await picker.find({ key: PICKER_FILTER })).toBeUndefined()
   expect(await picker.find({ type: 'Input' })).toBeUndefined()
   expect(await picker.find({ key: PICKER_FILTER_CLEAR })).toBeUndefined()
-  expect((await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE)).toHaveLength(ACTIONS.length)
+  expect((await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE && !String(b.key).startsWith(PICKER_KIND))).toHaveLength(ACTIONS.length)
   await picker.unmount()
 })
 
@@ -729,7 +779,7 @@ for (const surface of SURFACES) {
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
     const actionButtons = async () =>
-      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== PICKER_CLOSE && k !== PICKER_FILTER_CLEAR)
+      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== PICKER_CLOSE && k !== PICKER_FILTER_CLEAR && !k.startsWith(PICKER_KIND))
     expect(await picker.find({ type: 'Select' })).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
     // With the field there, as many as the pane's height holds, as without a palette.
@@ -777,5 +827,178 @@ for (const [count, rows] of [[0, Math.min(ACTIONS.length + 6, 30)], [1, Math.min
     await runCommand($, '')
     expect(s.rows[PICKER]).toBe(Math.min(ACTIONS.length + count + 6, 30))
     expect(s.rows[PICKER]).toBe(rows)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// SELM-00068: the kind buttons above the list, and the list by usage
+
+const DAY = 24 * 60 * 60 * 1000
+const NOW = 1_000 * DAY
+const used = (score: number) => ({ score, at: NOW })
+
+/** The definitions in the language, by ID. */
+const defOf = (lang: 'ja' | 'en', id: string) => actionsFor(lang).find(d => d.id === id)
+
+for (const surface of SURFACES) {
+  for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
+    test(`[${surface}] [${options.language}] the kind buttons: none stands out as it opens; a press lists that kind alone, again every kind`, { options }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      const band = await openByMore($, s, clock, surface)
+      await band.unmount()
+
+      const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+      const all = await listedActions(picker)
+      expect(all).toHaveLength(ACTIONS.length)
+      // Every kind with a text held; drawn as their marks and names, none bold nor dim, none named as shown.
+      const opened = await pickerKindButtons(picker)
+      expect(opened.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
+      expect(opened.map(k => k.drawn)).toEqual([t.pickerKinds.selection, t.pickerKinds.context, t.pickerKinds.standalone])
+      expect(opened.map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
+      expect(opened.map(k => k.label)).toEqual([t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
+      // The field keeps the focus ring as the dialog opens; no kind button takes it.
+      expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
+      for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
+
+      for (const [kind, of] of [['selection', needsSelection], ['context', isContext], ['standalone', isStandalone]] as const) {
+        await showPickerKind(picker, kind)
+        const listed = await listedActions(picker)
+        // That kind alone, every one of it, in the dialog's order.
+        expect(listed).toEqual(all.filter(id => of(defOf(options.language, id) ?? { id: '' } as never)))
+        expect(listed.length).toBeGreaterThan(0)
+        const kinds = await pickerKindButtons(picker)
+        expect(kinds.map(k => [k.kind, k.bold, k.dimColor])).toEqual(
+          (['selection', 'context', 'standalone'] as const).map(k => [k, k === kind, k !== kind]),
+        )
+        expect(kinds.map(k => k.label)).toEqual(
+          (['selection', 'context', 'standalone'] as const).map(k => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])),
+        )
+      }
+      // Pressed again: every kind again, none standing out.
+      await showPickerKind(picker, 'standalone')
+      expect(await listedActions(picker)).toEqual(all)
+      expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
+      // Switched, then the dialog opened afresh: every kind again.
+      await showPickerKind(picker, 'context')
+      await picker.unmount()
+      expect(s.models).toEqual([])
+      const again = await openByMore($, s, clock, surface)
+      await again.unmount()
+      const reopened = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+      expect(await listedActions(reopened)).toEqual(all)
+      expect((await pickerKindButtons(reopened)).map(k => k.bold)).toEqual([false, false, false])
+      await reopened.unmount()
+    })
+  }
+
+  test(`[${surface}] the filter narrows within the kind listed, and Enter runs the first of it`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, surface)
+    await band.unmount()
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+    // 要約 matches actions of several kinds; switched to the conversation's, those alone.
+    await picker.input({ key: PICKER_FILTER, text: '要約', kind: 'change' })
+    const every = await listedActions(picker)
+    expect(every.some(id => needsSelection(defOf('ja', id) ?? ({} as never)))).toBe(true)
+    expect(every.some(id => isContext(defOf('ja', id) ?? ({} as never)))).toBe(true)
+    await showPickerKind(picker, 'context')
+    const narrowed = await listedActions(picker)
+    expect(narrowed).toEqual(every.filter(id => isContext(defOf('ja', id) ?? ({} as never))))
+    // The filter is kept as the kind switches.
+    expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('要約')
+    // Enter: the first of that kind runs (a context action, a fork on the conversation).
+    await picker.input({ key: PICKER_FILTER, text: '要約' })
+    await picker.unmount()
+    expect(s.models).toEqual([])
+    expect(s.forks).toHaveLength(1)
+    expect(Object.keys(s.stored['usage'] as object)).toEqual([narrowed[0]])
+  })
+
+  test(`[${surface}] the kind is kept through a pick, the filter emptied`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, surface)
+    await band.unmount()
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface })
+    await showPickerKind(picker, 'context')
+    await pickAction(picker, 'recap')
+    expect(s.forks).toHaveLength(1)
+    expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('')
+    expect((await pickerKindButtons(picker)).map(k => k.bold)).toEqual([false, true, false])
+    expect((await listedActions(picker)).every(id => isContext(defOf('ja', id) ?? ({} as never)))).toBe(true)
+    await picker.unmount()
+  })
+}
+
+test('a kind left as the selection\'s with no text held lists every kind there is (no selection button)', async ($, on) => {
+  const PICKING = { text: null, filter: '', kind: 'selection' }
+  on('state.get', (_$, e, next) => (e.key === 'picking' ? { value: { value: PICKING, version: 1 } } : next(e)))
+  mock.clock(on)
+  stage(on)
+  await start($)
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.bold, k.dimColor])).toEqual([['context', false, false], ['standalone', false, false]])
+  expect(await listedActions(picker)).toEqual(ACTIONS.filter(a => !needsSelection(a)).map(a => a.id))
+  await picker.unmount()
+})
+
+test('[mobile] the kind buttons above the list; the first action, not a kind button, takes the focus ring with a palette', { options: { ...JA, paneTheme: 'dark' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const band = await openByMore($, s, clock, 'mobile')
+  await band.unmount()
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
+  const kinds = (await picker.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(PICKER_KIND))
+  expect(kinds).toHaveLength(3)
+  for (const k of kinds) expect(k.props.autoFocus).toBeUndefined()
+  const first = (await listedActions(picker))[0]
+  expect((await picker.find({ key: String(first) }))?.props.autoFocus).toBe(true)
+  await showPickerKind(picker, 'standalone')
+  const standalone = await listedActions(picker)
+  expect(standalone.every(id => isStandalone(defOf('ja', id) ?? ({} as never)))).toBe(true)
+  expect((await picker.find({ key: String(standalone[0]) }))?.props.autoFocus).toBe(true)
+  await picker.unmount()
+})
+
+for (const surface of SURFACES) {
+  test(`[${surface}] the list by usage: pins first, then the scores highest first, ties and the unused in the order of definition; the same within a kind`, { options: { ...JA, actions: 'why' } }, async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const s = stage(on, { store: { usage: { 'timer': used(5), 'recap': used(3), 'explain': used(3), 'translate-en': used(1) } } })
+    await start($)
+    const band = await openByMore($, s, clock, surface)
+    await band.unmount()
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+    const scored = ['why', 'timer', 'explain', 'recap', 'translate-en']
+    // As the dialog opens: the pin, then by score (a standalone, a selection and a context action mixed), explain before recap (tied, defined first).
+    const listed = await listedActions(picker)
+    expect(listed.slice(0, 5)).toEqual(scored)
+    expect(listed.slice(5)).toEqual(ACTIONS.map(a => a.id).filter(id => !scored.includes(id)))
+    // Within a kind, the same rule.
+    await showPickerKind(picker, 'selection')
+    expect((await listedActions(picker)).slice(0, 3)).toEqual(['why', 'explain', 'translate-en'])
+    await showPickerKind(picker, 'context')
+    expect((await listedActions(picker))[0]).toBe('recap')
+    await showPickerKind(picker, 'standalone')
+    expect((await listedActions(picker))[0]).toBe('timer')
+    await picker.unmount()
+  })
+
+  test(`[${surface}] nothing used and nothing pinned: the list in the order of definition, the default set not led`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on, { now: NOW })
+    const s = stage(on)
+    await start($)
+    const band = await openByMore($, s, clock, surface)
+    await band.unmount()
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
+    expect(await listedActions(picker)).toEqual(ACTIONS.map(a => a.id))
+    await showPickerKind(picker, 'context')
+    expect(await listedActions(picker)).toEqual(ACTIONS.filter(isContext).map(a => a.id))
+    await picker.unmount()
   })
 }

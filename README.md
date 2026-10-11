@@ -56,6 +56,7 @@ The right pane (above the prompt on a narrow terminal) always opens with two tab
   - Esc pressed at an idle, empty prompt closes the pane too (with both tabs), though the keyboard is at the prompt
   - Closing stops every [action that runs over time](#actions-that-run-over-time). A model call or subagent under way goes on, and its answer lands in "Quick Actions", shown the next time the pane opens
 - On a Claude Code that does not bring a reopened tab to the front, the plugin closes that tab and opens it again to show it, so a tab may close and reopen for a moment
+  - When you run an action from "Select an action" while it has the keyboard (as after picking in its list or typing an argument), Claude Code keeps that tab in front even over a tab opened again, so the plugin closes both tabs and opens them again, "Quick Actions" last, to bring the result to the front. The keyboard goes back to the prompt then: to pick another action, click "Select an action" (or ctrl+x tab), and Esc at an idle, empty prompt closes the pane as usual
 
 ### Opening the hint line without a selection (`/quick-actions hint`)
 

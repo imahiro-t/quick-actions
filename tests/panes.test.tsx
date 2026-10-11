@@ -5,7 +5,7 @@ import { ACTIONS, needsSelection } from '../hooks/actions'
 import { FIXED_ROWS, MIN_SHOWN, buttonLines, linesOf } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The right pane (SELM-00050): always two tabs, "Quick Actions" (the
@@ -117,7 +117,122 @@ test('a tab an open leaves behind the other is closed and opened afresh, so it s
   await pickAction(picker, 'tldr')
   await picker.unmount()
   expect(s.shown).toBe(PANE.requestId)
+  // The dialog's tab held the keys (/quick-actions asked for them), so the
+  // results' tab opened afresh stayed behind it: both were closed and opened
+  // afresh (SELM-00061).
+  expect(s.closed).toEqual([PICKER, PANE.requestId, PANE.requestId, PICKER])
+  expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
+})
+
+// ---------------------------------------------------------------------------
+// A run from the dialog shows the results (SELM-00061)
+//
+// The person picking in the dialog gives its tab the keys (/quick-actions
+// asks for them), and the engine shows a tab opened anew only while no tab
+// holds them: closing the results' tab and opening it afresh left it behind
+// the dialog's. Both tabs are closed then, which hands the keys back to the
+// prompt, and opened afresh, the results' last. The engine reopens an open id
+// without showing it (reopenShows false); a host that shows it needs none of this.
+
+const DIALOG_RUNS = [
+  { id: 'explain', kind: 'selection', running: 'Thinking…' },
+  { id: 'recap', kind: 'context', running: 'Thinking…' },
+  { id: 'stopwatch', kind: 'standalone', running: /🏃/ },
+] as const
+
+for (const reopenShows of [false, true]) {
+  for (const run of DIALOG_RUNS) {
+    test(`[reopen ${reopenShows ? 'shows' : 'retitles'}] a ${run.kind} action picked in the dialog holding the keys: the results' tab shows, the run in it`, { options: EN }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      s.reopenShows = reopenShows
+      await start($)
+      await select(s, clock, SELECTED)
+      await runCommand($, '')
+      expect(s.shown).toBe(PICKER)
+      expect(s.focused).toBe(PICKER)
+
+      let release = () => {}
+      s.hold = new Promise<void>(resolve => (release = resolve))
+      const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+      await picker.input({ key: PICKER_FILTER, text: run.id, kind: 'change' })
+      const picked = pickAction(picker, run.id)
+      // A local action holds on no model: its run is under way once the pick is.
+      if (run.kind === 'standalone') await picked
+      const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+      const texts = (await pane.findAll({ type: 'Text' })).map(t => t.text)
+      expect(texts.some(t => (typeof run.running === 'string' ? t === run.running : run.running.test(t)))).toBe(true)
+      expect(s.shown).toBe(PANE.requestId)
+      expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
+      if (reopenShows) {
+        // The reopen showed it: nothing closed, the keys left with the dialog.
+        expect(s.closed).toEqual([])
+        expect(s.focused).toBe(PICKER)
+      } else {
+        // Both closed and opened afresh, the results' last: the keys back at the prompt.
+        expect(s.closed).toEqual([PANE.requestId, PANE.requestId, PICKER])
+        expect(s.opened.slice(-2).map(o => [o.id, o.focus])).toEqual([[PICKER, undefined], [PANE.requestId, undefined]])
+        expect(s.focused).toBeNull()
+      }
+      release()
+      await picked
+      await pane.unmount()
+      await picker.unmount()
+      expect(s.shown).toBe(PANE.requestId)
+    })
+  }
+}
+
+test('an action that takes an argument, picked in the dialog holding the keys: its argument screen stays shown, and Enter shows the results', { options: EN }, async ($, on) => {
+  mock.clock(on)
+  const s = stage(on)
+  s.reopenShows = false
+  await start($)
+  await runCommand($, '')
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await pickAction(picker, 'timer')
+  // The argument screen, on the dialog's tab, still shown and holding the keys; nothing ran.
+  expect(await picker.find({ key: PICKER_ARG })).toBeDefined()
+  expect(s.shown).toBe(PICKER)
+  expect(s.focused).toBe(PICKER)
+  expect(s.closed).toEqual([])
+  const before = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await before.find({ text: /left$/ })).toBeUndefined()
+  await before.unmount()
+
+  await picker.input({ key: PICKER_ARG, text: '5m' })
+  await picker.unmount()
+  expect(s.shown).toBe(PANE.requestId)
+  expect(s.focused).toBeNull()
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await pane.find({ text: MESSAGES.en.timerLeft('05:00') })).toBeDefined()
+  await pane.unmount()
+})
+
+test('a run from the hint line, the keys at the prompt, reopens no more than the results\' tab', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  s.reopenShows = false
+  await start($)
+  await select(s, clock, SELECTED)
+  await pressOnLine($, 'explain')
+  expect(s.closed).toEqual([])
+  expect(s.shown).toBe(PANE.requestId)
+
+  // /quick-actions: the dialog's tab, reopened once, shows and takes the keys.
+  await runCommand($, '')
+  expect(s.closed).toEqual([PICKER])
+  expect(s.shown).toBe(PICKER)
+  expect(s.focused).toBe(PICKER)
+
+  // The person back at the prompt (ctrl+x tab): a run from the hint line
+  // closes the results' tab alone and opens it afresh, the dialog's left open.
+  s.focused = null
+  await select(s, clock, null)
+  await select(s, clock, 'exit 137')
+  await pressOnLine($, 'summarize')
   expect(s.closed).toEqual([PICKER, PANE.requestId])
+  expect(s.shown).toBe(PANE.requestId)
   expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
 })
 

@@ -336,6 +336,13 @@ export const needsSelection = (def: { target?: Target }) => !isContext(def) && !
 const TEXT_PICTOGRAPH = /^(?=\p{Extended_Pictographic})\P{Emoji_Presentation}$/u
 
 /**
+ * Text-default pictographs left as text: ©, ® and ™ are marks within text, and
+ * a terminal draws them one cell wide as the engine counts them, so VS16 would
+ * only turn them into a two-cell emoji nobody asked for.
+ */
+export const TEXT_MARKS: ReadonlySet<string> = new Set(['\u00A9', '\u00AE', '\u2122'])
+
+/**
  * An icon as drawn: each pictograph that is text by default (🗂, ☀, ✂ without
  * their variation selector) followed by VS16 (U+FE0F), so it is an emoji to
  * the engine as well as to the terminal. The engine counts such a pictograph
@@ -344,7 +351,8 @@ const TEXT_PICTOGRAPH = /^(?=\p{Extended_Pictographic})\P{Emoji_Presentation}$/u
  * `>` was drawn under the glyph (SELM-00058, seen in a pseudo-terminal). With
  * VS16 the engine counts it two and places what follows past it, as it does
  * ⚠️'s. Icons that are emoji by default (🔤, 🀄), or already carry VS16 (or
- * VS15, text asked for), are left as they are.
+ * VS15, text asked for), are left as they are, and so are the marks ©, ® and
+ * ™ (TEXT_MARKS).
  */
 export function emojiIcon(icon: string): string {
   const chars = [...icon]
@@ -352,7 +360,7 @@ export function emojiIcon(icon: string): string {
   chars.forEach((ch, i) => {
     out += ch
     const next = chars[i + 1]
-    if (next !== '\uFE0F' && next !== '\uFE0E' && TEXT_PICTOGRAPH.test(ch)) out += '\uFE0F'
+    if (next !== '\uFE0F' && next !== '\uFE0E' && !TEXT_MARKS.has(ch) && TEXT_PICTOGRAPH.test(ch)) out += '\uFE0F'
   })
   return out
 }

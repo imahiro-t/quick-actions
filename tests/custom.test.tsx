@@ -301,6 +301,22 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
   )
 }
 
+test(
+  'a custom icon of ©, ® or ™ is drawn as the text mark it is, while a text-default pictograph takes VS16',
+  { options: { ...EN, customActions: JSON.stringify([{ ...IDEAS, id: 'legal', icon: '\u00A9' }, { ...IDEAS, id: 'reg', icon: '\u00AE' }, { ...IDEAS, id: 'tm', icon: '\u2122' }, SCOUT]), actions: 'legal,reg,tm,scout' } },
+  async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    s.selected = 'text'
+    await clock.advance(400)
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await showKind(band, 'standalone')
+    expect((await hintIcons(band)).slice(0, 4)).toEqual(['{\u00A9}', '{\u00AE}', '{\u2122}', '{🛰\uFE0F}'])
+    await band.unmount()
+  },
+)
+
 test('parse: only a valid definition takes its ID; a later one with it is then valid', () => {
   const { specs, problems } = parseCustomActions(json([{ ...MINE, model: 'gpt-4' }, MINE]), RESERVED)
   expect(specs.map(s => s.id)).toEqual(['mine'])

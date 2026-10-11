@@ -880,7 +880,7 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 | Field | Required | Kinds | Meaning |
 | --- | --- | --- | --- |
 | `id` | yes | all | The ID written in `actions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button) or `hint` (the command's argument), and not one an earlier custom definition already took |
-| `icon` | yes | all | The icon on the hint line (one emoji) |
+| `icon` | yes | all | The icon on the hint line (one emoji). A symbol that is text by default (☀, ✂, 🗂 and the like) is drawn as an emoji, with VS16 (U+FE0F) added after it, so that it takes the two columns the terminal draws it in; one already followed by VS16 or VS15 is left as written, and so are ©, ® and ™, drawn as the one-column marks they are |
 | `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }` |
 | `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local) |
 | `target` | no | all | What it works on: `selection` (the default, also when empty), `context` (the conversation, with no selected text; `kind` must then be `fork`) or `none` (a standalone action, on neither the selection nor the conversation; `kind` must then be `complete` or `subagent`). It is shown as `[icon]`, `<icon>` or `{icon}` accordingly |

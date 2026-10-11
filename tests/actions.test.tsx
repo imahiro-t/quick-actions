@@ -205,10 +205,16 @@ test('the kept six are unchanged and the new four are defined as planned', () =>
 // side fails here.
 test('translateInto builds translate-ja and translate-en word for word, prompt included', () => {
   expect(ACTIONS.find(a => a.id === 'translate-ja')).toStrictEqual(
-    translateInto('translate-ja', '🌐', { ja: '日本語訳', en: 'To Japanese' }, 'Japanese'),
+    translateInto('translate-ja', '🌐', { ja: '日本語訳', en: 'To Japanese' }, 'Japanese', {
+      ja: '日本語に訳す（コード・識別子・パス・コマンドはそのまま）',
+      en: 'Translates into Japanese (code, identifiers, paths and commands kept as they are)',
+    }),
   )
   expect(ACTIONS.find(a => a.id === 'translate-en')).toStrictEqual(
-    translateInto('translate-en', '🔤', { ja: '英訳', en: 'To English' }, 'English'),
+    translateInto('translate-en', '🔤', { ja: '英訳', en: 'To English' }, 'English', {
+      ja: '英語に訳す（コード・識別子・パス・コマンドはそのまま）',
+      en: 'Translates into English (code, identifiers, paths and commands kept as they are)',
+    }),
   )
 })
 

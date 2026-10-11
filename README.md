@@ -200,7 +200,7 @@ Quick Actions is published in the [imahiro-plugins](https://github.com/imahiro-t
 2. On the settings screen, set `pinActions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
 3. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
 
-The imahiro-plugins marketplace is the main route. This repository still carries its own marketplace (`.claude-plugin/marketplace.json`, named `quick-actions`), so `/plugin marketplace add imahiro-t/quick-actions` followed by `/plugin install quick-actions@quick-actions` installs it directly too; installed that way, the settings key in the examples below is `quick-actions@quick-actions` instead of `quick-actions@imahiro-plugins`.
+The imahiro-plugins marketplace is the main route. This repository still carries its own marketplace (`.claude-plugin/marketplace.json`, named `quick-actions`), so `/plugin marketplace add imahiro-t/quick-actions` followed by `/plugin install quick-actions@quick-actions` installs it directly too; installed that way, the settings key in the examples below is `quick-actions@quick-actions` instead of `quick-actions@imahiro-plugins`. Install it from one of the two marketplaces only: installed from both, its hooks are registered twice and every action runs twice. To switch from one to the other, uninstall the one you have first.
 
 ## Settings (userConfig)
 
@@ -999,7 +999,14 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 2. Tag that commit of `main` with `vX.Y.Z` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
 3. In [imahiro-t/claude-plugins](https://github.com/imahiro-t/claude-plugins), set the `ref` of the `quick-actions` entry in `.claude-plugin/marketplace.json` to the new tag
 4. Run `claude plugin validate .` at the root of claude-plugins, and once it passes, get the change into its `main`
-5. (Optional) Try the install with a temporary configuration directory: `CLAUDE_CONFIG_DIR=$(mktemp -d)` with `claude plugin marketplace add imahiro-t/claude-plugins` and then `claude plugin install quick-actions@imahiro-plugins`
+5. (Optional) Try the install with a temporary configuration directory, using the same directory for every command:
+
+   ```sh
+   TMP=$(mktemp -d)
+   CLAUDE_CONFIG_DIR="$TMP" claude plugin marketplace add imahiro-t/claude-plugins
+   CLAUDE_CONFIG_DIR="$TMP" claude plugin install quick-actions@imahiro-plugins
+   rm -rf "$TMP"
+   ```
 
 Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exists, installing from the marketplace fails, and `claude plugin validate .` does not catch that.
 

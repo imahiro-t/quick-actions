@@ -289,8 +289,35 @@ export const needsSelection = (def: { target?: Target }) => !isContext(def) && !
  * the selection, `<icon>` for one on the conversation, `{icon}` for a
  * standalone one, so the kinds read apart.
  */
-export const markedIcon = (def: { icon: string; target?: Target }) =>
-  isContext(def) ? `<${def.icon}>` : isStandalone(def) ? `{${def.icon}}` : `[${def.icon}]`
+// A pictograph that is drawn as text unless VS16 follows it.
+const TEXT_PICTOGRAPH = /^(?=\p{Extended_Pictographic})\P{Emoji_Presentation}$/u
+
+/**
+ * An icon as drawn: each pictograph that is text by default (🗂, ☀, ✂ without
+ * their variation selector) followed by VS16 (U+FE0F), so it is an emoji to
+ * the engine as well as to the terminal. The engine counts such a pictograph
+ * one cell and writes what follows it in the next, while a terminal draws its
+ * emoji glyph two cells wide, over that next cell: in the ⋯ dialog `<🗂>`'s
+ * `>` was drawn under the glyph (SELM-00058, seen in a pseudo-terminal). With
+ * VS16 the engine counts it two and places what follows past it, as it does
+ * ⚠️'s. Icons that are emoji by default (🔤, 🀄), or already carry VS16 (or
+ * VS15, text asked for), are left as they are.
+ */
+export function emojiIcon(icon: string): string {
+  const chars = [...icon]
+  let out = ''
+  chars.forEach((ch, i) => {
+    out += ch
+    const next = chars[i + 1]
+    if (next !== '\uFE0F' && next !== '\uFE0E' && TEXT_PICTOGRAPH.test(ch)) out += '\uFE0F'
+  })
+  return out
+}
+
+export const markedIcon = (def: { icon: string; target?: Target }) => {
+  const icon = emojiIcon(def.icon)
+  return isContext(def) ? `<${icon}>` : isStandalone(def) ? `{${icon}}` : `[${icon}]`
+}
 
 /**
  * Any value as text, never throwing: String() throws on an object with no
@@ -1695,7 +1722,7 @@ export const ACTIONS: readonly ActionSpec[] = [
     },
     {
       id: 'changed-files',
-      icon: '🗂',
+      icon: '🗂️',
       label: { ja: '変更したファイルとその内容', en: 'Changed files' },
       prompt: conversation(
         'List the files created, changed or deleted in this session, each with a line or two on what changed in it.',

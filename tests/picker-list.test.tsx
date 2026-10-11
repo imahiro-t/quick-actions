@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { FIXED_ROWS, buttonLines, linesOf } from '../hooks/picker-rows'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_LIST, PICKER_PANE, SURFACES, listBox, listedActions, listedCount, listedOptions, pickAction, promptOf, stage, start, storedUsage } from './stage'
+import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_LIST, PICKER_PANE, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pickAction, promptOf, stage, start, storedUsage } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog's list as buttons (SELM-00059): there as the dialog opens, as
@@ -247,3 +247,60 @@ function longActions(count: number) {
     actions: ids.join(','),
   }
 }
+
+// SELM-00058: each row of the list kept whole. A column short of height
+// squeezes its children (flexShrink 1 by default): a label wrapped onto two
+// rows would be drawn on one, its rows over one another.
+for (const surface of SURFACES) {
+  test(`[${surface}] each row of the list is a Box kept whole round its one Button`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await openByMore($, s, clock, surface)
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(12, 30) })
+    const rows = await listRows(picker)
+    expect(rows.length).toBe(await listedCount(picker))
+    for (const row of rows) {
+      expect(row.props.flexShrink).toBe(0)
+      expect(row.children).toHaveLength(1)
+      expect((row.children[0] as { type?: string }).type).toBe('Button')
+    }
+    expect(rows.map(r => String(r.key).slice(PICKER_ROW.length))).toEqual(await listedActions(picker))
+    await picker.unmount()
+  })
+}
+
+/** The ⋯ dialog's Button for translate-en ("[🔤] 英訳"), reached through the filter, and the row round it. */
+async function translateEnRow($: Engine, s: Stage, clock: Clock) {
+  await openByMore($, s, clock)
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  await picker.input({ key: PICKER_FILTER, text: 'translate-en', kind: 'change' })
+  const button = await picker.find({ key: 'translate-en' })
+  const row = (await listRows(picker)).find(r => r.key === `${PICKER_ROW}translate-en`)
+  await picker.unmount()
+  return { button, row }
+}
+
+test('with a palette and without, a row draws the same text: its label, "[🔤] 英訳", in a row kept whole', { options: { ...JA, paneTheme: 'dark' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const { button, row } = await translateEnRow($, s, clock)
+  expect(button?.props.label).toBe('[🔤] 英訳')
+  // The palette's colour on a child Text holding the label alone: nothing before or after it.
+  expect(button?.children).toHaveLength(1)
+  const child = button?.children[0] as { type?: string; children?: unknown[] }
+  expect(child.type).toBe('Text')
+  expect(child.children).toEqual(['[🔤] 英訳'])
+  expect(row?.props.flexShrink).toBe(0)
+})
+
+test('without a palette, the row\'s Button is its label alone, in a row kept whole', { options: { ...JA, paneTheme: 'auto' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const { button, row } = await translateEnRow($, s, clock)
+  expect(button?.props.label).toBe('[🔤] 英訳')
+  expect(button?.children ?? []).toHaveLength(0)
+  expect(row?.props.flexShrink).toBe(0)
+})

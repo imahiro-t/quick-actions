@@ -128,3 +128,18 @@ test('never fewer than three, however short the pane; fewer only when there are 
   expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, labels: short(2), more })).toBe(2)
   expect(pickerShownCount({ bodyRows: 4, bodyColumns: 34, chrome, labels: [], more })).toBe(0)
 })
+
+// SELM-00058: the rows of a label with an emoji, counted word by word as the
+// terminal wraps it (SELM-00059), never as the width over the columns.
+test('labels with an emoji: their rows as wrappedRows counts "[ label ]" a cell narrower', () => {
+  for (const [label, columns, rows] of [
+    ['[🔤] 英訳', 40, 1],
+    ['[🀄] 中国語', 40, 1],
+    ['[🧸] やさしく説明', 40, 1],
+    ['[🔤] 英訳', 12, 2],
+    ['[🔤] To English', 10, 3],
+  ] as const) {
+    expect(buttonLines(label, columns)).toBe(wrappedRows(`[ ${label} ]`, columns - EMOJI_SLACK))
+    expect([label, columns, buttonLines(label, columns)]).toEqual([label, columns, rows])
+  }
+})

@@ -33,7 +33,7 @@ const CONTEXT = [
   { id: 'translate-last', icon: '🌐', ja: '直前の回答を翻訳' },
   { id: 'assumptions', icon: '🧱', ja: '前提・仮定の洗い出し' },
   { id: 'risks', icon: '⚠️', ja: 'リスク・懸念点' },
-  { id: 'changed-files', icon: '🗂', ja: '変更したファイルとその内容' },
+  { id: 'changed-files', icon: '🗂️', ja: '変更したファイルとその内容' },
   { id: 'next-questions', icon: '💭', ja: '次に聞くとよい質問' },
   { id: 'handoff', icon: '📝', ja: '引き継ぎメモ' },
   { id: 'recap-oneline', icon: '🪶', ja: '会話を一行で' },

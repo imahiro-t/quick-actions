@@ -22,10 +22,10 @@
 // "n more" line. Otherwise as many as fit above that line, and never fewer
 // than MIN_SHOWN (when the pane is that short, it scrolls).
 
-import { textWidth } from './hint-width'
+import { BUTTON_FRAME, textWidth } from './hint-width'
 
-/** The cells a button's frame takes beyond its label: `[ ` and ` ]`. */
-export const BUTTON_FRAME = 4
+/** The cells a button's frame takes beyond its label: `[ ` and ` ]` (one constant with the hint line's). */
+export { BUTTON_FRAME }
 
 /** The cells a button is counted narrower than the pane, for an emoji drawn wider than counted. */
 export const EMOJI_SLACK = 1

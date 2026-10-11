@@ -1,6 +1,6 @@
 {
   "name": "quick-actions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Quick Actions: icon actions on the text selected in the Claude Code transcript (translation, explanation, summary, finding the evidence), on the conversation itself (context actions: recap, decisions, next steps, handoff and more) and standalone actions that need neither, shown as { } (a timer, a calculator, a template and more); the hint line shows one kind at a time, switched by the buttons at its start, as many as its width fits. Results and the action list share the right pane as two tabs that one Esc closes, put away while Claude asks a question. Without a selection, /quick-actions hint brings up the hint line and /quick-actions <id> [argument] runs an action by its ID (e.g. /quick-actions timer 5m). The ones you use most come first (pin your own in settings) and every action is under ⋯, in English or Japanese",
   "author": { "name": "Takashi Imahiro" },
   "license": "MIT",

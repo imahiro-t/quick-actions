@@ -17,7 +17,7 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
 1. Select text in the transcript with the mouse (or, with nothing selected, run [`/quick-actions hint`](#opening-the-hint-line-without-a-selection-quick-actions-hint))
 2. The hint line appears under the prompt: the kind buttons `[selection] <context> {standalone}` first, then the icons of the kind shown, then ✕ and ⋯. Hover over an icon to see its label
    - With a selection it opens on the actions on the selection; with none, on the context actions (see [Switching the kind shown](#switching-the-kind-shown))
-   - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like), up to `hintCount × columns ÷ 80`: 2 on an 80-column line, 3 on 100 and 10 on 160 (see [`hintCount`](#hintcount))
+   - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like), up to `hintCount × columns ÷ 80`: 2 on an 80-column line, 4 on 100 and 8 on 160 with the labels in English (3 and 10 in Japanese; see [`hintCount`](#hintcount))
    - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
    - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
@@ -565,7 +565,7 @@ They run on the current conversation, with no selected text, as a fork of the se
 | `translate-last` | 🌐 | Translate last answer | Claude's last answer translated: into English if it is mainly in Japanese, into Japanese otherwise (this target comes before `language`) |
 | `assumptions` | 🧱 | Assumptions | The premises and assumptions the work relies on, marking those not checked |
 | `risks` | ⚠️ | Risks | The risks and concerns of the current approach and changes, most serious first |
-| `changed-files` | 🗂 | Changed files | The files created, changed or deleted in the session and what changed, as far as the conversation shows |
+| `changed-files` | 🗂️ | Changed files | The files created, changed or deleted in the session and what changed, as far as the conversation shows |
 | `next-questions` | 💭 | Questions to ask next | Three to five questions worth asking Claude next |
 | `handoff` | 📝 | Handoff note | A note to hand the work to another person or session: goal, status, decisions, work left, caveats |
 

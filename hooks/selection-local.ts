@@ -48,16 +48,19 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // Bidirectional controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to
 // U+2069) and zero-width or invisible format characters (U+200B, U+200C,
 // U+200D, U+2060 to U+2064, the deprecated U+206A to U+206F, U+FEFF, the
-// interlinear annotation marks U+FFF9 to U+FFFB, U+180E) work no terminal, but
-// they disguise what is shown: a host or a token read backwards, a word split
-// where none shows. A decoder's output is there to show what the text holds,
-// so they are escaped the same way (together with the controls, "hidden"
-// characters below). The one exception is a ZWJ (U+200D) inside an emoji
+// interlinear annotation marks U+FFF9 to U+FFFB, the Mongolian vowel
+// separator U+180E, save where kept as below) work no terminal, but they
+// disguise what is shown: a host or a token read backwards, a word split where
+// none shows. A decoder's output is there to show what the text holds, so they
+// are escaped the same way (together with the controls, "hidden" characters
+// below). There are two exceptions. One is a ZWJ (U+200D) inside an emoji
 // sequence (an emoji, at most one U+FE0F or skin tone modifier, the ZWJ, an
 // emoji: man ZWJ woman, white flag U+FE0F ZWJ rainbow): there it only joins
 // the emoji into one, which can disguise nothing, and escaping it would break
-// the emoji. U+180E, the Mongolian vowel separator, is kept likewise between
-// two Mongolian letters, where Mongolian spelling puts it (`keepsMvs`).
+// the emoji. The other is U+180E between two Mongolian letters, or between one
+// free variation selector kept on a letter and the next letter, where
+// Mongolian spelling puts it (`keepsMvs`): escaping it there would break the
+// word's shape.
 //
 // Tag characters (U+E0000 to U+E007F) show as nothing at all, yet each stands
 // for an ASCII character: a whole sentence can ride hidden after a word

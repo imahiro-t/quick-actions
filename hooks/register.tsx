@@ -32,7 +32,7 @@ import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
-import { pickerKindsShown, pickerShownCount } from './picker-rows'
+import { pickerKindLabels, pickerKindsShown, pickerShownCount } from './picker-rows'
 import { buttonWidth, dockReturn, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
 import {
   HINT_KINDS,
@@ -929,8 +929,9 @@ export const register: Register = (on, options) => {
   const pins = parsePins(allSpecs, options.actions)
   const hintCount = parseHintCount(options.hintCount)
   // Tall enough for every action in the ⋯ dialog, its kind buttons, its
-  // filter field and its close button, with rows to spare, up to PICKER_MAX_ROWS: with hundreds of
-  // actions the pane scrolls rather than asks for more rows than there are.
+  // filter field and its close button, with rows to spare, up to
+  // PICKER_MAX_ROWS: with hundreds of actions the pane scrolls rather than
+  // asks for more rows than there are.
   // Both tabs ask for it (see openPanes), so the inline block keeps one height whichever is shown.
   const pickerRows = Math.min(allSpecs.length + 6, PICKER_MAX_ROWS)
   paneRows = pickerRows
@@ -1389,7 +1390,9 @@ export const register: Register = (on, options) => {
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
             chrome: [],
-            buttons: kinds.map(k => t.pickerKinds[k]),
+            // The kind buttons' row, drawn while the dialog is open alone
+            // (not in the redraw as it closes).
+            buttons: state === null ? [] : pickerKindLabels(t, hasSelection),
             labels: shown.map(labelOf),
             more: t.pickerMore,
           })

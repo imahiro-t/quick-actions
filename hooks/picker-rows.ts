@@ -119,13 +119,6 @@ export function pickerKindLabels(t: { pickerKinds: Readonly<Record<HintKind, str
 /** The kinds the ⋯ dialog draws a button for: every kind with text to run on, else all but the selection's. */
 export const pickerKindsShown = (hasSelection: boolean): HintKind[] => HINT_KINDS.filter(k => k !== 'selection' || hasSelection)
 
-/** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
-export function pickerKindRow(t: { pickerKinds: Readonly<Record<HintKind, string>> }, hasSelection: boolean): string {
-  return pickerKindLabels(t, hasSelection)
-    .map(label => `[ ${label} ]`)
-    .join('')
-}
-
 /**
  * The rows a row of buttons labelled `labels` takes at `columns`, wrapped
  * button by button (a Box that wraps its children): as many whole buttons on

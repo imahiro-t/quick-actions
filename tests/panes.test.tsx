@@ -3,11 +3,17 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, needsSelection } from '../hooks/actions'
-import { FIXED_ROWS, MIN_SHOWN, buttonLines, kindRowLines, linesOf, pickerKindLabels, pickerKindRow } from '../hooks/picker-rows'
+import { FIXED_ROWS, MIN_SHOWN, buttonLines, kindRowLines, linesOf, pickerKindLabels } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
 import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
+
+/** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
+const pickerKindRow = (t: (typeof MESSAGES)['en'], hasSelection: boolean): string =>
+  pickerKindLabels(t, hasSelection)
+    .map(label => `[ ${label} ]`)
+    .join('')
 
 // The right pane (SELM-00050): always two tabs, "Quick Actions" (the
 // results) and "Select an action" (the ⋯ dialog), opened together with the

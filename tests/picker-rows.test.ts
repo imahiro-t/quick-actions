@@ -11,10 +11,15 @@ import {
   kindRowLines,
   linesOf,
   pickerKindLabels,
-  pickerKindRow,
   pickerShownCount,
   wrappedRows,
 } from '../hooks/picker-rows'
+
+/** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
+const pickerKindRow = (t: (typeof MESSAGES)['en'], hasSelection: boolean): string =>
+  pickerKindLabels(t, hasSelection)
+    .map(label => `[ ${label} ]`)
+    .join('')
 
 // How many actions the ⋯ dialog lists (SELM-00059): as many buttons as the
 // pane's rows hold once the lines around the list are taken off, each button

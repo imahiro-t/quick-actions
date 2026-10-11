@@ -234,11 +234,11 @@ export function pickerKindFor(chosen: HintKind | undefined, hasSelection: boolea
 
 /**
  * What the ⋯ dialog lists of `order` (pickerOrder), in that order: without a
- * selection, the actions on it left out; with a kind switched to
- * (pickerKindFor), that kind alone. The filter then searches what is left.
+ * selection, the actions on it left out; with a kind (`kind`, as pickerKindFor
+ * gives it: the caller has already dropped the selection's without text),
+ * that kind alone. The filter then searches what is left.
  */
 export function pickerList<D extends { target?: Target }>(order: readonly D[], hasSelection: boolean, kind: HintKind | undefined): D[] {
   const listable = hasSelection ? [...order] : order.filter(d => !needsSelection(d))
-  const shown = pickerKindFor(kind, hasSelection)
-  return shown === undefined ? listable : ofKind(listable, shown)
+  return kind === undefined ? listable : ofKind(listable, kind)
 }

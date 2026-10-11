@@ -403,8 +403,8 @@ test('pickerList: without text the selection\'s left out; a kind switched to, th
   expect(pickerList(order, true, 'selection')[0]?.id).toBe('explain')
   expect(pickerList(order, true, 'context')[0]?.id).toBe('recap')
   expect(pickerList(order, true, 'standalone')[0]?.id).toBe('timer')
-  // The selection's without text: every kind there is (no selection action).
-  expect(ids(pickerList(order, false, 'selection'))).toEqual(ids(order.filter(a => !needsSelection(a))))
+  // The selection's without text: pickerKindFor makes it every kind there is (no selection action).
+  expect(ids(pickerList(order, false, pickerKindFor('selection', false)))).toEqual(ids(order.filter(a => !needsSelection(a))))
   // Not arranged: a context action used most comes before the selection's.
   expect(pickerList(order, true, undefined)[0]?.id).toBe('recap')
   expect(ids(arrange(order, [], true)).indexOf('recap')).toBeGreaterThan(0)

@@ -189,16 +189,18 @@ Claude の質問ダイアログ（AskUserQuestion）が出ている間は、ダ�
 
 ## インストール
 
-Claude Code のターミナルセッションのプロンプトで次を実行します（`<owner>/<repo>` はこのリポジトリを公開した GitHub の `オーナー/リポジトリ名` に置き換えてください）。
+このリポジトリ自身がマーケットプレイス（`.claude-plugin/marketplace.json`。名前は `quick-actions`）になっています。Claude Code のターミナルセッションのプロンプトで次を実行します。
 
 ```
-/plugin install quick-actions --marketplace <owner>/<repo>
+/plugin marketplace add imahiro-t/quick-actions
+/plugin install quick-actions@quick-actions
 ```
 
-1. `Add marketplace?` と聞かれたら `y`
-2. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
-3. 設定画面で `pinActions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
-4. `Installed quick-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
+1. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
+2. 設定画面で `pinActions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
+3. `Installed quick-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
+
+Quick Actions はマーケットプレイス [erin-the-black-plugins](https://github.com/imahiro-t/claude-plugins) にも載っています（そちらから入れた場合、以下の例の設定キーは `quick-actions@quick-actions` ではなく `quick-actions@erin-the-black-plugins` になります）。入れるのはどちらか一方のマーケットプレイスからだけにしてください。両方から入れるとフックが二重に登録され、アクションが二重に動きます。一方からもう一方へ移るときは、先に入っている方をアンインストールしてから入れ直します。
 
 ## 設定（userConfig）
 
@@ -990,6 +992,23 @@ subagent（既定の読み取り専用ツールを明示した例。`tools` に 
 - `ACTIONS` の組み込みアクションを追加・変更したら、`category`（`hooks/catalog.ts` の `CATEGORIES` のいずれかの ID。アクションと同じ種類のもの）と `summary`（上の表と同じ 1 行説明。`{ ja, en }`）を書きます
 - そのうえでリポジトリのルートで `node scripts/gen-catalog.mjs` を実行してデータを再生成し、`docs/actions-data.js` をコミットします。スクリプトには Node 24 以上が必要です（TypeScript のソースをそのまま読み込むため）。asdf なら例えば `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - 再生成を忘れると、`tests/catalog.test.ts`（`claude plugin test .` で実行）が落ちます。カテゴリや説明のない組み込みアクションや、種類の違うカテゴリに入れたアクションがあっても落ちます
+
+## リリース手順
+
+1. `.claude-plugin/plugin.json` の `version` を上げ、`main` にマージする
+2. `main` のそのコミットに `vX.Y.Z` のタグを打って push する（`git tag vX.Y.Z && git push origin vX.Y.Z`）
+3. [imahiro-t/claude-plugins](https://github.com/imahiro-t/claude-plugins) の `.claude-plugin/marketplace.json` で、`quick-actions` エントリの `ref` を新しいタグに更新する
+4. claude-plugins のルートで `claude plugin validate .` を実行し、通ったらその変更を claude-plugins の `main` に反映する
+5. （任意）一時的な設定ディレクトリで erin-the-black-plugins からのインストールを試す。すべてのコマンドで同じディレクトリを使う
+
+   ```sh
+   TMP=$(mktemp -d)
+   CLAUDE_CONFIG_DIR="$TMP" claude plugin marketplace add imahiro-t/claude-plugins
+   CLAUDE_CONFIG_DIR="$TMP" claude plugin install quick-actions@erin-the-black-plugins
+   rm -rf "$TMP"
+   ```
+
+タグの push は、`ref` を claude-plugins の `main` に反映するより先に済ませます。タグが無いあいだは erin-the-black-plugins からのインストールが失敗し、`claude plugin validate .` ではそれを検出できません。
 
 ## 今後の予定
 

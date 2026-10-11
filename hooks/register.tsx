@@ -34,8 +34,8 @@ import type { Frame } from './local'
 import { buttonWidth, COMPACT_BELOW, dockWidth, hintCountFor, hintLineColumns, hintTarget } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
-import { HIGHLIGHT, paneStyle, parsePaneTheme } from './palette'
-import { HIGHLIGHT_ROWS, clearHighlight, highlightedRowsOf, isHighlighted, nextEntryId, sameRows } from './highlight'
+import { paneStyle, parsePaneTheme } from './palette'
+import { nextEntryId } from './entries'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
 import { ARG_KEY, FILTER_KEY, toArgField, toFilterField } from './focus'
@@ -91,10 +91,9 @@ const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
 const DOCK_FROM_COLUMNS = 110
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
-// The two buttons of an entry run on a selection that lies in one transcript
-// row: back to that row, and its highlight off. One of each per entry.
+// The button of an entry run on a selection that lies in one transcript row:
+// back to that row. One per entry.
 const gotoKey = (id: number) => `_goto-${id}`
-const unmarkKey = (id: number) => `_unmark-${id}`
 // A timer's (or the like's) buttons once it no longer runs: again with the
 // same argument, and the argument screen.
 const againKey = (id: number) => `_again-${id}`
@@ -151,7 +150,6 @@ const dismissed = atom({ plugin: 'quick-actions', key: 'dismissed' } as const, n
 const results = atom({ plugin: 'quick-actions', key: 'results' } as const, [])
 const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
 const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
-const highlightedRows = atom({ plugin: 'quick-actions', key: 'highlightedRows' } as const, [])
 const hintKind = atom({ plugin: 'quick-actions', key: 'hintKind' } as const, null)
 const asking = atom({ plugin: 'quick-actions', key: 'asking' } as const, 0)
 
@@ -421,22 +419,6 @@ async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, 
   await startTicker($, lang, id, def.label, now, outcome)
 }
 
-/**
- * Brings `highlightedRows` in line with what `results` says, written only when
- * the rows differ: the transcript rows read it while they draw, so a write of
- * `results` that leaves the rows as they were (a tick, a settle) redraws none.
- * Called after every write that can change the rows (an entry added, and so
- * one pushed out; a highlight cleared) and as a session starts. Read again
- * after a write, should `results` have changed meanwhile.
- */
-async function syncHighlights($: EngineInterface) {
-  for (;;) {
-    const rows = highlightedRowsOf(await read($, results))
-    if (sameRows(await read($, highlightedRows), rows)) return
-    await update($, highlightedRows, () => rows)
-  }
-}
-
 /** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */
 type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'input' | 'origin'>
 
@@ -477,7 +459,6 @@ async function begin($: EngineInterface, def: ActionDef, lang: Lang, head: Entry
     return [result, ...list].slice(0, KEEP)
   })
   nextId = Math.max(nextId, id + 1)
-  await syncHighlights($)
   if (tickers.size > 0) {
     const kept = new Set((await read($, results)).map(r => r.id))
     for (const running of [...tickers.keys()]) if (!kept.has(running)) endTicker(running)
@@ -511,10 +492,10 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // Any run closes the hint line that `/quick-actions hint` opened. A
 // standalone action runs through runStandalone instead, which takes no text.
 // `requestId` is the transcript row the selection lies in, when the engine
-// named one: the entry then keeps it (its origin), highlighted.
+// named one: the entry then keeps it (its origin), to go back to.
 async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string) {
   const context = isContext(def)
-  const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId, highlighted: true }
+  const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId }
   const id = await begin(
     $,
     def,
@@ -955,8 +936,6 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
-    // The rows as the results kept say, should they have been kept without them.
-    await syncHighlights($)
     // The order for this session, from the usage so far.
     await ensureOrder($, orderLoad)
     await $.command.register({
@@ -1468,20 +1447,6 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The transcript row a result's selection lies in, highlighted until that
-  // result's "Clear highlight" (or until it is pushed out of the pane): the
-  // engine's own drawing of the row, untouched, inside a Box of the highlight
-  // colour. A row with no highlight is left to the engine, as it always was.
-  // Closing the pane leaves the highlights alone. It reads highlightedRows
-  // alone, never `results`, so the rows are drawn again only when the
-  // highlighted rows change, not on every write of the results.
-  on('ui.render', { component: HIGHLIGHT_ROWS }, async ($, e, next) => {
-    if (!isHighlighted(await read($, highlightedRows), e)) return next(e)
-    const drawn = await next(e)
-    const { Box } = $.ui.resolve(e)
-    return <Box backgroundColor={HIGHLIGHT}>{drawn}</Box>
-  })
-
   // The person's close of either tab (Escape through closeOnEscape, the close
   // mark, ctrl+x x) closes the whole pane: the other tab with it, every run
   // over time stopped (its entry done, saying how long it ran), the text the
@@ -1532,19 +1497,15 @@ export const register: Register = (on, options) => {
       )
     }
     /**
-     * The buttons of an entry run on a selection in one transcript row: back
+     * The button of an entry run on a selection in one transcript row: back
      * to that row (scrolled to as the answer to the press itself, which is
-     * when the engine moves the transcript), and, while the row shows it, the
-     * entry's highlight off. A refused scroll (the row no longer kept) does nothing.
+     * when the engine moves the transcript). The row is left as the engine
+     * draws it: nothing marks the selection in it (see ./entries). A refused
+     * scroll (the row no longer kept) does nothing.
      */
     const marks = (r: Result, origin: ResultOrigin) => (
       <Box flexDirection="row">
         {paneButton(gotoKey(r.id), t.gotoSelection, () => settleQuietly($.ui.scroll(toRow(origin.requestId))))}
-        {origin.highlighted &&
-          paneButton(unmarkKey(r.id), t.clearHighlight, async () => {
-            await update($, results, list => clearHighlight(list, r.id))
-            await syncHighlights($)
-          })}
       </Box>
     )
 

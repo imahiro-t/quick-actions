@@ -3,8 +3,8 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { MIN_SHOWN, buttonLines, fixedRows, kindRowLines, linesOf, pickerKindLabels } from '../hooks/picker-rows'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_LIST, PICKER_PANE, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, promptOf, stage, start, storedUsage } from './stage'
+import { MIN_SHOWN, buttonLines, fixedRows, kindRowLines, linesOf, pagerWidest, pickerKindLabels } from '../hooks/picker-rows'
+import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_LIST, PICKER_NEXT, PICKER_PANE, PICKER_PREV, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pageShown, pickAction, pickerFixedRows, promptOf, stage, start, storedUsage } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog's list as buttons (SELM-00059): there as the dialog opens, as
@@ -27,11 +27,12 @@ const at = (bodyRows: number, bodyColumns = 60, isFocused = true) => ({ ...PICKE
 
 type Node = { type?: string; props?: { key?: unknown }; children?: unknown[] }
 
-/** The texts of the Text elements drawn outside the list's Box, in document order. */
+/** The texts of the Text elements drawn outside the list's Box and the buttons (a kind button's bold label), in document order. */
 function textsOutsideList(node: unknown): string[] {
   if (typeof node !== 'object' || node === null) return []
   const n = node as Node
   if (n.type === 'Box' && String(n.props?.key ?? '').startsWith(PICKER_LIST)) return []
+  if (n.type === 'Button') return []
   if (n.type === 'Text') return [(n.children ?? []).filter(c => typeof c === 'string').join('')]
   return (n.children ?? []).flatMap(textsOutsideList)
 }
@@ -70,15 +71,13 @@ for (const surface of SURFACES) {
       await openByMore($, s, clock, surface)
       const total = ACTIONS.length
 
-      // Focused, cut short: the "n more" line alone (the kind buttons are buttons, no line).
+      // Focused, cut short: the page buttons' text alone, on the first page (the kind buttons are buttons, no line).
       const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30) })
-      let n = (await listedActions(picker)).length
-      expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerMore(total - n)])
+      expect(pageShown(textsOutsideList(await picker.drawn()), t, total)?.[0]).toBe(1)
       // Without the keyboard: the same, no notice (SELM-00068).
       await picker.redraw(at(30, 60, false))
-      n = (await listedActions(picker)).length
-      expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerMore(total - n)])
-      // Narrowed to a few, all listed: no "n more" line.
+      expect(pageShown(textsOutsideList(await picker.drawn()), t, total)?.[0]).toBe(1)
+      // Narrowed to a few, all listed: no page buttons.
       await picker.redraw(at(30))
       await picker.input({ key: PICKER_FILTER, text: 'translate-zh', kind: 'change' })
       expect((await listedActions(picker)).length).toBeGreaterThan(0)
@@ -98,11 +97,12 @@ for (const surface of SURFACES) {
         expect(line).not.toMatch(/^(Action|アクション)\s*[:：]/)
       }
       expect(await picker.find({ type: 'Select' })).toBeUndefined()
-      // The buttons outside the list are the dialog's own (the kind buttons, Clear, Close).
+      // The buttons outside the list are the dialog's own (the kind buttons, Clear, the page buttons, Close).
       const inList = await listedActions(picker)
       const outside = (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => !inList.includes(k))
-      expect(outside.every(k => k === PICKER_CLOSE || k === PICKER_FILTER_CLEAR || k.startsWith(PICKER_KIND))).toBe(true)
-      expect(outside.filter(k => k.startsWith(PICKER_KIND))).toHaveLength(3)
+      expect(outside.every(k => [PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT].includes(k) || k.startsWith(PICKER_KIND))).toBe(true)
+      expect(outside.filter(k => k.startsWith(PICKER_KIND))).toHaveLength(4)
+      expect(outside.filter(k => k === PICKER_PREV || k === PICKER_NEXT)).toHaveLength(2)
       await picker.unmount()
     })
   }
@@ -113,7 +113,7 @@ for (const surface of SURFACES) {
     await start($)
     await openByMore($, s, clock, surface)
     const rowsUsed = (labels: string[], total: number, columns: number) =>
-      pickerFixedRows(MESSAGES.en, columns) + kindRowLines(pickerKindLabels(MESSAGES.en, true), columns) + linesOf(MESSAGES.en.pickerMore(total - labels.length), columns) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
+      pickerFixedRows(MESSAGES.en, columns) + kindRowLines(pickerKindLabels(MESSAGES.en, true), columns) + linesOf(pagerWidest(MESSAGES.en, total), columns) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30, 34) })
     const listed = await listedOptions(picker)
@@ -121,8 +121,8 @@ for (const surface of SURFACES) {
     expect(listed.slice(0, 3).map(o => o.value)).toEqual(['long-0', 'long-1', 'long-2'])
     for (const o of listed.filter(o => o.value.startsWith('long-'))) expect(buttonLines(o.label, 34)).toBeGreaterThanOrEqual(2)
     expect(rowsUsed(listed.map(o => o.label), ACTIONS.length + 12, 34)).toBeLessThanOrEqual(30)
-    // Fewer than one-row labels would fill: 30 rows less the kind buttons, the "n more" line, the filter row and Close.
-    const oneRowEach = 30 - pickerFixedRows(MESSAGES.en, 34) - kindRowLines(pickerKindLabels(MESSAGES.en, true), 34) - linesOf(MESSAGES.en.pickerMore(1), 34)
+    // Fewer than one-row labels would fill: 30 rows less the kind buttons, the page buttons, the filter row and Close.
+    const oneRowEach = 30 - pickerFixedRows(MESSAGES.en, 34) - kindRowLines(pickerKindLabels(MESSAGES.en, true), 34) - linesOf(pagerWidest(MESSAGES.en, ACTIONS.length + 12), 34)
     expect(listed.length).toBeLessThan(oneRowEach)
     await picker.unmount()
   })
@@ -138,9 +138,9 @@ for (const surface of SURFACES) {
       const t = MESSAGES.en
       const total = ACTIONS.length
       const kinds = pickerKindLabels(t, true)
-      // The kind buttons' row (17, 15 and 18 cells), wrapped button by button, counted a cell
-      // narrower: one row from 51 columns, two from 33, else a button a row.
-      const kindRows: Record<number, number> = { 22: 3, 27: 3, 28: 3, 36: 2, 54: 1, 55: 1, 56: 1 }
+      // The kind buttons' row (7, 17, 15 and 18 cells), wrapped button by button, counted a cell
+      // narrower: one row from 58 columns, two from 34, three from 25, else a button a row.
+      const kindRows: Record<number, number> = { 22: 4, 27: 3, 28: 3, 36: 2, 54: 2, 55: 2, 56: 2, 60: 1 }
       // The whole list, in its order, drawn once with room for all: the order is the usage's
       // alone, the same at every width and focus, so each width's next button is read off it.
       const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(10_000, 54, focused) })
@@ -154,20 +154,21 @@ for (const surface of SURFACES) {
         const n = labels.length
         // The first n of the whole list, in its order.
         expect([columns, labels]).toEqual([columns, all.slice(0, n)])
-        expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerMore(total - n)])
-        const used = (count: number) =>
-          pickerFixedRows(t, columns) + rows + linesOf(t.pickerMore(total - count), columns) + all.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
+        expect(pageShown(textsOutsideList(await picker.drawn()), t, total)?.[0]).toBe(1)
+        const pager = linesOf(pagerWidest(t, total), columns)
+        const used = (count: number) => pickerFixedRows(t, columns) + rows + pager + all.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
         // Within the pane's 30 rows, and filling them: one more button would not fit.
         expect([columns, used(n) <= 30]).toEqual([columns, true])
         expect([columns, used(n) + buttonLines(all[n] ?? '', columns) > 30]).toEqual([columns, true])
         // Where every listed button is one row, the count is exact: 30 less the kind buttons' rows and the rest.
         if (labels.every(l => buttonLines(l, columns) === 1)) {
-          expect([columns, n]).toEqual([columns, 30 - pickerFixedRows(t, columns) - rows - linesOf(t.pickerMore(total - n), columns)])
+          expect([columns, n]).toEqual([columns, 30 - pickerFixedRows(t, columns) - rows - pager])
         }
       }
-      // At 54 the built-in labels are one row each, and so are the filter row and Close: 30 - 2 - 1 - 1 = 26.
-      expect(pickerFixedRows(t, 54)).toBe(2)
-      await picker.redraw(at(30, 54, focused))
+      // At 60 the built-in labels are one row each, and so are the filter row, Close, the kind
+      // buttons and the page buttons: 30 - 2 - 1 - 1 = 26.
+      expect(pickerFixedRows(t, 60)).toBe(2)
+      await picker.redraw(at(30, 60, focused))
       expect((await listedActions(picker)).length).toBe(26)
       await picker.unmount()
     })
@@ -203,11 +204,13 @@ for (const surface of SURFACES) {
           expect([columns, value, fixed > 2]).toEqual([columns, value, true])
           const labels = (await listedOptions(picker)).map(o => o.label)
           const texts = textsOutsideList(await picker.drawn())
-          // Cut short (the "n more" line), with more than MIN_SHOWN listed:
+          // Cut short (the page buttons), with more than MIN_SHOWN listed:
           // the count is the estimate's, not the floor's.
           expect(texts).toHaveLength(1)
           expect(labels.length).toBeGreaterThan(MIN_SHOWN)
-          const used = fixed + kindRowLines(pickerKindLabels(t, true), columns) + texts.reduce((sum, line) => sum + linesOf(line, columns), 0) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
+          // The page buttons' row as counted: at its widest, wrapped as one line.
+          const pager = linesOf(pagerWidest(t, ACTIONS.length), columns)
+          const used = fixed + kindRowLines(pickerKindLabels(t, true), columns) + pager + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
           expect([columns, value, used <= 30]).toEqual([columns, value, true])
         }
       }
@@ -255,7 +258,55 @@ for (const surface of SURFACES) {
   })
 }
 
-test('[mobile] no filter field: every action is listed, with no "n more" line, however short the pane', async ($, on) => {
+for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
+  test(`[${options.language}] the page buttons reach every action without the filter: on, back, round from either end; a filter or kind lists from the first page`, { options }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await openByMore($, s, clock)
+    const total = ACTIONS.length
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: at(30) })
+    const page = async () => pageShown(textsOutsideList(await picker.drawn()), t, total)
+    const [first, pages] = (await page()) ?? [0, 0]
+    expect(first).toBe(1)
+    expect(pages).toBeGreaterThan(2)
+
+    // On through every page: each lists the next actions, none twice, and together all of them.
+    const seen: string[] = []
+    for (let i = 1; i <= pages; i++) {
+      expect(await page()).toEqual([i, pages])
+      const listed = await listedActions(picker)
+      expect(listed.length).toBeGreaterThanOrEqual(MIN_SHOWN)
+      seen.push(...listed)
+      await picker.press({ key: PICKER_NEXT })
+    }
+    expect(seen).toHaveLength(total)
+    expect(new Set(seen).size).toBe(total)
+    expect(seen.slice().sort()).toEqual(ACTIONS.map(a => a.id).sort())
+    // Past the last, round to the first; back from the first, the last.
+    expect(await page()).toEqual([1, pages])
+    expect(await listedActions(picker)).toEqual(seen.slice(0, (await listedActions(picker)).length))
+    await picker.press({ key: PICKER_PREV })
+    expect(await page()).toEqual([pages, pages])
+    expect(await listedActions(picker)).toEqual(seen.slice(total - (await listedActions(picker)).length))
+
+    // A filter lists from its first page; so does a kind.
+    await picker.press({ key: PICKER_PREV })
+    expect(await page()).toEqual([pages - 1, pages])
+    await picker.input({ key: PICKER_FILTER, text: 'a', kind: 'change' })
+    expect((await page())?.[0] ?? 1).toBe(1)
+    await picker.input({ key: PICKER_FILTER, text: '', kind: 'change' })
+    await picker.press({ key: PICKER_NEXT })
+    expect(await page()).toEqual([2, pages])
+    await picker.press({ key: `${PICKER_KIND}context` })
+    const contextCount = ACTIONS.filter(a => a.target === 'context').length
+    expect(pageShown(textsOutsideList(await picker.drawn()), t, contextCount)?.[0]).toBe(1)
+    await picker.unmount()
+    expect(s.models).toEqual([])
+  })
+}
+
+test('[mobile] no filter field: every action is listed, with no page buttons, however short the pane', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

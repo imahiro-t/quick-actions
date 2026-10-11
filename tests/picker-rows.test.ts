@@ -13,6 +13,9 @@ import {
   fixedRows,
   kindRowLines,
   linesOf,
+  pagerRow,
+  pagerWidest,
+  pickerPages,
   pickerKindLabels,
   pickerShownCount,
   wrappedRows,
@@ -29,7 +32,7 @@ const pickerKindRow = (t: (typeof MESSAGES)['en'], hasSelection: boolean): strin
 // pane's rows hold once the lines around the list are taken off, each button
 // and each line wrapped at the pane's columns.
 
-const more = MESSAGES.en.pickerMore
+const more = (count: number) => pagerWidest(MESSAGES.en, count)
 // A sentence of English that wraps as words do (the notice the dialog once
 // drew above its list, kept here as a text to count).
 const SENTENCE = 'Press ⋯ while the prompt is empty, or run /quick-actions, to pick with the keyboard. You can also click one.'
@@ -111,47 +114,78 @@ test('every action fits: all of them, with no "n more" line taken off', () => {
   expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, ...dialog(), chrome: ['x'], buttons, labels: short(17), more })).toBe(15)
 })
 
-test('cut short: the "n more" line is taken off too, then as many as fit', () => {
+test('cut short: the page buttons\' row is taken off too, then as many as fit', () => {
   const chrome: string[] = []
   const buttons = pickerKindLabels(MESSAGES.en, false)
-  // 17 rows left; 18 do not fit, so one row goes to the line: 16.
+  // 17 rows left; 18 do not fit, so one row goes to the page buttons: 16.
   expect(pickerShownCount({ bodyRows: 20, bodyColumns: 60, ...dialog(), chrome, buttons, labels: short(18), more })).toBe(16)
-  // The English line wraps at 34 columns: two rows go to it. So does the English filter row
-  // (38 cells): 20 - 1 (kind buttons) - 3 (filter row and Close) - 2 = 14.
-  expect(linesOf(more(300), 34)).toBe(2)
-  expect(kindRowLines(buttons, 34)).toBe(1)
+  // At 34 columns the English row (33 cells) takes one row, and the kind
+  // buttons (40 cells) and the filter row (38 cells) wrap:
+  // 20 - 2 (kind buttons) - 3 (filter row and Close) - 1 = 14.
+  expect(textWidth(more(300))).toBe(33)
+  expect(linesOf(more(300), 34)).toBe(1)
+  expect(kindRowLines(buttons, 34)).toBe(2)
   expect(fixedRows(34, dialog())).toBe(3)
   expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, ...dialog(), chrome, buttons, labels: short(300), more })).toBe(14)
-  // The Japanese one does not.
-  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, ...dialog(), chrome, buttons, labels: short(300), more: MESSAGES.ja.pickerMore })).toBe(15)
+  // The Japanese one (37 cells) wraps onto two: one fewer.
+  const ja = (count: number) => pagerWidest(MESSAGES.ja, count)
+  expect(linesOf(ja(300), 34)).toBe(2)
+  expect(pickerShownCount({ bodyRows: 20, bodyColumns: 34, ...dialog(), chrome, buttons, labels: short(300), more: ja })).toBe(13)
+})
+
+test('pages: one while every action fits; else each as many as fit above the page buttons, the last the rest', () => {
+  const buttons = pickerKindLabels(MESSAGES.en, false)
+  const input = (labels: readonly string[], bodyRows = 20) => ({ bodyRows, bodyColumns: 60, ...dialog(), chrome: [], buttons, labels, more })
+  expect(pickerPages(input(short(17)))).toEqual([0])
+  expect(pickerPages(input([]))).toEqual([0])
+  // 16 a page, as the first page is counted.
+  expect(pickerShownCount(input(short(40)))).toBe(16)
+  expect(pickerPages(input(short(40)))).toEqual([0, 16, 32])
+  expect(pickerPages(input(short(48)))).toEqual([0, 16, 32])
+  expect(pickerPages(input(short(49)))).toEqual([0, 16, 32, 48])
+  // Never fewer than MIN_SHOWN a page, however short the pane.
+  expect(pickerPages(input(short(10), 4))).toEqual([0, 3, 6, 9])
+  // Long labels wrap: a page holds fewer of them, and never more rows than the first.
+  const long = Array.from({ length: 30 }, (_, i) => `[🌐] Translate this into language number ${i} and then some more words`)
+  const starts = pickerPages({ ...input(long), bodyColumns: 34 })
+  expect(starts[1]).toBe(pickerShownCount({ ...input(long), bodyColumns: 34 }))
+  for (let i = 1; i < starts.length; i++) expect(starts[i]! - starts[i - 1]!).toBeGreaterThanOrEqual(MIN_SHOWN)
+})
+
+test('the page buttons\' row: back, the page of how many and the count, on', () => {
+  expect(pagerRow(MESSAGES.en, 2, 5, 120)).toBe('[ Prev ] 2 / 5 (120) [ Next ]')
+  expect(pagerRow(MESSAGES.ja, 2, 5, 120)).toBe('[ 前へ ] 2 / 5（120 件） [ 次へ ]')
+  expect(pagerWidest(MESSAGES.en, 120)).toBe('[ Prev ] 120 / 120 (120) [ Next ]')
 })
 
 test('the kind buttons: their labels and the row they draw, every kind with text, the selection\'s left out without', () => {
-  expect(pickerKindLabels(MESSAGES.en, true)).toEqual(['[ ] selection', '< > context', '{ } standalone'])
-  expect(pickerKindLabels(MESSAGES.en, false)).toEqual(['< > context', '{ } standalone'])
-  expect(pickerKindLabels(MESSAGES.ja, true)).toEqual(['[ ] 選択', '< > 会話', '{ } 単独'])
-  expect(pickerKindLabels(MESSAGES.ja, false)).toEqual(['< > 会話', '{ } 単独'])
-  expect(pickerKindRow(MESSAGES.en, true)).toBe('[ [ ] selection ][ < > context ][ { } standalone ]')
-  expect(pickerKindRow(MESSAGES.ja, false)).toBe('[ < > 会話 ][ { } 単独 ]')
+  expect(pickerKindLabels(MESSAGES.en, true)).toEqual(['all', '[ ] selection', '< > context', '{ } standalone'])
+  expect(pickerKindLabels(MESSAGES.en, false)).toEqual(['all', '< > context', '{ } standalone'])
+  expect(pickerKindLabels(MESSAGES.ja, true)).toEqual(['全て', '[ ] 選択', '< > 会話', '{ } 単独'])
+  expect(pickerKindLabels(MESSAGES.ja, false)).toEqual(['全て', '< > 会話', '{ } 単独'])
+  expect(pickerKindRow(MESSAGES.en, true)).toBe('[ all ][ [ ] selection ][ < > context ][ { } standalone ]')
+  expect(pickerKindRow(MESSAGES.ja, false)).toBe('[ 全て ][ < > 会話 ][ { } 単独 ]')
 })
 
-test('the kind buttons\' row: one row in a docked pane\'s 56 columns, wrapped button by button when narrower', () => {
+test('the kind buttons\' row: one row in a docked pane\'s 56 columns (two in English with every kind), wrapped button by button when narrower', () => {
   for (const lang of ['en', 'ja'] as const) {
     for (const hasSelection of [true, false]) {
       const labels = pickerKindLabels(MESSAGES[lang], hasSelection)
-      expect([lang, hasSelection, kindRowLines(labels, 56)]).toEqual([lang, hasSelection, 1])
+      // "all" ahead of every English kind makes 57 cells, past the 55 counted.
+      const docked = lang === 'en' && hasSelection ? 2 : 1
+      expect([lang, hasSelection, kindRowLines(labels, 56)]).toEqual([lang, hasSelection, docked])
       // Never fewer rows than the drawn row's width over the columns (a cell kept for an emoji).
       for (let columns = 8; columns <= 80; columns++) {
         expect(kindRowLines(labels, columns)).toBeGreaterThanOrEqual(Math.ceil(textWidth(pickerKindRow(MESSAGES[lang], hasSelection)) / (columns - EMOJI_SLACK)))
       }
     }
   }
-  // The English row with text is 50 cells: at 34 columns, two buttons on the first row, one on the second.
+  // The English row with text is 57 cells: at 34 columns, two buttons on each row.
   const en = pickerKindLabels(MESSAGES.en, true)
-  expect(textWidth(pickerKindRow(MESSAGES.en, true))).toBe(50)
+  expect(textWidth(pickerKindRow(MESSAGES.en, true))).toBe(57)
   expect(kindRowLines(en, 34)).toBe(2)
   // At 20, a button a row: "[ { } standalone ]" is 18 cells, within the 19 counted.
-  expect(kindRowLines(en, 20)).toBe(3)
+  expect(kindRowLines(en, 20)).toBe(4)
   // A button wider than the row takes the rows its own label wraps to.
   expect(kindRowLines(['x'.repeat(30)], 20)).toBe(buttonLines('x'.repeat(30), 20))
   expect(kindRowLines(['ab', 'x'.repeat(30)], 20)).toBe(1 + buttonLines('x'.repeat(30), 20))
@@ -166,7 +200,7 @@ test('the kind buttons\' row is taken off as the rows it wraps to', () => {
   expect(without - withRow).toBe(kindRowLines(buttons, 34))
   expect(without - withRow).toBe(2)
   const docked = pickerShownCount({ bodyRows: 30, bodyColumns: 56, ...dialog(), chrome: [], buttons, labels: short(300), more })
-  expect(pickerShownCount({ bodyRows: 30, bodyColumns: 56, ...dialog(), chrome: [], labels: short(300), more }) - docked).toBe(1)
+  expect(pickerShownCount({ bodyRows: 30, bodyColumns: 56, ...dialog(), chrome: [], labels: short(300), more }) - docked).toBe(kindRowLines(buttons, 56))
 })
 
 test('long labels wrap, so fewer are listed, and the rows they take never pass the pane\'s', () => {
@@ -273,8 +307,8 @@ test('at 28 columns and fewer, every row the dialog takes stays within the pane\
           const buttons = pickerKindLabels(t, hasSelection)
           const fixed = fixedRows(columns, dialog(lang, value)) + kindRowLines(buttons, columns)
           for (let bodyRows = 6; bodyRows <= 40; bodyRows++) {
-            const n = pickerShownCount({ bodyRows, bodyColumns: columns, ...dialog(lang, value), chrome: [], buttons, labels, more: t.pickerMore })
-            const used = fixed + linesOf(t.pickerMore(labels.length - n), columns) + listRows(n)
+            const n = pickerShownCount({ bodyRows, bodyColumns: columns, ...dialog(lang, value), chrome: [], buttons, labels, more: (count: number) => pagerWidest(t, count) })
+            const used = fixed + linesOf(pagerWidest(t, labels.length), columns) + listRows(n)
             // MIN_SHOWN alone holds the count up: the pane is too short for that many, and scrolls.
             if (n === MIN_SHOWN && used > bodyRows) continue
             checked++

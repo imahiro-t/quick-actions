@@ -322,11 +322,11 @@ for (const [options, t] of LANGS) {
     expect(await picker.find({ key: PICKER_ARG })).toBeUndefined()
     expect(await listedActions(picker)).toContain('timer')
     expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('timer')
-    // The kind buttons, no selection's with no text, the standalone one still listed.
+    // The kind buttons, all of them and no selection's with no text, the standalone one still listed.
     const kinds = await pickerKindButtons(picker)
-    expect(kinds.map(k => k.kind)).toEqual(['context', 'standalone'])
-    expect(kinds.map(k => k.bold)).toEqual([false, true])
-    expect(kinds[1]?.label).toBe(t.hintKindShown(t.hintKindTips.standalone))
+    expect(kinds.map(k => k.kind)).toEqual(['all', 'context', 'standalone'])
+    expect(kinds.map(k => k.bold)).toEqual([false, false, true])
+    expect(kinds[2]?.label).toBe(t.hintKindShown(t.hintKindTips.standalone))
     await picker.unmount()
     expect(s.closed).toEqual([])
     ranNothing(s)

@@ -5,7 +5,7 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, SURFACES, promptOf, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, PICKER_NEXT, PICKER_PREV, SURFACES, pageText, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, the most used first, picked with the
@@ -99,11 +99,11 @@ for (const surface of SURFACES) {
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
     const options = await listedOptions(picker)
     const defs = actionsFor('ja')
-    // As many as the pane's height holds, and a line saying how many more the filter reaches.
+    // As many as the pane's height holds, and the page buttons to reach the rest.
     const total = ACTIONS.length + 1
     expect(options.length).toBeLessThan(total)
     expect(options.length).toBeGreaterThan(10)
-    expect(await picker.find({ text: MESSAGES.ja.pickerMore(total - options.length) })).toBeDefined()
+    expect(await picker.find({ key: PICKER_NEXT })).toBeDefined()
     // Nothing used yet and nothing pinned: every kind in the order of definition, the
     // default set not led as on the hint line (SELM-00068), whose actions are all there.
     expect(options.map(o => o.value)).toEqual(defs.slice(0, options.length).map(d => d.id))
@@ -307,7 +307,7 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     expect(holdsNotice(await unfocused.drawn())).toBe(false)
     // The rest of the dialog is drawn as usual: the kind buttons, the actions' buttons, then Close.
     const labels = (await unfocused.findAll({ type: 'Button' })).map(b => String(b.props.label))
-    expect(labels).toHaveLength(3 + ACTIONS.length + 1)
+    expect(labels).toHaveLength(4 + ACTIONS.length + 1)
     const close = await unfocused.find({ key: PICKER_CLOSE })
     expect(close?.props.label).toBe(t.pickerClose)
     await unfocused.unmount()
@@ -353,19 +353,19 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
     const listed = await listedOptions(picker)
     const free = actionsFor(options.language).filter(d => !needsSelection(d))
-    // As many as the pane's height holds; past that, a line saying how many more the filter reaches.
+    // As many as the pane's height holds; past that, the page buttons.
     const ids = free.map(d => d.id)
     for (const o of listed) expect(ids).toContain(o.value)
     expect(listed.length).toBeGreaterThan(0)
     expect(listed.length).toBeLessThanOrEqual(free.length)
     if (free.length > listed.length) {
-      expect(await picker.find({ text: t.pickerMore(free.length - listed.length) })).toBeDefined()
+      expect(await picker.find({ key: PICKER_NEXT })).toBeDefined()
     }
     expect(free.filter(isContext).length).toBeGreaterThan(0)
     expect(free.filter(isStandalone).map(d => d.id)).toEqual(ACTIONS.filter(isStandalone).map(a => a.id))
     for (const o of listed) expect(o.label.startsWith('<') || o.label.startsWith('{')).toBe(true)
     // The kind buttons name the kinds listed: no selection's with no selection.
-    expect((await pickerKindButtons(picker)).map(b => b.kind)).toEqual(['context', 'standalone'])
+    expect((await pickerKindButtons(picker)).map(b => b.kind)).toEqual(['all', 'context', 'standalone'])
     expect(await picker.find({ key: `${PICKER_KIND}selection` })).toBeUndefined()
     // Picked, a context action runs on the conversation: a fork with no selection in it.
     await pickAction(picker, 'recap')
@@ -414,7 +414,7 @@ test('[mobile] the dialog lists every action as a button, and a press runs it', 
   const labels = (await picker.findAll({ type: 'Button' })).map(b => String(b.props.label))
   const defs = actionsFor('ja')
   // The kind buttons, every action, icon and label, then the close button.
-  expect(labels).toHaveLength(3 + ACTIONS.length + 2)
+  expect(labels).toHaveLength(4 + ACTIONS.length + 2)
   expect(labels).toContain('[🪄] 海賊風の要約')
   for (const def of defs) expect(labels).toContain(`${markedIcon(def)} ${def.label}`)
   expect(labels.at(-1)).toBe(MESSAGES.ja.pickerClose)
@@ -590,7 +590,7 @@ for (const surface of SURFACES) {
       const order = (await picker.findAll({}))
         .map(f => (f.key === PICKER_FILTER ? 'field' : String(f.key).startsWith(PICKER_LIST) ? 'list' : String(f.key).startsWith(PICKER_KIND) ? 'kind' : null))
         .filter(x => x !== null)
-      expect(order).toEqual(['kind', 'kind', 'kind', 'field', 'list'])
+      expect(order).toEqual(['kind', 'kind', 'kind', 'kind', 'field', 'list'])
       await picker.unmount()
     })
   }
@@ -779,7 +779,7 @@ for (const surface of SURFACES) {
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
     const actionButtons = async () =>
-      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== PICKER_CLOSE && k !== PICKER_FILTER_CLEAR && !k.startsWith(PICKER_KIND))
+      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => ![PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT].includes(k) && !k.startsWith(PICKER_KIND))
     expect(await picker.find({ type: 'Select' })).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
     // With the field there, as many as the pane's height holds, as without a palette.
@@ -842,22 +842,24 @@ const defOf = (lang: 'ja' | 'en', id: string) => actionsFor(lang).find(d => d.id
 
 for (const surface of SURFACES) {
   for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
-    test(`[${surface}] [${options.language}] the kind buttons: none stands out as it opens; a press lists that kind alone, again every kind`, { options }, async ($, on) => {
+    test(`[${surface}] [${options.language}] the kind buttons: "all" stands out as it opens; a press lists that kind alone, "all" or again every kind`, { options }, async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
       await start($)
       const band = await openByMore($, s, clock, surface)
       await band.unmount()
 
+      const KINDS = ['all', 'selection', 'context', 'standalone'] as const
+      const name = (k: (typeof KINDS)[number]) => (k === 'all' ? t.allActions : t.hintKindTips[k])
       const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
       const all = await listedActions(picker)
       expect(all).toHaveLength(ACTIONS.length)
-      // Every kind with a text held; drawn as their marks and names, none bold nor dim, none named as shown.
+      // "all", then every kind with a text held; drawn as their marks and names, "all" bold and named as shown, the rest dim.
       const opened = await pickerKindButtons(picker)
-      expect(opened.map(k => k.kind)).toEqual(['selection', 'context', 'standalone'])
-      expect(opened.map(k => k.drawn)).toEqual([t.pickerKinds.selection, t.pickerKinds.context, t.pickerKinds.standalone])
-      expect(opened.map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
-      expect(opened.map(k => k.label)).toEqual([t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
+      expect(opened.map(k => k.kind)).toEqual([...KINDS])
+      expect(opened.map(k => k.drawn)).toEqual([t.pickerAll, t.pickerKinds.selection, t.pickerKinds.context, t.pickerKinds.standalone])
+      expect(opened.map(k => [k.bold, k.dimColor])).toEqual([[true, false], [false, true], [false, true], [false, true]])
+      expect(opened.map(k => k.label)).toEqual([t.hintKindShown(t.allActions), t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
       // The field keeps the focus ring as the dialog opens; no kind button takes it.
       expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
       for (const b of await picker.findAll({ type: 'Button' })) expect(b.props.autoFocus).toBeUndefined()
@@ -869,17 +871,21 @@ for (const surface of SURFACES) {
         expect(listed).toEqual(all.filter(id => of(defOf(options.language, id) ?? { id: '' } as never)))
         expect(listed.length).toBeGreaterThan(0)
         const kinds = await pickerKindButtons(picker)
-        expect(kinds.map(k => [k.kind, k.bold, k.dimColor])).toEqual(
-          (['selection', 'context', 'standalone'] as const).map(k => [k, k === kind, k !== kind]),
-        )
-        expect(kinds.map(k => k.label)).toEqual(
-          (['selection', 'context', 'standalone'] as const).map(k => (k === kind ? t.hintKindShown(t.hintKindTips[k]) : t.hintKindTips[k])),
-        )
+        expect(kinds.map(k => [k.kind, k.bold, k.dimColor])).toEqual(KINDS.map(k => [k, k === kind, k !== kind]))
+        expect(kinds.map(k => k.label)).toEqual(KINDS.map(k => (k === kind ? t.hintKindShown(name(k)) : name(k))))
       }
-      // Pressed again: every kind again, none standing out.
+      const everyKind = [[true, false], [false, true], [false, true], [false, true]]
+      // Pressed again: every kind again, "all" standing out.
       await showPickerKind(picker, 'standalone')
       expect(await listedActions(picker)).toEqual(all)
-      expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual([[false, false], [false, false], [false, false]])
+      expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual(everyKind)
+      // "all": every kind, from any kind; pressed again, still every kind.
+      await showPickerKind(picker, 'context')
+      await showPickerKind(picker, 'all')
+      expect(await listedActions(picker)).toEqual(all)
+      expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual(everyKind)
+      await showPickerKind(picker, 'all')
+      expect(await listedActions(picker)).toEqual(all)
       // Switched, then the dialog opened afresh: every kind again.
       await showPickerKind(picker, 'context')
       await picker.unmount()
@@ -888,7 +894,7 @@ for (const surface of SURFACES) {
       await again.unmount()
       const reopened = await $.ui.mount({ ...PICKER_PANE, surface, props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
       expect(await listedActions(reopened)).toEqual(all)
-      expect((await pickerKindButtons(reopened)).map(k => k.bold)).toEqual([false, false, false])
+      expect((await pickerKindButtons(reopened)).map(k => k.bold)).toEqual([true, false, false, false])
       await reopened.unmount()
     })
   }
@@ -929,7 +935,7 @@ for (const surface of SURFACES) {
     await pickAction(picker, 'recap')
     expect(s.forks).toHaveLength(1)
     expect((await picker.find({ key: PICKER_FILTER }))?.props.value).toBe('')
-    expect((await pickerKindButtons(picker)).map(k => k.bold)).toEqual([false, true, false])
+    expect((await pickerKindButtons(picker)).map(k => k.bold)).toEqual([false, false, true, false])
     expect((await listedActions(picker)).every(id => isContext(defOf('ja', id) ?? ({} as never)))).toBe(true)
     await picker.unmount()
   })
@@ -942,7 +948,7 @@ test('a kind left as the selection\'s with no text held lists every kind there i
   stage(on)
   await start($)
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, scroll: { offset: 0, bodyRows: 400 } } })
-  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.bold, k.dimColor])).toEqual([['context', false, false], ['standalone', false, false]])
+  expect((await pickerKindButtons(picker)).map(k => [k.kind, k.bold, k.dimColor])).toEqual([['all', true, false], ['context', false, true], ['standalone', false, true]])
   expect(await listedActions(picker)).toEqual(ACTIONS.filter(a => !needsSelection(a)).map(a => a.id))
   await picker.unmount()
 })
@@ -955,7 +961,7 @@ test('[mobile] the kind buttons above the list; the first action, not a kind but
   await band.unmount()
   const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile' })
   const kinds = (await picker.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(PICKER_KIND))
-  expect(kinds).toHaveLength(3)
+  expect(kinds).toHaveLength(4)
   for (const k of kinds) expect(k.props.autoFocus).toBeUndefined()
   const first = (await listedActions(picker))[0]
   expect((await picker.find({ key: String(first) }))?.props.autoFocus).toBe(true)

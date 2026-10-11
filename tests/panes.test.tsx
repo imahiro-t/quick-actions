@@ -3,10 +3,10 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, needsSelection } from '../hooks/actions'
-import { MIN_SHOWN, buttonLines, kindRowLines, linesOf, pickerKindLabels } from '../hooks/picker-rows'
+import { MIN_SHOWN, buttonLines, kindRowLines, linesOf, pagerWidest, pickerKindLabels } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_NEXT, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 /** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
@@ -59,7 +59,7 @@ test('a run opens both tabs, the results shown; every open asks the same of each
   // A second run opens them again with the same options: none lost on the way.
   await select(s, clock, null)
   await select(s, clock, 'exit 137')
-  await pressOnLine($, 'summarize')
+  await pressOnLine($, 'explain')
   expect(s.opened).toHaveLength(4)
   for (const o of s.opened) {
     expect(o.closeOnEscape).toBe(true)
@@ -237,7 +237,7 @@ test('a run from the hint line, the keys at the prompt, reopens no more than the
   s.focused = null
   await select(s, clock, null)
   await select(s, clock, 'exit 137')
-  await pressOnLine($, 'summarize')
+  await pressOnLine($, 'explain')
   expect(s.closed).toEqual([PICKER, PANE.requestId])
   expect(s.shown).toBe(PANE.requestId)
   expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
@@ -294,14 +294,14 @@ for (const surface of SURFACES) {
     const total = ACTIONS.filter(a => !needsSelection(a)).length
     const props = (bodyRows: number) => ({ ...PICKER_PANE.props, scroll: { offset: 0, bodyRows } })
     // At 60 columns every label is one row: the pane's rows less the kind buttons' row,
-    // the filter row, the close button and the "n more" line.
+    // the filter row, the close button and the page buttons.
     expect(kindRowLines(pickerKindLabels(t, false), 60)).toBe(linesOf(pickerKindRow(t, false), 60))
-    const fits = (bodyRows: number) => bodyRows - pickerFixedRows(t, 60) - kindRowLines(pickerKindLabels(t, false), 60) - linesOf(t.pickerMore(total), 60)
+    const fits = (bodyRows: number) => bodyRows - pickerFixedRows(t, 60) - kindRowLines(pickerKindLabels(t, false), 60) - linesOf(pagerWidest(t, total), 60)
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: props(40) })
     for (const o of await listedOptions(picker)) expect(buttonLines(o.label, 60)).toBe(1)
     expect(await listedCount(picker)).toBe(fits(40))
     expect(await listedActions(picker)).toHaveLength(fits(40))
-    expect(await picker.find({ text: t.pickerMore(total - fits(40)) })).toBeDefined()
+    expect(await picker.find({ key: PICKER_NEXT })).toBeDefined()
     // Shrunk: as many as the rows left hold, never under three.
     await picker.redraw(props(8))
     expect(await listedCount(picker)).toBe(fits(8))

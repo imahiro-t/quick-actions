@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { LEAD_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
+import { LEAD_RESERVE, TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -195,7 +195,8 @@ test('wider, more icons: as many as fit, more than six on a wide terminal', { op
   // Two at 80 columns beside the permission mode, not the six counted before
   // SELM-00058: six never fit once each button's frame is counted.
   expect(counts[0]).toBe(2)
-  for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeGreaterThan(counts[i - 1]!)
+  for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeGreaterThanOrEqual(counts[i - 1]!)
+  expect(counts[2]!).toBeGreaterThan(counts[0]!)
   expect(counts.at(-1)!).toBeGreaterThan(6)
 })
 
@@ -459,7 +460,7 @@ const KIND_CELLS = {
   marks: ['[ ]', '< >', '{ }'].reduce((sum, l) => sum + buttonWidth(l), 0),
 }
 
-/** What hintLayout gives for a viewport `columns` wide, with `lead` cells beside the buttons, every candidate 9 cells. */
+/** What hintLayout gives for a viewport `columns` wide, with `lead` cells beside the buttons, every candidate 9 cells, room kept for the hover label. */
 function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE) {
   const line = hintLineColumns(columns, lead)
   return hintLayout({
@@ -468,6 +469,7 @@ function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE) {
     kindsMarks: KIND_CELLS.marks,
     ends: buttonWidth('✕') + buttonWidth('⋯'),
     widths: Array.from({ length: hintMost(line) }, () => 9),
+    tip: TIP_RESERVE,
   })
 }
 
@@ -495,8 +497,8 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     await wide.unmount()
 
     const table = {
-      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 3], [160, 'labeled', 10]],
-      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 4], [160, 'labeled', 8]],
+      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 2], [160, 'labeled', 7]],
+      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 2], [160, 'labeled', 5]],
     } as const
     for (const [columns, kinds, count] of table[lang]) {
       const band = await mountBand($, columns)

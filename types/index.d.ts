@@ -80,9 +80,10 @@ declare module 'claude-code' {
        * instead of the list: what its field holds, and why the last Enter did
        * not run it (an argument that does not parse); without, the list.
        * `kind`, the kind its kind buttons switched the list to; absent (as it
-       * opens), every kind.
+       * opens, or "all" pressed), every kind. `page`, the page its page
+       * buttons turned the list to, from 0; absent, the first.
        */
-      picking: { text: string | null; requestId?: string; filter: string; arg?: ArgInput; kind?: 'selection' | 'context' | 'standalone' } | null
+      picking: { text: string | null; requestId?: string; filter: string; arg?: ArgInput; kind?: 'selection' | 'context' | 'standalone'; page?: number } | null
       /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
       hint: HintState | null
       /**

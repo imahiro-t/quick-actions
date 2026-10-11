@@ -18,8 +18,9 @@ import type { Clock, Stage } from './stage'
 // selection's actions when there is text to run on.
 //
 // How many icons follows the line's width: `hintCount` at 80 columns, more in
-// proportion on a wider line, never more than fit, the dock of this plugin's
-// pane beside the transcript taken off.
+// proportion on a wider line, never more than fit. The width is the viewport's
+// columns as the engine hands them: on the terminal the transcript's column, a
+// docked pane's already off (SELM-00066).
 
 const SELECTED = 'ECONNREFUSED 127.0.0.1:3306'
 
@@ -45,8 +46,8 @@ async function lineWidth(band: Parameters<typeof hintIcons>[0]) {
 /** How many actions the line shows (its icons, less ✕ and ⋯). */
 const actionCount = async (band: Parameters<typeof hintIcons>[0]) => (await hintIcons(band)).length - 2
 
-/** The cells the line has on a terminal `columns` wide: the permission mode at the row's left (LEAD_RESERVE) taken off. */
-const room = (columns: number, dock = 0) => hintLineColumns(columns, dock, leadFor('terminal'))
+/** The cells the line has on a viewport `columns` wide: the permission mode at the row's left (LEAD_RESERVE) taken off. */
+const room = (columns: number) => hintLineColumns(columns, leadFor('terminal'))
 
 // ---------------------------------------------------------------------------
 // The kinds
@@ -250,50 +251,69 @@ for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.e
   })
 }
 
-test('docked beside the transcript, the pane\'s width comes off the line; closed, the line has it back', async ($, on) => {
+// SELM-00066: with a pane docked, the engine hands PromptHint the transcript's
+// column, the dock already off (seen in a pseudo-terminal: 160, 180 and 200
+// columns with this plugin's pane docked at its body of 56 give 103, 123 and
+// 143). The dock was taken off those again, and the line drew ✕ and ⋯ alone.
+const DOCKED_VIEWPORTS = [[160, 103], [180, 123], [200, 143]] as const
+
+for (const [terminal, viewport] of DOCKED_VIEWPORTS) {
+  test(`docked on ${terminal} columns (a viewport of ${viewport}): at least one action, never more than the line holds; closed, as before`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await select(s, clock, SELECTED)
+
+    // No dock: the whole terminal, as it always was.
+    let band = await mountBand($, terminal, true)
+    const alone = await actionCount(band)
+    expect(alone).toBe(expected(terminal, 'ja').count)
+    // ⋯ opens the tabs, and the pane is drawn docked.
+    await band.press({ key: '_more' })
+    await band.unmount()
+    const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' } })
+
+    // The line drawn on what the engine hands over beside the dock.
+    band = await mountBand($, viewport, true)
+    expect(await actionCount(band)).toBeGreaterThanOrEqual(1)
+    expect(await actionCount(band)).toBe(expected(viewport, 'ja').count)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(viewport - LEAD_RESERVE)
+    expect(await actionCount(band)).toBeLessThan(alone)
+    await band.unmount()
+
+    // Closed: the whole terminal again, the count as before the dock.
+    await pane.press({ key: PICKER_CLOSE })
+    await pane.unmount()
+    band = await mountBand($, terminal, true)
+    expect(await actionCount(band)).toBe(alone)
+    await band.unmount()
+  })
+}
+
+test('a pane drawn docked, inline or at any width takes nothing more off the line: the viewport is the line', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
-
-  let band = await mountBand($, 160, true)
-  const alone = await actionCount(band)
-  // ⋯ opens the tabs: before the pane is drawn, the width every open asks for (56) and its frame come off.
+  let band = await mountBand($, 123, true)
+  const at123 = await actionCount(band)
+  expect(at123).toBeGreaterThanOrEqual(1)
   await band.press({ key: '_more' })
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 56 - 3)
-  expect(await actionCount(band)).toBeLessThan(alone)
   await band.unmount()
-
-  // Drawn docked at the width the person dragged it to: that width comes off.
-  const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 90, placement: 'dock' } })
-  band = await mountBand($, 160, true)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 90 - 3)
-  await band.unmount()
-
-  // Drawn inline (a narrower terminal): nothing comes off.
-  await pane.redraw({ ...PICKER_PANE.props, placement: 'inline' })
-  band = await mountBand($, 160, true)
-  expect(await actionCount(band)).toBe(alone)
-  await band.unmount()
-
-  // Closed: the whole width again.
-  await pane.redraw({ ...PICKER_PANE.props, bodyColumns: 90, placement: 'dock' })
-  await pane.press({ key: PICKER_CLOSE })
-  await pane.unmount()
-  band = await mountBand($, 160, true)
-  expect(await actionCount(band)).toBe(alone)
-  await band.unmount()
-})
-
-test('the result pane drawn docked takes its width off the line too', async ($, on) => {
-  const clock = mock.clock(on)
-  const s = stage(on)
-  await start($)
-  await select(s, clock, SELECTED)
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 90, placement: 'dock' } })
+  for (const props of [{ bodyColumns: 90, placement: 'dock' }, { bodyColumns: 56, placement: 'dock' }, { bodyColumns: 120, placement: 'inline' }] as const) {
+    await picker.redraw({ ...PICKER_PANE.props, ...props })
+    band = await mountBand($, 123, true)
+    expect(await actionCount(band)).toBe(at123)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(123 - LEAD_RESERVE)
+    await band.unmount()
+  }
+  await picker.unmount()
+  // The result pane, too.
   await runCommand($, '')
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 100, placement: 'dock' } })
-  const band = await mountBand($, 160, true)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 100 - 3)
+  band = await mountBand($, 123, true)
+  expect(await actionCount(band)).toBe(at123)
   await band.unmount()
   await pane.unmount()
 })
@@ -309,10 +329,15 @@ test('not measured (no viewport): hintCount as it always was', async ($, on) => 
 })
 
 // ---------------------------------------------------------------------------
-// The dock, surface by surface (SELM-00050-07), and a tab unloaded unheard
+// Surface by surface (SELM-00050-07), and a tab unloaded unheard
 // (SELM-00050-05)
 
-test('each surface\'s hint line takes off its own surface\'s dock alone, and the redraws settle', async ($, on) => {
+// SELM-00050-07 had each surface take off its own dock alone, measured where
+// the pane was drawn, and the redraws that measuring asked for settle. Since
+// SELM-00066 nothing is measured: each surface's line is its own viewport's
+// columns, whatever the pane does on that surface or another, and no drawing of
+// the pane asks for any redraw.
+test('each surface\'s hint line is its own viewport\'s columns alone, and the pane\'s drawings ask for no redraw', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   let invalidated = 0
@@ -324,44 +349,46 @@ test('each surface\'s hint line takes off its own surface\'s dock alone, and the
   await select(s, clock, SELECTED)
 
   let band = await mountBand($, 160, true)
-  const alone = await actionCount(band)
+  const whole = await actionCount(band)
   await band.press({ key: '_more' })
   await band.unmount()
 
   // One pane, two surfaces: docked on the terminal, inline on the desktop.
+  const before = invalidated
   const terminal = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' } })
   const desktop = await $.ui.mount({ ...PICKER_PANE, surface: 'desktop', props: { ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' } })
-  band = await mountBand($, 160, true)
+
+  // The terminal's line beside its dock: the viewport it is handed (103).
+  band = await mountBand($, 103, true)
   const docked = await actionCount(band)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 56 - 3)
-  expect(docked).toBeLessThan(alone)
+  expect(docked).toBe(expected(103, 'ja').count)
+  expect(docked).toBeGreaterThanOrEqual(1)
   await band.unmount()
 
-  // The terminal drawn again after the desktop: still its own dock, not the desktop's none.
-  await terminal.redraw({ ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' })
-  await desktop.redraw({ ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' })
-  band = await mountBand($, 160, true)
-  expect(await actionCount(band)).toBe(docked)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 56 - 3)
-  await band.unmount()
-
-  // The desktop's hint line has its whole width: its pane sits inline.
+  // The desktop's line has its own viewport's whole width, the terminal's dock nothing to it.
   const desktopBand = await $.ui.mount({ ...BAND, surface: 'desktop', viewport: { columns: 160, rows: 40, isFullscreen: true } })
-  expect(await actionCount(desktopBand)).toBe(alone)
+  expect(await actionCount(desktopBand)).toBe(whole)
   await desktopBand.unmount()
 
-  // Unchanged widths ask for no redraw, however often either surface draws.
-  const before = invalidated
+  // Drawn again in either order: each line still its own viewport's.
   for (let i = 0; i < 3; i++) {
     await terminal.redraw({ ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' })
     await desktop.redraw({ ...PICKER_PANE.props, bodyColumns: 70, placement: 'inline' })
   }
+  band = await mountBand($, 103, true)
+  expect(await actionCount(band)).toBe(docked)
+  await band.unmount()
+  band = await mountBand($, 160, true)
+  expect(await actionCount(band)).toBe(whole)
+  await band.unmount()
+
+  // Nothing measured, so no drawing of the pane asks for a redraw: none at all, bounded.
   expect(invalidated).toBe(before)
   await terminal.unmount()
   await desktop.unmount()
 })
 
-test('tabs the engine unloaded unheard take nothing off the line, and a run never holds their old text', async ($, on) => {
+test('tabs the engine unloaded unheard leave the line as it was, and a run never holds their old text', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -413,11 +440,11 @@ const KIND_CELLS = {
   marks: ['[ ]', '< >', '{ }'].reduce((sum, l) => sum + buttonWidth(l), 0),
 }
 
-/** What hintLayout gives for a terminal `columns` wide, with `lead` cells beside the buttons and `dock` of pane, every candidate 9 cells. */
-function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE, dock = 0, hintCount = 6) {
-  const target = hintTarget(hintLineColumns(columns, dock), hintCount)
+/** What hintLayout gives for a viewport `columns` wide, with `lead` cells beside the buttons, every candidate 9 cells. */
+function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE, hintCount = 6) {
+  const target = hintTarget(hintLineColumns(columns), hintCount)
   return hintLayout({
-    line: hintLineColumns(columns, dock, lead),
+    line: hintLineColumns(columns, lead),
     target,
     kindsLabeled: KIND_CELLS[lang],
     kindsMarks: KIND_CELLS.marks,
@@ -462,7 +489,7 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
   })
 }
 
-test('the buttons drawn never take more than the line less the dock and the rest of the row', { options: JA }, async ($, on) => {
+test('the buttons drawn never take more than the line less the rest of the row, a pane docked or not', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -473,14 +500,14 @@ test('the buttons drawn never take more than the line less the dock and the rest
     expect(await actionCount(band)).toBe(expected(columns, 'ja').count)
     await band.unmount()
   }
-  // A dock of 40 cells (a pane body of 37 and its frame), on 160 columns.
+  // A pane docked at a body of 37 on 160 columns: the engine hands over 120.
   let band = await mountBand($, 160, true)
   await band.press({ key: '_more' })
   await band.unmount()
   const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 37, placement: 'dock' } })
-  band = await mountBand($, 160, true)
-  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - 40 - LEAD_RESERVE)
-  expect(await actionCount(band)).toBe(expected(160, 'ja', LEAD_RESERVE, 40).count)
+  band = await mountBand($, 120, true)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(120 - LEAD_RESERVE)
+  expect(await actionCount(band)).toBe(expected(120, 'ja').count)
   await band.unmount()
   await pane.unmount()
 })

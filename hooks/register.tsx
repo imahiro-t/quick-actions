@@ -33,7 +33,7 @@ import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
 import type { Frame } from './local'
 import { pickerShownCount } from './picker-rows'
-import { buttonWidth, dockWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
+import { buttonWidth, hintLayout, hintLineColumns, hintTarget, leadFor } from './hint-width'
 import { HINT_KINDS, USAGE_KEY, arrange, defaultsLead, hintKindFor, ofKind, orderActions, parseHintCount, parsePins, parseUsage, recordUse, settleIn } from './order'
 import type { HintKind, OrderSlot } from './order'
 import { paneStyle, parsePaneTheme } from './palette'
@@ -84,11 +84,6 @@ const CANDIDATES = 10
 const PICKER_MAX_ROWS = 30
 // The hint line's kind buttons, one per kind (./order).
 const kindKey = (kind: HintKind) => `_kind-${kind}`
-// What the dock is taken to be before this plugin's pane has been drawn
-// docked: the width every open asks for, and its frame.
-const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
-// The terminal docks a pane from this width, in fullscreen.
-const DOCK_FROM_COLUMNS = 110
 // The stop button of a run over time in the result pane, one per entry.
 const stopKey = (id: number) => `_stop-${id}`
 // The button of an entry run on a selection that lies in one transcript row:
@@ -744,16 +739,6 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Pick
   await $.ui.open(last)
 }
 
-// The cells this plugin's docked pane takes off the transcript's column (its
-// body and frame), as last drawn on each surface; 0 while it is drawn inline
-// there; absent while it is closed or not yet drawn there (a reload starts
-// with none). One entry per surface: a session may draw on several at once,
-// each seating the pane its own way (a terminal docked, a desktop inline), and
-// each hint line takes off its own surface's dock alone. Kept in the module,
-// not in the state: a render hook may not write the state, and this is what
-// one measures.
-const measuredDock = new Map<RenderSurface, number>()
-
 /**
  * The ⋯ dialog's state while its tabs are up, by the engine's record
  * ($.ui.panes()), not the state's alone: a pane the engine unloads (its
@@ -794,7 +779,7 @@ export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) =>
 
 /**
  * Closes the whole right pane, both tabs, in one go: every run over time
- * stops, the ⋯ dialog lets go of its text and the dock of its width. `closing`
+ * stops and the ⋯ dialog lets go of its text. `closing`
  * is a tab the person is closing already (its own `ui.close`), left to that.
  *
  * A model call or a subagent under way goes on: its answer lands in the
@@ -803,34 +788,8 @@ export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) =>
 async function closeAll($: EngineInterface, closing?: string) {
   await stopAllTickers($)
   await update($, picking, () => null)
-  measuredDock.clear()
   for (const id of [PICKER, PANE]) {
     if (id !== closing) await readQuietly($.ui.close({ id }))
-  }
-}
-
-/**
- * Notes the width this plugin's pane takes off the transcript's column on
- * `surface`, as the pane is drawn there: docked, its body and frame; inline,
- * none. On a change the plugin's drawings are asked again, so that surface's
- * hint line follows it (the pane's own redraw then finds it unchanged, and
- * asks nothing more). Each surface writes its own entry alone, so two seating
- * the pane differently never undo each other's: the redraws settle.
- */
-function noteDock($: EngineInterface, surface: RenderSurface, isOpen: boolean, placement: 'dock' | 'inline', bodyColumns: number) {
-  // A drawing after closeAll (the state it cleared redraws the pane before it
-  // goes) measures nothing: the pane is on its way out.
-  if (!isOpen) {
-    measuredDock.delete(surface)
-    return
-  }
-  const width = placement === 'dock' ? dockWidth(bodyColumns) : 0
-  if (measuredDock.get(surface) === width) return
-  measuredDock.set(surface, width)
-  try {
-    $.ui.invalidate('ui.render')
-  } catch {
-    // The hint line takes the width at its next drawing.
   }
 }
 
@@ -956,8 +915,6 @@ export const register: Register = (on, options) => {
   languageSetting = options.language
   settledLanguage = explicitLanguage(options.language)
   pendingLanguage = undefined
-  // The dock is measured afresh by this load's drawings.
-  measuredDock.clear()
 
   on('session.start', async ($, e, next) => {
     const l = await ensureLanguage($)
@@ -1126,7 +1083,7 @@ export const register: Register = (on, options) => {
   // switched to the conversation's or the standalone ones.
   //
   // How many icons: the `hintCount` setting is the count on an 80-column line;
-  // the line's width (the terminal's, less this plugin's dock beside it) moves
+  // the line's width (the transcript's column, a docked pane's already off) moves
   // it in proportion, never past what fits beside the permission mode the
   // engine draws at the row's left (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
@@ -1148,25 +1105,19 @@ export const register: Register = (on, options) => {
     const ordered = inOrder(await ensureOrder($, orderLoad), l)
     const candidates = ofKind(arrange(ordered, pins, text !== null, orderLoad.defaults), kind)
 
-    // The line's width: the terminal's less this plugin's dock, as drawn, or,
-    // before it is drawn, as every open asks for it while the tabs are open on
-    // a terminal wide enough to dock them.
+    // The line's width: the viewport's columns, which on the terminal are the
+    // transcript's column, a docked pane's already off (SELM-00066: seen in a
+    // pseudo-terminal, 180 columns with this plugin's pane docked give a
+    // viewport of 123; taking the dock off again left no room for any action).
+    // A change of them, the dock opening or closing, draws the line again.
     const viewport = e.viewport
-    // `width`: the terminal's less the dock, what hintCount is in proportion
-    // to; `columns`: that less the rest of the row (the mode at its left), what
-    // the buttons have.
+    // `width`: the line's, what hintCount is in proportion to; `columns`: that
+    // less the rest of the row (the mode at its left), what the buttons have.
     let width: number | undefined
     let columns: number | undefined
     if (viewport !== undefined) {
-      // Open by the engine's record: a tab unloaded unheard takes nothing off.
-      const isOpen = (await openPicking($)) !== null
-      // This surface's own dock, never another's (a desktop's inline pane
-      // says nothing of the terminal's docked one).
-      const measured = isOpen ? measuredDock.get(e.surface) : undefined
-      const docked = isOpen && viewport.isFullscreen === true && viewport.columns >= DOCK_FROM_COLUMNS
-      const dock = measured ?? (docked ? ASSUMED_DOCK : 0)
-      width = hintLineColumns(viewport.columns, dock)
-      columns = hintLineColumns(viewport.columns, dock, leadFor(e.surface))
+      width = hintLineColumns(viewport.columns)
+      columns = hintLineColumns(viewport.columns, leadFor(e.surface))
     }
     const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
     // What each kind button is named, whatever it draws (a desktop's native
@@ -1331,7 +1282,6 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const state = await read($, picking)
-    noteDock($, e.surface, state !== null, e.props.placement, e.props.bodyColumns)
     const all = inOrder(await ensureOrder($, orderLoad), l)
     const hasSelection = state !== null && state.text !== null
     const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
@@ -1530,7 +1480,6 @@ export const register: Register = (on, options) => {
     const paneElements = $.ui.resolve(e)
     const { Box, Text } = paneElements
     const input = canInput(e.surface, paneElements)
-    noteDock($, e.surface, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     /** What the entry's heading says it ran on. */

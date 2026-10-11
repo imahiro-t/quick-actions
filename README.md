@@ -189,18 +189,18 @@ What goes out depends on the kind of action and how it runs.
 
 ## Install
 
-Quick Actions is published in the [imahiro-plugins](https://github.com/imahiro-t/claude-plugins) marketplace, which also carries GraphOps (`graph-ops`), so one marketplace gives you both. At the prompt of a Claude Code terminal session, run the following.
+This repository is its own marketplace (`.claude-plugin/marketplace.json`, named `quick-actions`). At the prompt of a Claude Code terminal session, run the following.
 
 ```
-/plugin marketplace add imahiro-t/claude-plugins
-/plugin install quick-actions@imahiro-plugins
+/plugin marketplace add imahiro-t/quick-actions
+/plugin install quick-actions@quick-actions
 ```
 
 1. When the plugin's details show, choose a scope (the user scope enables it in every later session)
 2. On the settings screen, set `pinActions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
 3. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
 
-The imahiro-plugins marketplace is the main route. This repository still carries its own marketplace (`.claude-plugin/marketplace.json`, named `quick-actions`), so `/plugin marketplace add imahiro-t/quick-actions` followed by `/plugin install quick-actions@quick-actions` installs it directly too; installed that way, the settings key in the examples below is `quick-actions@quick-actions` instead of `quick-actions@imahiro-plugins`. Install it from one of the two marketplaces only: installed from both, its hooks are registered twice and every action runs twice. To switch from one to the other, uninstall the one you have first.
+Quick Actions is also listed in the [erin-the-black-plugins](https://github.com/imahiro-t/claude-plugins) marketplace (installed from there, the settings key in the examples below is `quick-actions@erin-the-black-plugins` instead of `quick-actions@quick-actions`). Install it from one of the two marketplaces only: installed from both, its hooks are registered twice and every action runs twice. To switch from one to the other, uninstall the one you have first.
 
 ## Settings (userConfig)
 
@@ -217,7 +217,7 @@ explain,translate-ja,summarize,timer
 From the command line:
 
 ```sh
-echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
+echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
 ```
 
 Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
@@ -225,7 +225,7 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@imahiro-plugins": {
+    "quick-actions@quick-actions": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer" }
     }
   }
@@ -261,13 +261,13 @@ The language of the hint line's labels, the pane, the ⋯ dialog, the command's 
 From the command line or in settings.json:
 
 ```sh
-echo '{"language":"en"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
+echo '{"language":"en"}' | claude plugin configure quick-actions@quick-actions --values-stdin
 ```
 
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@imahiro-plugins": {
+    "quick-actions@quick-actions": {
       "options": { "pinActions": "explain,translate-ja,summarize,timer", "language": "en" }
     }
   }
@@ -297,7 +297,7 @@ The colours of the docked result pane (on the right) and the ⋯ dialog.
 From the command line:
 
 ```sh
-echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@imahiro-plugins --values-stdin
+echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-actions --values-stdin
 ```
 
 Like the other settings, a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code.
@@ -315,7 +315,7 @@ In `/config`, under `quick-actions`, enter the array on one line in `customActio
 From the command line (the value is a string, so the quotes inside it are escaped):
 
 ```sh
-claude plugin configure quick-actions@imahiro-plugins --values-stdin <<'EOF'
+claude plugin configure quick-actions@quick-actions --values-stdin <<'EOF'
 {"pinActions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
 EOF
 ```
@@ -325,7 +325,7 @@ Directly in `settings.json`, escaped the same way:
 ```json
 {
   "pluginConfigs": {
-    "quick-actions@imahiro-plugins": {
+    "quick-actions@quick-actions": {
       "options": {
         "pinActions": "explain,pirate",
         "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
@@ -999,16 +999,16 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 2. Tag that commit of `main` with `vX.Y.Z` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
 3. In [imahiro-t/claude-plugins](https://github.com/imahiro-t/claude-plugins), set the `ref` of the `quick-actions` entry in `.claude-plugin/marketplace.json` to the new tag
 4. Run `claude plugin validate .` at the root of claude-plugins, and once it passes, get the change into its `main`
-5. (Optional) Try the install with a temporary configuration directory, using the same directory for every command:
+5. (Optional) Try the install from the erin-the-black-plugins marketplace with a temporary configuration directory, using the same directory for every command:
 
    ```sh
    TMP=$(mktemp -d)
    CLAUDE_CONFIG_DIR="$TMP" claude plugin marketplace add imahiro-t/claude-plugins
-   CLAUDE_CONFIG_DIR="$TMP" claude plugin install quick-actions@imahiro-plugins
+   CLAUDE_CONFIG_DIR="$TMP" claude plugin install quick-actions@erin-the-black-plugins
    rm -rf "$TMP"
    ```
 
-Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exists, installing from the marketplace fails, and `claude plugin validate .` does not catch that.
+Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exists, installing from erin-the-black-plugins fails, and `claude plugin validate .` does not catch that.
 
 ## Roadmap
 

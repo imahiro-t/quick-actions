@@ -5,7 +5,7 @@ import { MESSAGES } from '../hooks/i18n'
 import { BAND, JA, PANE, PICKER, PLUGIN, SURFACES, hintIcons, reselect, runCommand, stage, start } from './stage'
 
 // The default set has no fork: these name one (💬 ask) beside the complete and subagent defaults.
-const WITH_ASK = { ...JA, actions: 'explain,translate-ja,ask,code' }
+const WITH_ASK = { ...JA, pinActions: 'explain,translate-ja,ask,code' }
 
 // These check the Japanese texts as they were before the language setting,
 // so each pins `language: 'ja'` (left to `auto`, a test would see English).
@@ -34,7 +34,7 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: 'answer from haiku' })).toBeDefined()
   })
 
-  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, { options: { ...JA, actions: 'ask' } }, async ($, on) => {
+  test(`[${surface}] fork: the session answers with the selection and the action's instruction`, { options: { ...JA, pinActions: 'ask' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -86,7 +86,7 @@ for (const surface of SURFACES) {
 for (const language of ['ja', 'en'] as const) {
   test(
     `[${language}] web-check: on the hint line once named, runs by key and by command with WebSearch / WebFetch only`,
-    { options: { language, actions: 'explain,code,web-check' } },
+    { options: { language, pinActions: 'explain,code,web-check' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -134,7 +134,7 @@ test('the empty pane points at the hint line under the prompt', { options: JA },
   expect(await pane.find({ text: /プロンプト下のヒント行/ })).toBeDefined()
 })
 
-test('/quick-actions without an ID opens the ⋯ dialog and runs nothing', { options: { ...JA, actions: 'translate-ja,explain' } }, async ($, on) => {
+test('/quick-actions without an ID opens the ⋯ dialog and runs nothing', { options: { ...JA, pinActions: 'translate-ja,explain' } }, async ($, on) => {
   const s = stage(on)
   await start($)
   s.selected = 'Bonjour'
@@ -338,7 +338,7 @@ test('candidates are matched by label in either language and by kind name', { op
   expect(candidatesIn(await runCommand($, 'standalone'))).toEqual(ACTIONS.filter(isStandalone).map(a => a.id).slice(0, 10))
 })
 
-test('the candidates follow the order the dialog shows, pins first', { options: { ...JA, actions: 'translate-last,translate-en' } }, async ($, on) => {
+test('the candidates follow the order the dialog shows, pins first', { options: { ...JA, pinActions: 'translate-last,translate-en' } }, async ($, on) => {
   stage(on)
   await start($)
   expect(candidatesIn(await runCommand($, 'translat'))).toEqual(['translate-last', 'translate-en', ...ON_SELECTION_TRANSLATIONS.filter(id => id !== 'translate-en').slice(0, 8)])

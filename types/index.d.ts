@@ -1,4 +1,4 @@
-/** An action's ID as written in the `actions` setting (see hooks/actions.ts). */
+/** An action's ID as written in the `pinActions` setting (see hooks/actions.ts). */
 export type ActionId = string
 
 export type Result = {

@@ -264,7 +264,7 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
       const rawId = isRecord(d) && typeof d['id'] === 'string' ? d['id'] : null
       problems.push({ index, id: rawId, reason: r })
     } else {
-      // First come, first served, as with an ID written twice in `actions`.
+      // First come, first served, as with an ID written twice in `pinActions`.
       taken.add(r.id)
       specs.push(r)
     }

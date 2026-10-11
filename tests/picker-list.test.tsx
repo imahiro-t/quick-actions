@@ -298,7 +298,7 @@ function longActions(count: number) {
     customActions: JSON.stringify(
       ids.map((id, i) => ({ id, icon: '🧩', label: `A rather long custom action label, number ${i}`, kind: 'complete', model: 'haiku', prompt: 'Answer.' })),
     ),
-    actions: ids.join(','),
+    pinActions: ids.join(','),
   }
 }
 

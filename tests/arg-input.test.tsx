@@ -380,7 +380,7 @@ for (const paneTheme of ['light', 'dark'] as const) {
 // The hint line
 
 for (const surface of SURFACES) {
-  test(`[${surface}] the hint line: timer opens the argument screen, stopwatch runs at once`, { options: { ...EN, actions: 'timer,stopwatch' } }, async ($, on) => {
+  test(`[${surface}] the hint line: timer opens the argument screen, stopwatch runs at once`, { options: { ...EN, pinActions: 'timer,stopwatch' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -428,7 +428,7 @@ test('the hint line /quick-actions hint opened: Enter on the argument screen run
 
 for (const [options, t] of LANGS) {
   const IDEAS = { id: 'ideas', icon: '💭', label: 'Ideas', kind: 'complete', model: 'haiku', target: 'none', prompt: 'Suggest five ideas.' }
-  test(`[${options.language}] a custom standalone action: the argument screen, empty runs with none, a text in <input>`, { options: { ...options, customActions: JSON.stringify([IDEAS]), actions: 'ideas' } }, async ($, on) => {
+  test(`[${options.language}] a custom standalone action: the argument screen, empty runs with none, a text in <input>`, { options: { ...options, customActions: JSON.stringify([IDEAS]), pinActions: 'ideas' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -459,7 +459,7 @@ for (const [options, t] of LANGS) {
 // ---------------------------------------------------------------------------
 // The mobile app: no Input, so no argument screen
 
-test('[mobile] the hint line, the ⋯ dialog and the result pane: the default at once, no "set" button', { options: { ...EN, actions: 'timer' } }, async ($, on) => {
+test('[mobile] the hint line, the ⋯ dialog and the result pane: the default at once, no "set" button', { options: { ...EN, pinActions: 'timer' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

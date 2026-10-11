@@ -678,7 +678,7 @@ test('url-decode and parse-url: hidden characters escaped, and then a backslash 
   expect(plain).not.toContain('Control, bidirectional')
 })
 
-test("parse-url's port error: a backslash of the text and a real U+202E told apart, with the note; the pane shows it whole", { options: { language: 'en', actions: 'parse-url' } }, async ($, on) => {
+test("parse-url's port error: a backslash of the text and a real U+202E told apart, with the note; the pane shows it whole", { options: { language: 'en', pinActions: 'parse-url' } }, async ($, on) => {
   const text = `https://e.com:\\u202e${RLO}/`
   const en = errorOf(run(parseUrl, text))
   expect(en).toBe(`Not a readable URL: its port "\\\\u202e\\u202e" is not a number from 0 to 65535.\n\n${NOTE_EN}`)

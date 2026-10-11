@@ -96,7 +96,7 @@ const fillPane = async ($: Engine, s: Stage, clock: Clock, surface: (typeof SURF
 for (const surface of SURFACES) {
   test(
     `[${surface}] en: the hint line, the pane, the command and the toast are in English`,
-    { options: { ...EN, actions: 'explain,translate-ja,code,ask,why' } },
+    { options: { ...EN, pinActions: 'explain,translate-ja,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -152,7 +152,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] ja: the same places read in Japanese, as before the setting`,
-    { options: { ...JA, actions: 'explain,translate-ja,code,ask,why' } },
+    { options: { ...JA, pinActions: 'explain,translate-ja,code,ask,why' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -250,7 +250,7 @@ for (const language of ['en', 'ja'] as const) {
     const actions = ofKind(ACTIONS, kind)
     test(
       `[${language}] every ${kind} action asks for an answer in ${name}, translations aside`,
-      { options: { language, actions: actions.map(a => a.id).join(',') }, timeoutMs: 90_000 },
+      { options: { language, pinActions: actions.map(a => a.id).join(',') }, timeoutMs: 90_000 },
       async ($, on) => {
         const clock = mock.clock(on)
         const s = stage(on)
@@ -310,7 +310,7 @@ for (const language of ['en', 'ja'] as const) {
 
   test(
     `[${language}] the translations keep their target language; only the labels follow the setting`,
-    { options: { language, actions: 'translate-ja,translate-en' } },
+    { options: { language, pinActions: 'translate-ja,translate-en' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

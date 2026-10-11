@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { BAND, EN, JA, SURFACES, hintIcons, stage, start } from './stage'
 
-// Which icons the hint line shows, for the `actions` setting the test stores:
+// Which icons the hint line shows, for the `pinActions` setting the test stores:
 // those of the kind it shows, the kind buttons before them left out.
 const iconsFor = async ($: Engine, surface: (typeof SURFACES)[number]) => {
   const band = await $.ui.mount({ ...BAND, surface })
@@ -48,7 +48,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] the setting pins actions first, in its order; the rest follow`,
-    { options: { actions: 'summarize,explain,ask' } },
+    { options: { pinActions: 'summarize,explain,ask' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -62,7 +62,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] unknown IDs are ignored; case, spaces and repeats are tolerated`,
-    { options: { actions: 'nope,translate-ja, EXPLAIN ,translate-ja,,' } },
+    { options: { pinActions: 'nope,translate-ja, EXPLAIN ,translate-ja,,' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -76,7 +76,7 @@ for (const surface of SURFACES) {
 
   test(
     `[${surface}] a setting with no known ID pins nothing: the default set leads, as unset`,
-    { options: { actions: 'nope,zzz' } },
+    { options: { pinActions: 'nope,zzz' } },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)

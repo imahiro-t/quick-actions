@@ -58,7 +58,7 @@ async function select(s: Stage, clock: Clock, text: string | null) {
 // Pressed on the hint line, picked in the ⋯ dialog: no argument, no text
 
 for (const surface of SURFACES) {
-  test(`[${surface}] the hint line with a selection: timer runs with no argument, the selection unsent, its icons put away`, { options: { ...EN, actions: 'timer' } }, async ($, on) => {
+  test(`[${surface}] the hint line with a selection: timer runs with no argument, the selection unsent, its icons put away`, { options: { ...EN, pinActions: 'timer' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)

@@ -1585,7 +1585,7 @@ test('the runs by kind together press every definition once, in both languages: 
 for (const language of ['ja', 'en'] as const) {
   test(
     `[${language}] every definition is drawn in order, a kind at a time`,
-    { options: { language, actions: ACTIONS.map(a => a.id).join(',') }, timeoutMs: 90_000 },
+    { options: { language, pinActions: ACTIONS.map(a => a.id).join(',') }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
@@ -1607,7 +1607,7 @@ for (const language of ['ja', 'en'] as const) {
     const defs = ofKind(actionsFor(language), kind)
     test(
       `[${language}] every ${kind} definition runs by its kind`,
-      { options: { language, actions: defs.map(a => a.id).join(',') }, timeoutMs: 90_000 },
+      { options: { language, pinActions: defs.map(a => a.id).join(',') }, timeoutMs: 90_000 },
       async ($, on) => {
         const clock = mock.clock(on)
         const s = stage(on)

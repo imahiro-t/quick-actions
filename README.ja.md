@@ -20,8 +20,8 @@ Claude Code の会話（トランスクリプト）で選択したテキスト�
 2. プロンプト下にヒント行が出る。先頭に種類の切り替えボタン `[選択] <会話> {単独}`、続いて表示中の種類のアイコン、その後ろに ✕ と ⋯ が並ぶ。アイコンにマウスを重ねるとラベルが出る
    - 選択があるときは選択アクションを、選択がないときはコンテキストアクションを表示した状態で開く（[表示する種類の切り替え](#表示する種類の切り替え)）
    - 並ぶアイコンの数はヒント行の幅に合わせて変わる。種類の切り替えボタン・✕・⋯・行の左の権限モードの表示（`⏵⏵ auto mode on ·` など）の横に入る数だけ並ぶ。80 桁で 2 個、100 桁で 3 個、160 桁で 10 個（[ヒント行に並ぶ数](#ヒント行に並ぶ数)）
-   - 種類ごとの並び順は「[`actions`](#actions) で先頭に固定（ピン留め）したもの → 残りをよく使う順」。使うたびに使用回数を記録し、最近よく使うものほど前に来る（[使用回数の保存](#使用回数の保存)）
-   - 初めて使うとき（ピン留めも使用履歴もないとき）は、どの種類でも[既定のセット](#actions)が先頭に来る。選択アクションは `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`、コンテキストアクションは `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`、コンテキストなしアクションは `{⏳}` から
+   - 種類ごとの並び順は「[`pinActions`](#pinactions) で先頭に固定（ピン留め）したもの → 残りをよく使う順」。使うたびに使用回数を記録し、最近よく使うものほど前に来る（[使用回数の保存](#使用回数の保存)）
+   - 初めて使うとき（ピン留めも使用履歴もないとき）は、どの種類でも[既定のセット](#pinactions)が先頭に来る。選択アクションは `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`、コンテキストアクションは `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`、コンテキストなしアクションは `{⏳}` から
    - 並べ替えはセッションの開始時だけ。セッション中に使っても並びは動かないので、押そうとした位置がずれることはない
    - アクションのアイコン（どの種類でも）か ✕ を押すと、その選択についてはアイコンを隠す（別のテキストを選べばまた出る）。引数を取るコンテキストなしアクションのアイコンは、押すと引数の入力画面が開き、そこで実行したときにアイコンを隠す
    - Claude Code は、アイコンを押したときに選択を読めるよう、別の箇所をクリックしてハイライトが消えても直前の選択を覚えている（別のテキストを選ぶか、次のプロンプトやコマンドを実行するまで）。ハイライトが消えたことはプラグインに知らされない。そのため、どのアイコンも押さずにクリックで選択を外しただけでは選択アクションのアイコンは残る。使わないときは ✕ で閉じるか、`<会話>`・`{単独}` に切り替えてほかの種類を使う
@@ -92,7 +92,7 @@ Claude Code の会話（トランスクリプト）で選択したテキスト�
 
 ヒント行の末尾の ⋯ を押すか、`/quick-actions` を ID なしで実行すると、すべてのアクションから選ぶダイアログが開きます。これは右ペインの「アクションを選択」タブで、「Quick Actions」タブより前面に出ます（[右ペインの 2 つのタブ](#右ペインの-2-つのタブ)）。
 
-- アクションは、よく使う順に `[アイコン] ラベル`・`<アイコン> ラベル`・`{アイコン} ラベル` で、種類を混ぜて並ぶ。[`actions`](#actions) でピン留めしたものが先頭、残りは使用スコアの高い順（[使用回数の保存](#使用回数の保存)）、使用回数が同じ・まだ使っていないものは定義順。ヒント行と違い、初回に既定のセットを先頭にすることはない（ピン留めも使用履歴もないときは定義順）
+- アクションは、よく使う順に `[アイコン] ラベル`・`<アイコン> ラベル`・`{アイコン} ラベル` で、種類を混ぜて並ぶ。[`pinActions`](#pinactions) でピン留めしたものが先頭、残りは使用スコアの高い順（[使用回数の保存](#使用回数の保存)）、使用回数が同じ・まだ使っていないものは定義順。ヒント行と違い、初回に既定のセットを先頭にすることはない（ピン留めも使用履歴もないときは定義順）
 - 一覧の上には種類の切り替えボタン `[ ] 選択`・`< > 会話`・`{ } 単独` が並ぶ。開いた直後はすべての種類を表示していて、どのボタンも強調されない。ボタンを押すとその種類だけを（同じ並び順で、その種類でよく使うものから）表示し、押したボタンが太字に、ほかのボタンが薄く表示される。もう一度押すとすべての種類の表示に戻る。ダイアログを開くたびにすべての種類から始まる。ダイアログで選んで実行したときは、結果の後ろに残るダイアログの種類はそのまま
 - 何も選択していないときに開いたダイアログ（選択なしで実行した ID なしの `/quick-actions`、または選択なしで `/quick-actions hint` を実行して開いたヒント行の ⋯）には、コンテキストアクションとコンテキストなしアクションだけが並び、`[ ] 選択` ボタンは出ない
 - 一覧はボタンの並びで、ダイアログを開いた時点で表示される（開く操作は要らない）
@@ -197,16 +197,16 @@ Claude Code のターミナルセッションのプロンプトで次を実行�
 
 1. `Add marketplace?` と聞かれたら `y`
 2. プラグインの詳細が出たらスコープを選ぶ（ユーザースコープなら以後のすべてのセッションで有効）
-3. 設定画面で `actions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
+3. 設定画面で `pinActions`（先頭に固定したいアクション。空のままならよく使う順）、`language`（既定 `auto`）と `paneTheme`（ペインの配色。既定 `auto`）を選ぶ。`customActions`（自分で追加するアクション）は空のままで構いません
 4. `Installed quick-actions. Plugin is now active.` と出れば、そのセッションからすぐ使えます
 
 ## 設定（userConfig）
 
-### `actions`
+### `pinActions`
 
 ヒント行の先頭に固定（ピン留め）するアクションの ID を、固定したい順にカンマ区切りで書きます。書かなかったアクションも、その後ろによく使う順で並び、⋯ ダイアログからも選べます。
 
-`/config` の `quick-actions` の `actions` に、例えば次のように入力します。
+`/config` の `quick-actions` の `pinActions` に、例えば次のように入力します。
 
 ```
 explain,translate-ja,summarize,timer
@@ -215,7 +215,7 @@ explain,translate-ja,summarize,timer
 コマンドラインから設定する場合:
 
 ```sh
-echo '{"actions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
 ```
 
 `settings.json` に直接書く場合（キーは `<プラグイン名>@<マーケットプレイス名>`）:
@@ -224,14 +224,14 @@ echo '{"actions":"explain,translate-ja,summarize,timer"}' | claude plugin config
 {
   "pluginConfigs": {
     "quick-actions@quick-actions": {
-      "options": { "actions": "explain,translate-ja,summarize,timer" }
+      "options": { "pinActions": "explain,translate-ja,summarize,timer" }
     }
   }
 }
 ```
 
 - **未設定・空のとき**: ピン留めはなしで、すべてをよく使う順に並べます。使用履歴がない初回は、既定のセット `explain,recap,translate-ja,decisions,summarize,code,timer` を先頭に、残りを定義順（[選択アクション](#選択アクション) → [コンテキストアクション](#コンテキストアクション) → [コンテキストなしアクション](#コンテキストなしアクション単独)の順）に並べます。ヒント行では、どの種類も既定のセットのうちその種類のものが先頭に来ます。選択アクションは `[💡] [🌐] [📝] [🔎]`、コンテキストアクションは `<🧭> <✅>`、コンテキストなしアクションは `{⏳}` です
-  - 使用回数が同じ・まだ使っていないアクションは定義順です。そのため、何か 1 つでも使うと、既定のセットを先頭にする並びはなくなり、使ったもの → 残りを定義順（たとえばコンテキストアクションを使ったあとの選択アクションは `[🌐] [🔤] [🀄] …`）になります。既定のセットを前に置き続けたいときは `actions` に書いてください
+  - 使用回数が同じ・まだ使っていないアクションは定義順です。そのため、何か 1 つでも使うと、既定のセットを先頭にする並びはなくなり、使ったもの → 残りを定義順（たとえばコンテキストアクションを使ったあとの選択アクションは `[🌐] [🔤] [🀄] …`）になります。既定のセットを前に置き続けたいときは `pinActions` に書いてください
 - **どの種類でも**: コンテキストアクションの ID（`recap`、`handoff` など）やコンテキストなしアクションの ID（`timer`、`calc` など）も、選択アクションの ID と同じようにピン留めでき、混ぜて好きな順に書けます。ヒント行では、ピン留めしたものがそれぞれの種類の先頭に来ます（`explain,recap` なら、選択アクションでは `[💡]`、コンテキストアクションでは `<🧭>` が先頭）。⋯ ダイアログの一覧では、書いた順に先頭に並びます
 - **存在しない ID**: 無視します（エラーにはなりません）。有効な ID が 1 つも残らなければ、ピン留めなし（空のときと同じ）になります
 - **自分で追加したアクション**: [`customActions`](#customactions) の有効な定義の ID も、標準のアクションと同じようにここに書けます
@@ -266,7 +266,7 @@ echo '{"language":"ja"}' | claude plugin configure quick-actions@quick-actions -
 {
   "pluginConfigs": {
     "quick-actions@quick-actions": {
-      "options": { "actions": "explain,translate-ja,summarize,timer", "language": "ja" }
+      "options": { "pinActions": "explain,translate-ja,summarize,timer", "language": "ja" }
     }
   }
 }
@@ -302,7 +302,7 @@ echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-action
 
 ### `customActions`
 
-自分で追加するアクションの定義を、JSON の配列として 1 つの文字列で書きます（既定は空）。項目と例は[設定から追加する](#設定から追加するcustomactions)を参照してください。有効な定義は、標準のアクションと同じくヒント行（よく使う順）に並び、⋯ ダイアログから選べます（新しく追加したものは組み込みの後ろに並ぶため、一覧に収まる件数より後ろにあるあいだは、絞り込み欄に ID かラベルを入力して選びます）。`actions` に ID を書くと先頭に固定できます。`/quick-actions <id>` でも実行できます。
+自分で追加するアクションの定義を、JSON の配列として 1 つの文字列で書きます（既定は空）。項目と例は[設定から追加する](#設定から追加するcustomactions)を参照してください。有効な定義は、標準のアクションと同じくヒント行（よく使う順）に並び、⋯ ダイアログから選べます（新しく追加したものは組み込みの後ろに並ぶため、一覧に収まる件数より後ろにあるあいだは、絞り込み欄に ID かラベルを入力して選びます）。`pinActions` に ID を書くと先頭に固定できます。`/quick-actions <id>` でも実行できます。
 
 `/config` の `quick-actions` の `customActions` に、配列を 1 行で入力します。例:
 
@@ -314,7 +314,7 @@ echo '{"paneTheme":"dark"}' | claude plugin configure quick-actions@quick-action
 
 ```sh
 claude plugin configure quick-actions@quick-actions --values-stdin <<'EOF'
-{"actions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
+{"pinActions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
 EOF
 ```
 
@@ -325,7 +325,7 @@ EOF
   "pluginConfigs": {
     "quick-actions@quick-actions": {
       "options": {
-        "actions": "explain,pirate",
+        "pinActions": "explain,pirate",
         "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
       }
     }
@@ -333,12 +333,12 @@ EOF
 }
 ```
 
-`actions` / `language` と同じく、プラグインの再読み込みのたびに読み直します。`/config` で変えればすぐ反映され、`claude plugin configure` や settings.json で変えた場合は Claude Code を再起動してください。変えた後に `/quick-actions` を実行すると、無視された定義があるかとその理由を確認できます。
+`pinActions` / `language` と同じく、プラグインの再読み込みのたびに読み直します。`/config` で変えればすぐ反映され、`claude plugin configure` や settings.json で変えた場合は Claude Code を再起動してください。変えた後に `/quick-actions` を実行すると、無視された定義があるかとその理由を確認できます。
 
 ### ID の変更
 
-- **`translate` → `translate-ja`**: 選択テキストを日本語に訳すアクション（🌐 日本語訳）の ID が `translate-ja` になりました。`actions` に `translate` と書いている場合は `translate-ja` に書き換えてください（書き換えないと、存在しない ID として無視され、ピン留めされなくなります）。`/quick-actions translate` も `translate-ja` に変わります（`translate` を実行すると、不明な ID として候補が表示されます）
-- **外した ID**: 以前の組み込みアクションのうち、`command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` はありません。`actions` に書いたままの場合は、存在しない ID と同じく無視されます（ピン留めされなくなるだけで、有効な ID が 1 つも残らなければピン留めなしになります）。近い働きのアクションが別の ID であるものもあります（例: `explain-regex`、`explain-stacktrace`、`explain-log`、`check-writing`、`find-usages`、`unit-test-ideas`、`security-check`）
+- **`translate` → `translate-ja`**: 選択テキストを日本語に訳すアクション（🌐 日本語訳）の ID が `translate-ja` になりました。`pinActions` に `translate` と書いている場合は `translate-ja` に書き換えてください（書き換えないと、存在しない ID として無視され、ピン留めされなくなります）。`/quick-actions translate` も `translate-ja` に変わります（`translate` を実行すると、不明な ID として候補が表示されます）
+- **外した ID**: 以前の組み込みアクションのうち、`command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step`, `send` はありません。`pinActions` に書いたままの場合は、存在しない ID と同じく無視されます（ピン留めされなくなるだけで、有効な ID が 1 つも残らなければピン留めなしになります）。近い働きのアクションが別の ID であるものもあります（例: `explain-regex`、`explain-stacktrace`、`explain-log`、`check-writing`、`find-usages`、`unit-test-ideas`、`security-check`）
 - [`customActions`](#customactions) で、組み込みアクションと同じ ID のカスタム定義は無視されます。前から使っていたカスタムの ID が、新しく増えた組み込みアクションの ID と重なった場合は、カスタムの ID を変えてください（`/quick-actions` を実行すると、無視された定義とその理由を確認できます）
 
 ## コマンド
@@ -858,7 +858,7 @@ EOF
 
 ## アクションの追加方法
 
-[`customActions`](#customactions) の設定で、プラグインを変更せずにアクションを追加できます。ヒント行・⋯ ダイアログ・ペイン・コマンドは標準のアクションと同じように扱います。追加したアクションはヒント行（よく使う順）に並び、⋯ ダイアログから選べます（新しく追加したものは組み込みの後ろに並ぶため、一覧に収まる件数より後ろにあるあいだは、絞り込み欄に ID かラベルを入力して選びます）。その ID を `actions` に書くと先頭に固定できます。
+[`customActions`](#customactions) の設定で、プラグインを変更せずにアクションを追加できます。ヒント行・⋯ ダイアログ・ペイン・コマンドは標準のアクションと同じように扱います。追加したアクションはヒント行（よく使う順）に並び、⋯ ダイアログから選べます（新しく追加したものは組み込みの後ろに並ぶため、一覧に収まる件数より後ろにあるあいだは、絞り込み欄に ID かラベルを入力して選びます）。その ID を `pinActions` に書くと先頭に固定できます。
 
 ### 設定から追加する（customActions）
 
@@ -866,7 +866,7 @@ EOF
 
 | 項目 | 必須 | 方式 | 内容 |
 | --- | --- | --- | --- |
-| `id` | 必須 | すべて | `actions` やコマンドに書く ID。小文字英数字を 1 つずつのハイフンでつないだもの（`review-pr`）。標準アクションの ID・`close`（✕ ボタンが使う）・`hint`（コマンドの引数）・先にあるカスタム定義の ID とは重ねられない |
+| `id` | 必須 | すべて | `pinActions` やコマンドに書く ID。小文字英数字を 1 つずつのハイフンでつないだもの（`review-pr`）。標準アクションの ID・`close`（✕ ボタンが使う）・`hint`（コマンドの引数）・先にあるカスタム定義の ID とは重ねられない |
 | `icon` | 必須 | すべて | ヒント行に出すアイコン（絵文字 1 文字）。テキストが既定の記号（☀・✂・🗂 など）は、端末が描く 2 桁に合うよう、後ろに VS16（U+FE0F）を付けて絵文字として描く。すでに VS16 か VS15 が付いているものは書いたまま、©・®・™ も 1 桁の記号のまま描く |
 | `label` | 必須 | すべて | ホバー時とペインの見出しに出す名前。両言語共通の文字列 1 つか、`{ "ja": "…", "en": "…" }` |
 | `kind` | 必須 | すべて | 実行方式: `complete` / `fork` / `subagent`（標準のアクションと同じ。[アクション一覧](#アクション一覧)を参照。カスタムではローカル実行は使えない） |

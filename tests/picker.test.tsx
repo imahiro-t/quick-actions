@@ -443,7 +443,7 @@ const LOOKALIKES = {
       prompt: `Answer as ${id}.`,
     })),
   ),
-  actions: 'more,picker,picker-close',
+  pinActions: 'more,picker,picker-close',
 }
 
 const unique = (keys: readonly unknown[]) => new Set(keys).size === keys.length
@@ -967,7 +967,7 @@ test('[mobile] the kind buttons above the list; the first action, not a kind but
 })
 
 for (const surface of SURFACES) {
-  test(`[${surface}] the list by usage: pins first, then the scores highest first, ties and the unused in the order of definition; the same within a kind`, { options: { ...JA, actions: 'why' } }, async ($, on) => {
+  test(`[${surface}] the list by usage: pins first, then the scores highest first, ties and the unused in the order of definition; the same within a kind`, { options: { ...JA, pinActions: 'why' } }, async ($, on) => {
     const clock = mock.clock(on, { now: NOW })
     const s = stage(on, { store: { usage: { 'timer': used(5), 'recap': used(3), 'explain': used(3), 'translate-en': used(1) } } })
     await start($)

@@ -20,8 +20,8 @@ The same icon can stand for actions of different kinds (`[🧸]`, `<🧸>` and `
 2. The hint line appears under the prompt: the kind buttons `[selection] <context> {standalone}` first, then the icons of the kind shown, then ✕ and ⋯. Hover over an icon to see its label
    - With a selection it opens on the actions on the selection; with none, on the context actions (see [Switching the kind shown](#switching-the-kind-shown))
    - How many icons are shown follows the line's width: as many as fit beside the kind buttons, ✕, ⋯ and the permission mode shown at the line's left (`⏵⏵ auto mode on ·` and the like): 2 on an 80-column line, 3 on 100 and 10 on 160 (see [How many icons the hint line shows](#how-many-icons-the-hint-line-shows))
-   - The order within each kind: the actions pinned in the [`actions`](#actions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
-   - The first time (no pins and no use yet) the [default set](#actions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
+   - The order within each kind: the actions pinned in the [`pinActions`](#pinactions) setting first, then the rest in the order you use them. Each use is counted, and what you used most lately comes first (see [Usage counts](#usage-counts))
+   - The first time (no pins and no use yet) the [default set](#pinactions) leads each kind: the actions on the selection `[💡] [🌐] [📝] [🔎] [🔤] [🀄] ✕ ⋯`, the context actions `<🧭> <✅> <📋> <❓> <🧸> <🌐> ✕ ⋯`, the standalone actions from `{⏳}`
    - The order is settled when a session starts, and does not move during it, so an icon stays where you reach for it
    - Pressing an action's icon (of any kind) or ✕ hides the icons for that selection (selecting other text brings them back). The icon of a standalone action that takes an argument opens its argument screen instead, and the icons go when it runs from there
    - Claude Code keeps the last selection after a click elsewhere takes its highlight down, so that a press can still read it (until you select something else or your next prompt or command has run), and it tells the plugin nothing when the highlight goes. Clicking away without pressing an icon therefore leaves the icons of the selection in place: press ✕ to close them, or switch to `<context>` or `{standalone}` to use the other kinds
@@ -92,7 +92,7 @@ The selection taken in when the command ran is not one of these: its going (whic
 
 Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID, to open a dialog of every action. It is the "Select an action" tab of the right pane, shown in front of the "Quick Actions" tab (see [The right pane's two tabs](#the-right-panes-two-tabs)).
 
-- The actions are listed most used first, as `[icon] label`, `<icon> label` or `{icon} label`, every kind mixed: the actions pinned in [`actions`](#actions) first, then the rest by their usage score (see [Usage counts](#usage-counts)), those used equally or not yet in definition order. Unlike the hint line, the default set does not lead the first time: with no pin and no use yet, the list is in definition order
+- The actions are listed most used first, as `[icon] label`, `<icon> label` or `{icon} label`, every kind mixed: the actions pinned in [`pinActions`](#pinactions) first, then the rest by their usage score (see [Usage counts](#usage-counts)), those used equally or not yet in definition order. Unlike the hint line, the default set does not lead the first time: with no pin and no use yet, the list is in definition order
 - Above the list are three kind buttons, `[ ] selection`, `< > context` and `{ } standalone`. When the dialog opens it lists every kind, and no button stands out. Press one to list that kind alone (the same order, the most used of it first): that button is drawn bold and the others dim. Press it again to list every kind again. Each time the dialog opens it starts on every kind; a run picked in it keeps the kind while the dialog stays open behind the result
 - Opened with nothing selected (`/quick-actions` without an ID run with no selection, or the ⋯ of a hint line `/quick-actions hint` opened with nothing selected), it lists the context and standalone actions alone, and there is no `[ ] selection` button
 - The list is a column of buttons, shown as soon as the dialog opens (nothing to open first)
@@ -197,16 +197,16 @@ At the prompt of a Claude Code terminal session, run the following (replace `<ow
 
 1. Answer `y` to `Add marketplace?`
 2. When the plugin's details show, choose a scope (the user scope enables it in every later session)
-3. On the settings screen, set `actions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
+3. On the settings screen, set `pinActions` (the actions to pin to the front; leave it empty for the order of use), `language` (default `auto`) and `paneTheme` (the pane's colours; default `auto`). `customActions` (your own actions) can stay empty
 4. Once `Installed quick-actions. Plugin is now active.` shows, it works in that session right away
 
 ## Settings (userConfig)
 
-### `actions`
+### `pinActions`
 
 The IDs of the actions to pin to the front of the hint line, comma-separated, in the order you want them. The actions you leave out follow them in the order you use them, and can be picked from the ⋯ dialog too.
 
-In `/config`, under `quick-actions`, enter for example the following in `actions`.
+In `/config`, under `quick-actions`, enter for example the following in `pinActions`.
 
 ```
 explain,translate-ja,summarize,timer
@@ -215,7 +215,7 @@ explain,translate-ja,summarize,timer
 From the command line:
 
 ```sh
-echo '{"actions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+echo '{"pinActions":"explain,translate-ja,summarize,timer"}' | claude plugin configure quick-actions@quick-actions --values-stdin
 ```
 
 Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
@@ -224,14 +224,14 @@ Directly in `settings.json` (the key is `<plugin name>@<marketplace name>`):
 {
   "pluginConfigs": {
     "quick-actions@quick-actions": {
-      "options": { "actions": "explain,translate-ja,summarize,timer" }
+      "options": { "pinActions": "explain,translate-ja,summarize,timer" }
     }
   }
 }
 ```
 
 - **Unset or empty**: nothing is pinned; every action is in the order of use. The first time, with no use yet, the default set `explain,recap,translate-ja,decisions,summarize,code,timer` leads, and the rest follow in definition order (the [actions on the selection](#actions-on-the-selection), then the [context actions](#context-actions), then the [standalone actions](#standalone-actions)). Each kind shown on the hint line starts with the default set's actions of that kind: `[💡] [🌐] [📝] [🔎]` for the actions on the selection, `<🧭> <✅>` for the context actions, `{⏳}` for the standalone actions
-  - Actions used equally, or not yet, keep the definition order. So once you use any action, the default set no longer leads: what you used comes first, then the rest in definition order (after a context action, for one, the actions on the selection read `[🌐] [🔤] [🀄] …`). To keep the default set in front, write it in `actions`
+  - Actions used equally, or not yet, keep the definition order. So once you use any action, the default set no longer leads: what you used comes first, then the rest in definition order (after a context action, for one, the actions on the selection read `[🌐] [🔤] [🀄] …`). To keep the default set in front, write it in `pinActions`
 - **Any kind**: the IDs of context actions (`recap`, `handoff`, …) and standalone actions (`timer`, `calc`, …) can be pinned like those of the actions on the selection, mixed in any order. Each kind's pins lead that kind on the hint line (`explain,recap` puts `[💡]` first among the actions on the selection and `<🧭>` first among the context actions), and they lead the ⋯ dialog's list in the order written
 - **Unknown IDs**: ignored (no error). If no valid ID is left, nothing is pinned (as when empty)
 - **Your own actions**: the IDs of the valid definitions in [`customActions`](#customactions) can be written here like the built-ins'
@@ -266,7 +266,7 @@ echo '{"language":"en"}' | claude plugin configure quick-actions@quick-actions -
 {
   "pluginConfigs": {
     "quick-actions@quick-actions": {
-      "options": { "actions": "explain,translate-ja,summarize,timer", "language": "en" }
+      "options": { "pinActions": "explain,translate-ja,summarize,timer", "language": "en" }
     }
   }
 }
@@ -302,7 +302,7 @@ Like the other settings, a change in `/config` takes effect at once; after `clau
 
 ### `customActions`
 
-Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter); put its ID in `actions` to pin it to the front. `/quick-actions <id>` runs it too.
+Your own actions, as a JSON array of definitions written as one string (empty by default). The fields and examples are in [Adding an action from the settings](#from-the-settings-customactions). A valid definition joins the hint line (in the order of use) and can be picked from the ⋯ dialog like a built-in (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter); put its ID in `pinActions` to pin it to the front. `/quick-actions <id>` runs it too.
 
 In `/config`, under `quick-actions`, enter the array on one line in `customActions`, for example:
 
@@ -314,7 +314,7 @@ From the command line (the value is a string, so the quotes inside it are escape
 
 ```sh
 claude plugin configure quick-actions@quick-actions --values-stdin <<'EOF'
-{"actions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
+{"pinActions":"explain,pirate","customActions":"[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"}
 EOF
 ```
 
@@ -325,7 +325,7 @@ Directly in `settings.json`, escaped the same way:
   "pluginConfigs": {
     "quick-actions@quick-actions": {
       "options": {
-        "actions": "explain,pirate",
+        "pinActions": "explain,pirate",
         "customActions": "[{\"id\":\"pirate\",\"icon\":\"🦜\",\"label\":{\"ja\":\"海賊風に言い換え\",\"en\":\"Pirate talk\"},\"kind\":\"complete\",\"model\":\"haiku\",\"prompt\":\"Retell the selected text the way a pirate would.\"}]"
       }
     }
@@ -333,12 +333,12 @@ Directly in `settings.json`, escaped the same way:
 }
 ```
 
-It is read again whenever the plugin reloads, like `actions` and `language`: a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code. Run `/quick-actions` after a change to see whether any definition was ignored, and why.
+It is read again whenever the plugin reloads, like `pinActions` and `language`: a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code. Run `/quick-actions` after a change to see whether any definition was ignored, and why.
 
 ### Changed IDs
 
-- **`translate` → `translate-ja`**: the action that translates the selection into Japanese (🌐 To Japanese) now has the ID `translate-ja`. If your `actions` setting says `translate`, change it to `translate-ja` (left as it is, it is ignored as an unknown ID and no longer pinned). `/quick-actions translate` becomes `/quick-actions translate-ja` too (`translate` now answers as an unknown ID, with candidates)
-- **Removed IDs**: of the earlier built-ins, `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step` and `send` are gone. Left in your `actions` setting, they are ignored like unknown IDs (they are simply no longer pinned; if no valid ID is left, nothing is pinned). Some of their uses have actions under other IDs (`explain-regex`, `explain-stacktrace`, `explain-log`, `check-writing`, `find-usages`, `unit-test-ideas`, `security-check`, for example)
+- **`translate` → `translate-ja`**: the action that translates the selection into Japanese (🌐 To Japanese) now has the ID `translate-ja`. If your `pinActions` setting says `translate`, change it to `translate-ja` (left as it is, it is ignored as an unknown ID and no longer pinned). `/quick-actions translate` becomes `/quick-actions translate-ja` too (`translate` now answers as an unknown ID, with candidates)
+- **Removed IDs**: of the earlier built-ins, `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step` and `send` are gone. Left in your `pinActions` setting, they are ignored like unknown IDs (they are simply no longer pinned; if no valid ID is left, nothing is pinned). Some of their uses have actions under other IDs (`explain-regex`, `explain-stacktrace`, `explain-log`, `check-writing`, `find-usages`, `unit-test-ideas`, `security-check`, for example)
 - A custom definition in [`customActions`](#customactions) with a built-in's ID is ignored. If the ID of a custom action you already had is now taken by a new built-in, give your custom action another ID (run `/quick-actions` to see the definitions ignored and why)
 
 ## Command
@@ -858,7 +858,7 @@ They use neither the selected text nor the conversation (105 of them). The Argum
 
 ## Adding an action
 
-The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter), and putting its ID in `actions` pins it to the front.
+The [`customActions`](#customactions) setting adds actions with no change to the plugin. The hint line, the ⋯ dialog, the pane and the command treat them like the built-ins: one joins the hint line (in the order of use) and can be picked from the ⋯ dialog (a newly added one comes after the built-ins, so while it is past those that fit in the list, type its ID or label in the filter), and putting its ID in `pinActions` pins it to the front.
 
 ### From the settings (customActions)
 
@@ -866,7 +866,7 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 
 | Field | Required | Kinds | Meaning |
 | --- | --- | --- | --- |
-| `id` | yes | all | The ID written in `actions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button) or `hint` (the command's argument), and not one an earlier custom definition already took |
+| `id` | yes | all | The ID written in `pinActions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button) or `hint` (the command's argument), and not one an earlier custom definition already took |
 | `icon` | yes | all | The icon on the hint line (one emoji). A symbol that is text by default (☀, ✂, 🗂 and the like) is drawn as an emoji, with VS16 (U+FE0F) added after it, so that it takes the two columns the terminal draws it in; one already followed by VS16 or VS15 is left as written, and so are ©, ® and ™, drawn as the one-column marks they are |
 | `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }` |
 | `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local) |

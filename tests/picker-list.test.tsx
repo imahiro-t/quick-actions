@@ -3,8 +3,8 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { FIXED_ROWS, buttonLines, linesOf } from '../hooks/picker-rows'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_LIST, PICKER_PANE, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pickAction, promptOf, stage, start, storedUsage } from './stage'
+import { MIN_SHOWN, buttonLines, fixedRows, linesOf } from '../hooks/picker-rows'
+import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_LIST, PICKER_PANE, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, promptOf, stage, start, storedUsage } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog's list as buttons (SELM-00059): there as the dialog opens, as
@@ -112,7 +112,7 @@ for (const surface of SURFACES) {
     await start($)
     await openByMore($, s, clock, surface)
     const rowsUsed = (labels: string[], total: number, columns: number) =>
-      FIXED_ROWS + linesOf(MESSAGES.en.pickerLegend(true), columns) + linesOf(MESSAGES.en.pickerMore(total - labels.length), columns) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
+      pickerFixedRows(MESSAGES.en, columns) + linesOf(MESSAGES.en.pickerLegend(true), columns) + linesOf(MESSAGES.en.pickerMore(total - labels.length), columns) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30, 34) })
     const listed = await listedOptions(picker)
@@ -121,7 +121,7 @@ for (const surface of SURFACES) {
     for (const o of listed.filter(o => o.value.startsWith('long-'))) expect(buttonLines(o.label, 34)).toBeGreaterThanOrEqual(2)
     expect(rowsUsed(listed.map(o => o.label), ACTIONS.length + 12, 34)).toBeLessThanOrEqual(30)
     // Fewer than one-row labels would fill: 30 rows less the legend, the "n more" line, the filter row and Close.
-    const oneRowEach = 30 - FIXED_ROWS - linesOf(MESSAGES.en.pickerLegend(true), 34) - linesOf(MESSAGES.en.pickerMore(1), 34)
+    const oneRowEach = 30 - pickerFixedRows(MESSAGES.en, 34) - linesOf(MESSAGES.en.pickerLegend(true), 34) - linesOf(MESSAGES.en.pickerMore(1), 34)
     expect(listed.length).toBeLessThan(oneRowEach)
     await picker.unmount()
   })
@@ -144,7 +144,7 @@ for (const surface of SURFACES) {
       const n = labels.length
       expect(textsOutsideList(await picker.drawn())).toEqual([t.pickerNoFocus, t.pickerLegend(true), t.pickerMore(total - n)])
       const used = (count: number) =>
-        FIXED_ROWS +
+        pickerFixedRows(t, columns) +
         notice +
         linesOf(t.pickerLegend(true), columns) +
         linesOf(t.pickerMore(total - count), columns) +
@@ -157,14 +157,58 @@ for (const surface of SURFACES) {
       expect([columns, used(n) + buttonLines(next, columns) > 30]).toEqual([columns, true])
       // Where every listed button is one row, the count is exact: 30 less the notice's hand-counted rows and the rest.
       if (labels.every(l => buttonLines(l, columns) === 1)) {
-        expect([columns, n]).toEqual([columns, 30 - FIXED_ROWS - notice - linesOf(t.pickerLegend(true), columns) - linesOf(t.pickerMore(total - n), columns)])
+        expect([columns, n]).toEqual([columns, 30 - pickerFixedRows(t, columns) - notice - linesOf(t.pickerLegend(true), columns) - linesOf(t.pickerMore(total - n), columns)])
       }
     }
-    // At 54 the built-in labels are one row each: 30 - 2 - 3 - 1 - 1 = 23.
+    // At 54 the built-in labels are one row each, and so are the filter row and Close: 30 - 2 - 3 - 1 - 1 = 23.
+    expect(pickerFixedRows(t, 54)).toBe(2)
     await picker.redraw(at(30, 54, false))
     expect((await listedActions(picker)).length).toBe(23)
     await picker.unmount()
   })
+
+  // SELM-00070: in a narrow pane the filter row wraps onto two rows or more
+  // (and Clear beside it may take another), so the list is cut to what is
+  // left: the rows drawn, the filter row and Close counted as they wrap from
+  // what the dialog drew, stay within the pane's.
+  for (const [options, t] of [[EN, MESSAGES.en], [JA, MESSAGES.ja]] as const) {
+    test(`[${surface}] [${options.language}] at 28 columns and fewer the filter row and Close are counted as they wrap: the dialog stays within the pane`, { options }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      await openByMore($, s, clock, surface)
+      const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(30, 28) })
+      for (const columns of [28, 22, 16]) {
+        for (const value of ['', 'e']) {
+          await picker.redraw(at(30, columns))
+          await picker.input({ key: PICKER_FILTER, text: value, kind: 'change' })
+          // The filter row and Close from what is drawn: the field's strings, Clear once it holds text.
+          const field = (await picker.find({ key: PICKER_FILTER }))?.props as { placeholder: string; value: string; submitLabel: string }
+          const clear = await picker.find({ key: PICKER_FILTER_CLEAR })
+          const close = await picker.find({ key: PICKER_CLOSE })
+          expect([field.placeholder, field.value, field.submitLabel]).toEqual([t.pickerFilterPlaceholder, value, t.pickerFilterSubmit])
+          expect([value, clear === undefined]).toEqual([value, value === ''])
+          expect(close?.props.label).toBe(t.pickerClose)
+          const fixed = fixedRows(columns, {
+            filterRow: { ...field, ...(clear !== undefined && { clear: String(clear.props.label) }) },
+            close: String(close?.props.label),
+          })
+          // Wrapped: more than the row each they were counted as before.
+          expect([columns, value, fixed > 2]).toEqual([columns, value, true])
+          const labels = (await listedOptions(picker)).map(o => o.label)
+          const texts = textsOutsideList(await picker.drawn())
+          // Cut short (the legend, then the "n more" line), with more than MIN_SHOWN listed:
+          // the count is the estimate's, not the floor's.
+          expect(texts).toHaveLength(2)
+          expect(texts[0]).toBe(t.pickerLegend(true))
+          expect(labels.length).toBeGreaterThan(MIN_SHOWN)
+          const used = fixed + texts.reduce((sum, line) => sum + linesOf(line, columns), 0) + labels.reduce((sum, l) => sum + buttonLines(l, columns), 0)
+          expect([columns, value, used <= 30]).toEqual([columns, value, true])
+        }
+      }
+      await picker.unmount()
+    })
+  }
 
   test(`[${surface}] pickAction: an action not listed is reached through the filter; one whose ID others share a start with is the one pressed`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)

@@ -1273,8 +1273,9 @@ export const register: Register = (on, options) => {
   // The list is a column of buttons, there from the start (no drop-down to
   // open). With the filter field it fills the pane's height: as many actions
   // as fit (./picker-rows: each button's rows as its label wraps at its words,
-  // less the rest of the dialog), then a line saying how many more the filter
-  // reaches.
+  // less the rest of the dialog, the filter row and the close button counted
+  // as they wrap too, in a narrow pane onto two rows or more), then a line
+  // saying how many more the filter reaches.
   // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
   // again lists as many as the new height holds. Without the field (mobile)
   // nothing would reach the rest: every action is listed, and the pane scrolls.
@@ -1296,6 +1297,13 @@ export const register: Register = (on, options) => {
     const shown = filterDefs(ordered, filter)
     const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
+    // The filter row as drawn below, and so as counted: one set of strings for both.
+    const filterRow = {
+      placeholder: t.pickerFilterPlaceholder,
+      value: filter,
+      submitLabel: shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit,
+      ...(filter !== '' && { clear: t.pickerFilterClear }),
+    }
     // As many as the pane's height holds (in the dialog's order, so the most
     // used come first), with the filter field there to reach the rest;
     // without it, all of them.
@@ -1306,6 +1314,8 @@ export const register: Register = (on, options) => {
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
             chrome: [...(keyboardNotice ? [t.pickerNoFocus] : []), t.pickerLegend(hasSelection)],
+            filterRow,
+            close: t.pickerClose,
             labels: shown.map(labelOf),
             more: t.pickerMore,
           })
@@ -1406,9 +1416,9 @@ export const register: Register = (on, options) => {
           <Box flexDirection="row">
             <Input
               key={PICKER_FILTER_KEY}
-              placeholder={t.pickerFilterPlaceholder}
-              value={filter}
-              submitLabel={shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit}
+              placeholder={filterRow.placeholder}
+              value={filterRow.value}
+              submitLabel={filterRow.submitLabel}
               autoFocus
               onInput={value => {
                 void setFilter(value)
@@ -1417,7 +1427,7 @@ export const register: Register = (on, options) => {
                 void submit(value)
               }}
             />
-            {filter !== '' && mutedButton(elements, style, PICKER_FILTER_CLEAR_KEY, clear)}
+            {filterRow.clear !== undefined && mutedButton(elements, style, PICKER_FILTER_CLEAR_KEY, clear)}
           </Box>
         )}
         {state === null ? (

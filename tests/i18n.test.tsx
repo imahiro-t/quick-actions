@@ -1,8 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, isContext, isStandalone, takesArg } from '../hooks/actions'
+import { ACTIONS, actionsFor, takesArg } from '../hooks/actions'
 import { MESSAGES, explicitLanguage, resolveLanguage } from '../hooks/i18n'
+import { ofKind } from '../hooks/order'
 import { ANSWER_LANGUAGE_ONLY, BAND, EN, JA, JAPANESE, NO_STYLE, PANE, PLUGIN, SURFACES, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
@@ -223,69 +224,91 @@ for (const [options, thinking] of [
 // ---------------------------------------------------------------------------
 // What the model is asked to answer in.
 
-const everyId = ACTIONS.map(a => a.id).join(',')
+// Pressed a kind at a time (SELM-00070), each kind's actions pinned alone,
+// so that no one test presses all 311 under a loaded machine's timeout; the
+// three kinds together press every action (checked below).
+const HINT_KIND_NAMES = ['selection', 'context', 'standalone'] as const
+
+test('the answer-language runs by kind together press every action once: none left out, none twice', () => {
+  const pressed = HINT_KIND_NAMES.flatMap(kind => ofKind(ACTIONS, kind).map(a => a.id))
+  expect(pressed).toHaveLength(311)
+  expect(new Set(pressed).size).toBe(311)
+  expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
+  // So the complete, fork and subagent actions each test checks add up to all of them.
+  for (const k of ['complete', 'fork', 'subagent'] as const) {
+    expect(HINT_KIND_NAMES.reduce((sum, kind) => sum + ofKind(ACTIONS, kind).filter(a => a.kind === k).length, 0)).toBe(ACTIONS.filter(a => a.kind === k).length)
+  }
+  // In both languages the same actions, in the same order, of the same kind.
+  for (const language of ['en', 'ja'] as const) {
+    for (const kind of HINT_KIND_NAMES) expect(ofKind(actionsFor(language), kind).map(a => a.id)).toEqual(ofKind(ACTIONS, kind).map(a => a.id))
+  }
+})
 
 for (const language of ['en', 'ja'] as const) {
   const name = language === 'en' ? 'English' : 'Japanese'
   const other = language === 'en' ? 'Japanese' : 'English'
 
-  test(
-    `[${language}] every action asks for an answer in ${name}, translations aside`,
-    { options: { language, actions: everyId, hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
-    async ($, on) => {
-      const clock = mock.clock(on)
-      const s = stage(on)
-      await start($)
-      s.selected = 'const x = 1'
-      await clock.advance(400)
+  for (const kind of HINT_KIND_NAMES) {
+    const actions = ofKind(ACTIONS, kind)
+    test(
+      `[${language}] every ${kind} action asks for an answer in ${name}, translations aside`,
+      { options: { language, actions: actions.map(a => a.id).join(','), hintCount: String(actions.length) }, timeoutMs: 90_000 },
+      async ($, on) => {
+        const clock = mock.clock(on)
+        const s = stage(on)
+        await start($)
+        s.selected = 'const x = 1'
+        await clock.advance(400)
 
-      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      for (const a of ACTIONS) {
-        await reselect(s, clock)
-        // One kind at a time on the line (SELM-00050): the action's own first.
-        await showKind(band, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection')
-        await band.press({ key: a.id })
-        // One that takes an argument asks for it first: Enter with the field empty, its default.
-        if (takesArg(a)) await submitArg($)
-      }
-      await band.unmount()
-
-      const systems = new Map(
-        actionsFor(language)
-          .filter(a => a.kind === 'complete')
-          .map((a, i) => [a.id, s.models[i]?.system ?? ''] as const),
-      )
-      for (const [id, system] of systems) {
-        // A translation or a converted text asks for no answer style; never for the other language either.
-        if (NO_STYLE.includes(id)) {
-          expect(system).not.toContain(`Answer in ${other}`)
-          // Those with a short note name its language: this one, never the other.
-          if (ANSWER_LANGUAGE_ONLY.includes(id)) {
-            expect(system).toContain(`in ${name}`)
-            expect(system).not.toContain(`in ${other}`)
-          }
-          continue
+        const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+        for (const a of actions) {
+          await reselect(s, clock)
+          // One kind at a time on the line (SELM-00050), and a run puts it back on the selection's:
+          // the others are switched to each time.
+          if (kind !== 'selection') await showKind(band, kind)
+          await band.press({ key: a.id })
+          // One that takes an argument asks for it first: Enter with the field empty, its default.
+          if (takesArg(a)) await submitArg($)
         }
-        expect(system).not.toContain(`Answer in ${other}`)
-        expect(system).not.toContain(`in ${other}.`)
-        expect(system).toContain(`Answer in ${name}`)
-      }
-      for (const fork of s.forks) {
-        expect(fork).toContain(`Answer in ${name}`)
-        expect(fork).not.toContain(`Answer in ${other}`)
-      }
-      expect(s.forks).toHaveLength(ACTIONS.filter(a => a.kind === 'fork').length)
-      for (const r of s.registered) {
-        expect(r.prompt).toContain(`Answer in ${name}`)
-        expect(r.prompt).not.toContain(`Answer in ${other}`)
-      }
-      expect(s.registered).toHaveLength(ACTIONS.filter(a => a.kind === 'subagent').length)
-      // Nothing is left of the placeholders.
-      for (const text of [...s.models.map(m => m.system ?? ''), ...s.forks, ...s.registered.map(r => r.prompt)]) {
-        expect(text).not.toMatch(/\{STYLE\}|\{ANSWER_LANGUAGE\}/)
-      }
-    },
-  )
+        await band.unmount()
+
+        // Each complete action asked the model once, in the order pressed.
+        const completes = ofKind(actionsFor(language), kind).filter(a => a.kind === 'complete')
+        expect(s.models).toHaveLength(completes.length)
+        const systems = new Map(completes.map((a, i) => [a.id, s.models[i]?.system ?? ''] as const))
+        for (const [id, system] of systems) {
+          // A translation or a converted text asks for no answer style; never for the other language either.
+          if (NO_STYLE.includes(id)) {
+            expect(system).not.toContain(`Answer in ${other}`)
+            // Those with a short note name its language: this one, never the other.
+            if (ANSWER_LANGUAGE_ONLY.includes(id)) {
+              expect(system).toContain(`in ${name}`)
+              expect(system).not.toContain(`in ${other}`)
+            }
+            continue
+          }
+          expect(system).not.toContain(`Answer in ${other}`)
+          expect(system).not.toContain(`in ${other}.`)
+          expect(system).toContain(`Answer in ${name}`)
+        }
+        for (const fork of s.forks) {
+          expect(fork).toContain(`Answer in ${name}`)
+          expect(fork).not.toContain(`Answer in ${other}`)
+        }
+        expect(s.forks).toHaveLength(actions.filter(a => a.kind === 'fork').length)
+        // A subagent is registered as it is first pressed: this kind's, each once.
+        for (const r of s.registered) {
+          expect(r.prompt).toContain(`Answer in ${name}`)
+          expect(r.prompt).not.toContain(`Answer in ${other}`)
+        }
+        expect(s.registered.map(r => r.name)).toEqual(actions.filter(a => a.kind === 'subagent').map(a => a.id))
+        // Nothing is left of the placeholders.
+        for (const text of [...s.models.map(m => m.system ?? ''), ...s.forks, ...s.registered.map(r => r.prompt)]) {
+          expect(text).not.toMatch(/\{STYLE\}|\{ANSWER_LANGUAGE\}/)
+        }
+      },
+    )
+  }
 
   test(
     `[${language}] the translations keep their target language; only the labels follow the setting`,

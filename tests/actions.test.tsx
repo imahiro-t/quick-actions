@@ -1556,10 +1556,31 @@ test('parsePins: unset, empty, unknown and odd values pin nothing and never thro
 
 // Every definition, pinned through the setting with room for all, is drawn and run by the
 // generic code exactly as its definition says: nothing is wired per action.
+// The run is split by the hint line's kind (SELM-00070): one test for each
+// kind and language, each pinning that kind's actions alone, so that no one
+// test presses all 311 under a loaded machine's timeout. Together they press
+// every definition (see the coverage test below); the order on the line is
+// checked with all of them pinned, without pressing any.
+
+const HINT_KIND_NAMES = ['selection', 'context', 'standalone'] as const
+
+test('the runs by kind together press every definition once, in both languages: none left out, none twice', () => {
+  for (const language of ['ja', 'en'] as const) {
+    const defs = actionsFor(language)
+    const pressed = HINT_KIND_NAMES.flatMap(kind => ofKind(defs, kind).map(a => a.id))
+    expect(pressed).toHaveLength(311)
+    expect(new Set(pressed).size).toBe(311)
+    expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
+    // Each action is pressed on the kind the line shows it under.
+    for (const kind of HINT_KIND_NAMES) {
+      for (const a of ofKind(defs, kind)) expect([a.id, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection']).toEqual([a.id, kind])
+    }
+  }
+})
+
 for (const language of ['ja', 'en'] as const) {
-  const defs = actionsFor(language)
   test(
-    `[${language}] every definition is drawn in order and runs by its kind`,
+    `[${language}] every definition is drawn in order, a kind at a time`,
     { options: { language, actions: ACTIONS.map(a => a.id).join(','), hintCount: String(ACTIONS.length) }, timeoutMs: 90_000 },
     async ($, on) => {
       const clock = mock.clock(on)
@@ -1570,57 +1591,75 @@ for (const language of ['ja', 'en'] as const) {
 
       // One kind at a time (since SELM-00050): each kind's, in the order pinned.
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-      for (const kind of ['selection', 'context', 'standalone'] as const) {
+      for (const kind of HINT_KIND_NAMES) {
         await showKind(band, kind)
         expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])
       }
-
-      for (const a of defs) {
-        const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
-        await reselect(s, clock)
-        await showKind(band, isStandalone(a) ? 'standalone' : isContext(a) ? 'context' : 'selection')
-        await band.press({ key: a.id })
-        // One that takes an argument asks for it first: Enter with the field empty, its default.
-        if (takesArg(a)) await submitArg($)
-        if (a.kind === 'local') {
-          // In the module: no model, no fork, no subagent.
-          expect(s.models.length).toBe(before.models)
-          expect(s.forks.length).toBe(before.forks)
-          expect(s.spawned.length).toBe(before.spawned)
-        } else if (a.kind === 'complete' && isStandalone(a)) {
-          // Standalone: the selection is not sent; the default argument, or NO_INPUT with none.
-          expect(s.models.length).toBe(before.models + 1)
-          expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
-          expect(s.models.at(-1)?.prompt).not.toContain('TypeError: x is undefined')
-          expect(s.models.at(-1)?.prompt).not.toContain('<selected>')
-          expect(s.models.at(-1)?.prompt).toBe(a.arg?.default === undefined ? NO_INPUT : wrapInput(a.arg.default))
-        } else if (a.kind === 'complete') {
-          expect(s.models.length).toBe(before.models + 1)
-          expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
-          expect(s.models.at(-1)?.prompt).toContain('TypeError: x is undefined')
-        } else if (a.kind === 'fork' && isContext(a)) {
-          // On the conversation: the selection is not sent.
-          expect(s.forks.length).toBe(before.forks + 1)
-          expect(s.forks.at(-1)).toContain(a.prompt)
-          expect(s.forks.at(-1)).not.toContain('<selected>')
-          expect(s.forks.at(-1)).not.toContain('TypeError: x is undefined')
-        } else if (a.kind === 'fork') {
-          expect(s.forks.length).toBe(before.forks + 1)
-          expect(s.forks.at(-1)).toContain(a.prompt)
-          expect(s.forks.at(-1)).toContain('TypeError: x is undefined')
-        } else {
-          expect(s.spawned.length).toBe(before.spawned + 1)
-          expect(s.spawned.at(-1)?.subagentType).toBe(`${PLUGIN}:${a.id}`)
-          expect(s.spawned.at(-1)?.prompt).toContain(a.task)
-          expect(s.registered.at(-1)).toMatchObject({ name: a.id, model: a.model })
-        }
-      }
       await band.unmount()
-
-      const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-      expect(await pane.find({ text: new RegExp(defs.at(-1)!.label) })).toBeDefined()
     },
   )
+
+  for (const kind of HINT_KIND_NAMES) {
+    const defs = ofKind(actionsFor(language), kind)
+    test(
+      `[${language}] every ${kind} definition runs by its kind`,
+      { options: { language, actions: defs.map(a => a.id).join(','), hintCount: String(defs.length) }, timeoutMs: 90_000 },
+      async ($, on) => {
+        const clock = mock.clock(on)
+        const s = stage(on)
+        await start($)
+        s.selected = 'TypeError: x is undefined'
+        await clock.advance(400)
+
+        const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+        for (const a of defs) {
+          const before = { models: s.models.length, forks: s.forks.length, spawned: s.spawned.length }
+          await reselect(s, clock)
+          // A run puts the line back on the selection's kind: the others are switched to each time.
+          if (kind !== 'selection') await showKind(band, kind)
+          await band.press({ key: a.id })
+          // One that takes an argument asks for it first: Enter with the field empty, its default.
+          if (takesArg(a)) await submitArg($)
+          if (a.kind === 'local') {
+            // In the module: no model, no fork, no subagent.
+            expect(s.models.length).toBe(before.models)
+            expect(s.forks.length).toBe(before.forks)
+            expect(s.spawned.length).toBe(before.spawned)
+          } else if (a.kind === 'complete' && isStandalone(a)) {
+            // Standalone: the selection is not sent; the default argument, or NO_INPUT with none.
+            expect(s.models.length).toBe(before.models + 1)
+            expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
+            expect(s.models.at(-1)?.prompt).not.toContain('TypeError: x is undefined')
+            expect(s.models.at(-1)?.prompt).not.toContain('<selected>')
+            expect(s.models.at(-1)?.prompt).toBe(a.arg?.default === undefined ? NO_INPUT : wrapInput(a.arg.default))
+          } else if (a.kind === 'complete') {
+            expect(s.models.length).toBe(before.models + 1)
+            expect(s.models.at(-1)).toMatchObject({ model: a.model, system: a.prompt })
+            expect(s.models.at(-1)?.prompt).toContain('TypeError: x is undefined')
+          } else if (a.kind === 'fork' && isContext(a)) {
+            // On the conversation: the selection is not sent.
+            expect(s.forks.length).toBe(before.forks + 1)
+            expect(s.forks.at(-1)).toContain(a.prompt)
+            expect(s.forks.at(-1)).not.toContain('<selected>')
+            expect(s.forks.at(-1)).not.toContain('TypeError: x is undefined')
+          } else if (a.kind === 'fork') {
+            expect(s.forks.length).toBe(before.forks + 1)
+            expect(s.forks.at(-1)).toContain(a.prompt)
+            expect(s.forks.at(-1)).toContain('TypeError: x is undefined')
+          } else {
+            expect(s.spawned.length).toBe(before.spawned + 1)
+            expect(s.spawned.at(-1)?.subagentType).toBe(`${PLUGIN}:${a.id}`)
+            expect(s.spawned.at(-1)?.prompt).toContain(a.task)
+            expect(s.registered.at(-1)).toMatchObject({ name: a.id, model: a.model })
+          }
+        }
+        await band.unmount()
+
+        const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+        expect(await pane.find({ text: new RegExp(defs.at(-1)!.label) })).toBeDefined()
+      },
+    )
+  }
 }
 
 test('a failure shows an Error by its message, anything else as String() gives it', () => {

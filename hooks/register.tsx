@@ -714,7 +714,15 @@ type Shown = 'results' | 'picker'
  *
  * Should the tab opened last stay behind the other (an open of an id already
  * open retitles it, and need not show it), it is closed and opened afresh,
- * which shows it.
+ * which shows it as long as no tab holds the keys. A tab that holds them (the
+ * person typing in the dialog's filter, its list or its argument field) stays
+ * shown over a tab opened afresh: the engine shows a new tab only while the
+ * keys are at the prompt, and a plugin has no call that shows a tab. So when
+ * the tab is still behind after that, both tabs are closed, which hands the
+ * keys back to the prompt, and opened afresh in order, the one `show` names
+ * last, which then shows. That happens only when a tab holds the keys (a run
+ * picked in the dialog), never twice: the hint line, the icons and the
+ * command, run from the prompt, are settled by the first reopen or need none.
  */
 async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Picked | null, focus: boolean, arg?: ArgInput) {
   await update($, picking, () => ({
@@ -732,10 +740,17 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Pick
   await $.ui.open(last)
   const panes = await readQuietly($.ui.panes())
   const frontPane = panes?.find(p => p.id === front.id)
-  if (frontPane !== undefined && frontPane.isPlaced && !frontPane.isShown) {
-    await readQuietly($.ui.close({ id: front.id }))
-    await $.ui.open(last)
-  }
+  if (frontPane === undefined || !frontPane.isPlaced || frontPane.isShown) return
+  await readQuietly($.ui.close({ id: front.id }))
+  await $.ui.open(last)
+  const reopened = (await readQuietly($.ui.panes()))?.find(p => p.id === front.id)
+  if (reopened === undefined || !reopened.isPlaced || reopened.isShown) return
+  // Still behind: the other tab holds the keys. Closing both lets go of them
+  // (the plugin's own closes, which close no more and go back to no list).
+  await readQuietly($.ui.close({ id: front.id }))
+  await readQuietly($.ui.close({ id: behind.id }))
+  await $.ui.open(behind)
+  await $.ui.open(last)
 }
 
 // The cells this plugin's docked pane takes off the transcript's column (its

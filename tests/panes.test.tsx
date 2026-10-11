@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, needsSelection } from '../hooks/actions'
@@ -11,7 +12,7 @@ import type { Clock, Stage } from './stage'
 // The right pane (SELM-00050): always two tabs, "Quick Actions" (the
 // results) and "Select an action" (the ⋯ dialog), opened together with the
 // same options; closed together by any one close of the person's; the
-// dialog's list as tall as the pane; and usable while an AskUserQuestion
+// dialog's list as tall as the pane; and closed while an AskUserQuestion
 // dialog is up.
 
 const SELECTED = 'ECONNREFUSED 127.0.0.1:3306'
@@ -312,92 +313,99 @@ for (const surface of SURFACES) {
 }
 
 // ---------------------------------------------------------------------------
-// While AskUserQuestion is up
+// While AskUserQuestion is up: the pane closes and nothing opens it again
+// until the question is answered (the dialog holds the keys, and the engine
+// gives a pane neither them nor its tab switch).
 
 const QUESTIONS = [{ question: 'Which one?', header: 'Pick', multiSelect: false, options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }]
 const QUESTION = { tool: 'AskUserQuestion', questions: QUESTIONS }
 /** The model's AskUserQuestion call, as the engine runs it through the plugins. */
 const ask = ($: Engine, id: string) => $.tool.call({ tool: 'AskUserQuestion' as const, questions: QUESTIONS, tool_use_id: id })
 
-for (const surface of [...SURFACES, 'mobile'] as const) {
-  test(`[${surface}] under the question dialog, a Quick Actions button opens the tabs on the dialog's`, async ($, on) => {
-    const clock = mock.clock(on)
-    const s = stage(on)
-    await start($)
-    await select(s, clock, SELECTED)
-
-    const dialog = await $.ui.mount({ plugin: PLUGIN, surface, component: 'AskUserQuestion', props: QUESTION })
-    // The engine's own dialog is still drawn (one engine node), the button under it.
-    expect(JSON.stringify(await dialog.drawn())).toContain('"engine"')
-    const button = await dialog.find({ key: '_ask-open' })
-    expect(button?.props.label).toBe(MESSAGES.en.askOpen)
-    await dialog.press({ key: '_ask-open' })
-    await dialog.unmount()
-    expect(s.shown).toBe(PICKER)
-    expect(s.opened.at(-1)).toEqual({ id: PICKER, title: MESSAGES.en.pickerTitle, focus: true, closeOnEscape: true, columns: 56 })
-    // On the text selected now.
-    const picker = await $.ui.mount({ ...PICKER_PANE, surface })
-    expect(await picker.find({ text: MESSAGES.en.pickerLegend(true) })).toBeDefined()
-    await picker.unmount()
-  })
-}
-
-test('while a question is up, the dialog lists its actions as buttons, and a click on one runs it', async ($, on) => {
-  const clock = mock.clock(on)
+/** Beneath the plugins, a dialog that stays up until the test answers it. */
+function heldQuestion(on: On) {
   let answer: () => void = () => {}
   const answered = new Promise<void>(resolve => (answer = resolve))
-  // Beneath the plugins, the dialog stays up until the test answers it.
   on('tool.call', { tool: 'AskUserQuestion' }, async () => {
     await answered
     return { result: { answers: { 'Which one?': 'A' } } }
   })
+  return () => answer()
+}
+
+for (const surface of [...SURFACES, 'mobile'] as const) {
+  test(`[${surface}] the question dialog is drawn as the engine draws it, with no Quick Actions button`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await select(s, clock, SELECTED)
+    const dialog = await $.ui.mount({ plugin: PLUGIN, surface, component: 'AskUserQuestion', props: QUESTION })
+    expect(await dialog.find({ key: '_ask-open' })).toBeUndefined()
+    expect(await dialog.findAll({ type: 'Button' })).toEqual([])
+    await dialog.unmount()
+  })
+}
+
+test('a question closes the open pane, both tabs, and the pane stays closed after', async ($, on) => {
+  const clock = mock.clock(on)
+  const answer = heldQuestion(on)
   const s = stage(on)
   await start($)
   await select(s, clock, SELECTED)
   await runCommand($, '')
+  expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
 
   const asked = ask($, 'toolu_1')
   await clock.settle()
-
-  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, isFocused: false } })
-  // No field, which wants the keys the question holds; a line says to click.
-  expect(await picker.find({ type: 'Select' })).toBeUndefined()
-  expect(await picker.find({ key: PICKER_FILTER })).toBeUndefined()
-  // Every action is listed (nothing else would reach the rest), with no "n more" line.
-  expect((await listedActions(picker)).length).toBe(ACTIONS.length)
-  expect(await picker.find({ text: /more: type in the filter/ })).toBeUndefined()
-  expect(await picker.find({ text: MESSAGES.en.pickerAsking })).toBeDefined()
-  expect(await picker.find({ text: MESSAGES.en.pickerNoFocus })).toBeUndefined()
-  expect(await picker.find({ key: 'tldr' })).toBeDefined()
-  // A click reaches the pane while the question is up: it runs, on the text the dialog holds.
-  await picker.press({ key: 'tldr' })
-  expect(s.models.at(-1)?.prompt).toContain(SELECTED)
-  expect(s.shown).toBe(PANE.requestId)
-  // The close button still answers too (checked below, after the question).
+  expect(s.panes).toEqual([])
+  expect(s.closed.sort()).toEqual([PANE.requestId, PICKER].sort())
 
   answer()
   await asked
   await clock.settle()
-  await picker.redraw()
-  // The question answered: the field again, and the list as many as the pane holds.
-  expect(await picker.find({ key: PICKER_FILTER })).toBeDefined()
-  expect((await listedActions(picker)).length).toBeLessThan(ACTIONS.length)
-  expect(await picker.find({ text: MESSAGES.en.pickerAsking })).toBeUndefined()
-  await picker.unmount()
+  expect(s.panes).toEqual([])
 })
 
-test('a question refused or failing still lets go of the buttons', async ($, on) => {
+test('while a question is up, the hint line is not drawn and the command opens nothing; answered, both are back', async ($, on) => {
+  const clock = mock.clock(on)
+  const answer = heldQuestion(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+
+  const asked = ask($, 'toolu_2')
+  await clock.settle()
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band.findAll({ type: 'Button' })).toEqual([])
+  await band.unmount()
+  for (const args of ['', 'tldr', 'timer 5m', 'hint']) {
+    const r = await runCommand($, args)
+    expect(JSON.stringify(r)).toContain(MESSAGES.en.askingUnavailable)
+  }
+  expect(s.opened).toEqual([])
+  expect(s.panes).toEqual([])
+  expect(s.models).toEqual([])
+
+  answer()
+  await asked
+  await clock.settle()
+  const after = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await after.findAll({ type: 'Button' })).length).toBeGreaterThan(0)
+  await after.unmount()
+  await runCommand($, '')
+  expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
+})
+
+test('a question refused or failing lets Quick Actions be used again', async ($, on) => {
   const clock = mock.clock(on)
   on('tool.call', { tool: 'AskUserQuestion' }, () => {
     throw new Error('dismissed')
   })
   const s = stage(on)
   await start($)
-  await runCommand($, '')
-  await ask($, 'toolu_2').catch(() => undefined)
+  await ask($, 'toolu_3').catch(() => undefined)
   await clock.settle()
-  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
-  expect(await picker.find({ text: MESSAGES.en.pickerAsking })).toBeUndefined()
-  await picker.unmount()
-  void s
+  const r = await runCommand($, '')
+  expect(JSON.stringify(r)).not.toContain(MESSAGES.en.askingUnavailable)
+  expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
 })

@@ -82,10 +82,8 @@ const PICKER_FILTER_CLEAR_KEY = '_filter-clear'
 const CANDIDATES = 10
 // The ⋯ dialog's rows at most: past them, the pane scrolls.
 const PICKER_MAX_ROWS = 30
-// The hint line's kind buttons, one per kind (./order), and the button above
-// an AskUserQuestion dialog that opens the panes.
+// The hint line's kind buttons, one per kind (./order).
 const kindKey = (kind: HintKind) => `_kind-${kind}`
-const ASK_OPEN_KEY = '_ask-open'
 // What the dock is taken to be before this plugin's pane has been drawn
 // docked: the width every open asks for, and its frame.
 const ASSUMED_DOCK = dockWidth(PANE_COLUMNS)
@@ -708,6 +706,8 @@ type Shown = 'results' | 'picker'
  * command, run from the prompt, are settled by the first reopen or need none.
  */
 async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Picked | null, focus: boolean, arg?: ArgInput) {
+  // Not while an AskUserQuestion dialog is up (see the tool.call hook).
+  if ((await read($, asking)) > 0) return
   await update($, picking, () => ({
     text: held?.text ?? null,
     ...(held?.requestId === undefined ? {} : { requestId: held.requestId }),
@@ -1036,6 +1036,8 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
+    // Not while an AskUserQuestion dialog is up (see the tool.call hook).
+    if ((await read($, asking)) > 0) return { text: t.askingUnavailable }
     const defs = defsFor(l)
     // The ID (lowercased) and, after the first space, its argument (as written).
     const { id: wanted, arg } = splitCommandArgs(e.args)
@@ -1115,6 +1117,8 @@ export const register: Register = (on, options) => {
   // engine draws at the row's left (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.props.isDraft) return next(e)
+    // Not while an AskUserQuestion dialog is up (see the tool.call hook).
+    if ((await read($, asking)) > 0) return next(e)
     const selected = await read($, selection)
     const current = selected !== null && selected !== (await read($, dismissed)) ? selected : null
     const opened = await read($, hint)
@@ -1183,8 +1187,7 @@ export const register: Register = (on, options) => {
         : Math.max(0, columns - ends - shownKinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0) - enabled.reduce((sum, a) => sum + buttonWidth(markedIcon(a)), 0))
     const hintElements = $.ui.resolve(e)
     const { Box, Button, Text } = hintElements
-    // Not while an AskUserQuestion dialog holds the keys: the ⋯ dialog then draws no field.
-    const input = canInput(e.surface, hintElements) && (await read($, asking)) === 0
+    const input = canInput(e.surface, hintElements)
 
     // A press puts this line away, whichever kind it runs: the selection's
     // icons (dismissed) and the line `hint` opened.
@@ -1302,25 +1305,19 @@ export const register: Register = (on, options) => {
   // answer a click. The mobile app draws no field and gets no such line: its
   // actions are buttons to tap, every one of them, and no keys.
   //
-  // While an AskUserQuestion dialog is up it holds the keys, and the engine
-  // refuses the pane any focus asked for: the list is buttons to click then
-  // (no field, which wants the keys), under a line saying so.
-  //
   // The list is a column of buttons, there from the start (no drop-down to
   // open). With the filter field it fills the pane's height: as many actions
   // as fit (./picker-rows: each button's rows as its label wraps at its words,
   // less the rest of the dialog), then a line saying how many more the filter
   // reaches.
   // It is drawn in a Box keyed by that count, so a terminal shrunk and grown
-  // again lists as many as the new height holds. Without the field (mobile, a
-  // question dialog up) nothing would reach the rest: every action is listed,
-  // and the pane scrolls.
+  // again lists as many as the new height holds. Without the field (mobile)
+  // nothing would reach the rest: every action is listed, and the pane scrolls.
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const state = await read($, picking)
     noteDock($, e.surface, state !== null, e.props.placement, e.props.bodyColumns)
-    const isAsking = (await read($, asking)) > 0
     const all = inOrder(await ensureOrder($, orderLoad), l)
     const hasSelection = state !== null && state.text !== null
     const ordered = arrange(all, pins, hasSelection, orderLoad.defaults)
@@ -1329,12 +1326,11 @@ export const register: Register = (on, options) => {
     const style = paneStyle(paneTheme, e.props.placement)
     const fixed = style.background !== undefined
     // The filter field: wherever an Input is drawn, a palette's dialog included.
-    const Input = !isAsking && canInput(e.surface, elements) ? elements.Input : undefined
+    const Input = canInput(e.surface, elements) ? elements.Input : undefined
     const input = Input !== undefined
     const filter = Input === undefined ? '' : (state?.filter ?? '')
     const shown = filterDefs(ordered, filter)
-    const keyboardNotice = e.surface !== 'mobile' && !isAsking && !e.props.isFocused
-    const askingNotice = isAsking && e.surface !== 'mobile'
+    const keyboardNotice = e.surface !== 'mobile' && !e.props.isFocused
     const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
     // As many as the pane's height holds (in the dialog's order, so the most
     // used come first), with the filter field there to reach the rest;
@@ -1345,8 +1341,6 @@ export const register: Register = (on, options) => {
         : pickerShownCount({
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
-            // A question dialog's line is never among them: it is up only
-            // with no field, when every action is listed and none counted.
             chrome: [...(keyboardNotice ? [t.pickerNoFocus] : []), t.pickerLegend(hasSelection)],
             labels: shown.map(labelOf),
             more: t.pickerMore,
@@ -1443,7 +1437,6 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" {...painted(style)}>
         {keyboardNotice && <Text {...muted(style)}>{t.pickerNoFocus}</Text>}
-        {askingNotice && <Text {...muted(style)}>{t.pickerAsking}</Text>}
         {state !== null && <Text {...muted(style)}>{t.pickerLegend(hasSelection)}</Text>}
         {state !== null && Input !== undefined && (
           <Box flexDirection="row">
@@ -1522,8 +1515,7 @@ export const register: Register = (on, options) => {
     const defs = defsFor(l)
     const paneElements = $.ui.resolve(e)
     const { Box, Text } = paneElements
-    // Not while an AskUserQuestion dialog holds the keys: the ⋯ dialog then draws no field.
-    const input = canInput(e.surface, paneElements) && (await read($, asking)) === 0
+    const input = canInput(e.surface, paneElements)
     noteDock($, e.surface, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
@@ -1638,37 +1630,20 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // An AskUserQuestion dialog holds the keys while it is up (the composer is
-  // gone, so /quick-actions cannot be typed, and the engine refuses a pane any
-  // focus asked for). Counted while each is up, so the ⋯ dialog draws its
-  // actions as buttons to click meanwhile; down again however the call ends.
+  // An AskUserQuestion dialog holds the keys while it is up: the composer is
+  // gone, and the engine gives a pane neither the keys nor its tab switch, so
+  // Quick Actions is put away meanwhile. The right pane closes, as the
+  // person's close does (every run over time stops), and nothing opens it
+  // again until the question is answered: the hint line is not drawn and the
+  // command runs nothing. Counted while each is up; down again however the
+  // call ends. The pane stays closed after.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     await update($, asking, n => n + 1)
+    await closeAll($)
     try {
       return await next(e)
     } finally {
       await update($, asking, n => Math.max(0, n - 1))
     }
-  })
-
-  // Over the dialog, a button that opens the pane on the ⋯ dialog's tab, so
-  // the actions are there while the question is (to look something up before
-  // answering): the composer is gone meanwhile, so /quick-actions cannot be
-  // typed. Over it, since the engine refuses a tree that draws below its
-  // dialog, and around its own drawing (the one engine node a tree must hold).
-  // The dialog's props are untouched; should this tree be refused, the engine
-  // draws the dialog alone.
-  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
-    const drawn = await next(e)
-    const l = await ensureLanguage($)
-    const { Box, Button } = $.ui.resolve(e)
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          <Button key={ASK_OPEN_KEY} label={MESSAGES[l].askOpen} onPress={async () => openPanes($, l, 'picker', await pickedNow($), true)} />
-        </Box>
-        {drawn}
-      </Box>
-    )
   })
 }

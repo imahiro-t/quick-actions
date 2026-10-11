@@ -79,7 +79,7 @@ Once the pane opens, Claude Code no longer shows what was selected. So that you 
 - **The highlight**: the whole row the selection was in gets a background (the theme's `subtle` color, so it follows the light or dark theme), not just the selected words. The row is drawn as usual inside it (Markdown and tool output are left as they are). The rows that can be highlighted are your messages, Claude's answers, tool calls and their results, groups of tool calls, tool progress, command output, notices, the turn duration line and question dialogs (`AskUserQuestion`)
   - A tool call and its result are one unit: a selection in either highlights both, and the progress shown under the call too. A group of tool calls is highlighted whether the selection names the group or one of the calls in it
 - **Go to selection**: scrolls the transcript back to that row (to the middle of the view)
-- **Clear highlight**: takes that result's highlight away; then the button goes. Other results' highlights stay, and a row stays highlighted while any result on it still holds one (two commands run on one selection give two results, each with its own pair of buttons)
+- **Clear highlight**: takes that result's highlight away, and the Clear highlight button with it. Only that button goes: Go to selection stays, so you can still go back to the row after the highlight is gone. Other results' highlights stay, and a row stays highlighted while any result on it still holds one (two commands run on one selection give two results, each with its own pair of buttons)
 
 The highlight stays until you press Clear highlight: closing the pane, running other actions and a plugin reload keep it. It goes, too, when its result is pushed out of the pane's 20.
 

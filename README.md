@@ -6,6 +6,10 @@ A Claude Code plugin of icon actions for the text you select in the conversation
 
 Every built-in action can be browsed and searched in the **[action catalog](https://imahiro-t.github.io/quick-actions/)**, by category, in English and Japanese.
 
+![Icons on the hint line for the selected text, and their results in the right pane](docs/images/quick-actions-en-1.png)
+
+![The ⋯ dialog listing the context actions, with the kind tabs and the filter](docs/images/quick-actions-en-2.png)
+
 ## How it works
 
 There are three kinds of action, and the hint line shows one kind at a time (switch with the [kind buttons](#switching-the-kind-shown)):

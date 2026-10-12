@@ -14,6 +14,10 @@ import type { TestRest } from 'claude-code/testing'
 // and every check is the same. A test that names its own timeoutMs keeps it.
 //
 // Named *.ts, not *.test.ts, so that the runner does not take it for a test file.
+//
+// A test file takes test from here, never straight from 'claude-code/testing'
+// (that one keeps the 5 seconds): `node scripts/check-test-imports.mjs` checks
+// every tests/*.test.ts[x] for it (SELM-00099).
 
 export { expect, mock } from 'claude-code/testing'
 

@@ -1,4 +1,5 @@
 import { expect, mock, test } from './kit'
+import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 import { actionsFor, emojiIcon, markedIcon } from '../hooks/actions'
@@ -8,6 +9,7 @@ import type { Lang, Messages } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
 import { BAND, EN, EVERY_ACTION_FITS, JA, KIND_KEY, PANE, PICKER_ARG, PICKER_FILTER, PICKER_PANE, SURFACES, pickAction, runCommand, showKind, stage, start } from './stage'
 import type { HintKindName } from './stage'
+import type { Result } from '../types'
 
 // SELM-00086: the names assistive tech (and a desktop's native buttons) read
 // for the hint line's buttons, the ⋯ dialog's fields and the result pane's
@@ -221,5 +223,82 @@ for (const paneTheme of ['light', 'dark'] as const) {
       expect(inside.map(f => f.props.color)).toEqual([paneStyle(paneTheme, 'dock').muted])
     }
     await pane.unmount()
+  })
+}
+
+// SELM-00095: an entry whose action is no longer defined (a custom action
+// taken out of customActions while it ran, say) has no definition to name its
+// buttons by: they are named with the action's ID, as its heading shows it.
+// Changing customActions reloads the module, whose runs over time are then
+// gone and the entry drawn stopped; a running entry without its definition is
+// laid here by renaming its action as the pane reads the results, beneath the
+// plugin, while the run itself goes on. Only the read is changed: its version
+// is passed on, so the entry's own writes are taken as before.
+
+/** An action ID nothing defines. */
+const GONE = 'gone-action'
+
+/** Once `on` is true, the results read with entry `id`'s action renamed to GONE. */
+function undefineAction(on: On, id: number) {
+  const switched = { on: false }
+  on('state.get', async (_$, e, next) => {
+    const got = await next(e)
+    if (!switched.on || e.key !== 'results' || !Array.isArray(got.value?.value)) return got
+    const list = (got.value.value as Result[]).map(r => (r.id === id ? { ...r, action: GONE } : r))
+    return { value: { ...got.value, value: list } }
+  })
+  return switched
+}
+
+for (const surface of SURFACES) {
+  for (const [options, t] of LANGS) {
+    test(`[${surface}] [${options.language}] an entry whose action is no longer defined: its stop button draws as before and is named with the action's ID`, { options }, async ($, on) => {
+      mock.clock(on)
+      stage(on)
+      const gone = undefineAction(on, 1)
+      await start($)
+      const l = options.language
+      await runCommand($, 'timer 5m')
+      await runCommand($, 'stopwatch')
+      gone.on = true
+      const buttons = await paneButtons($, surface)
+      const stop = byKey(buttons, STOP(1))
+      expect(stop?.drawn).toBe(t.stop)
+      expect(stop?.name).toBe(t.entryButtonName(t.stop, GONE))
+      expect(stop?.name).toContain(GONE)
+      expect(stop?.name).not.toContain('undefined')
+      expect(stop?.name.trim()).not.toBe('')
+      // The entry still defined is named by its action, apart from the one that is not.
+      const known = byKey(buttons, STOP(2))
+      expect([known?.drawn, known?.name]).toEqual([t.stop, t.entryButtonName(t.stop, entryOf(builtIn('stopwatch', l)))])
+      expect(known?.name).not.toBe(stop?.name)
+      // Pressed, it stops the run as before: the button is gone.
+      await pressInPane($, STOP(1))
+      expect(byKey(await paneButtons($, surface), STOP(1))).toBeUndefined()
+    })
+  }
+}
+
+// Again and set run the entry's action afresh, so they are drawn only for an
+// entry whose action is defined: one that is not has no definition to run and
+// gets neither, and the stop button is the only one its action's ID names.
+for (const [options, t] of LANGS) {
+  test(`[${options.language}] an entry whose action is no longer defined gets no again or set button, the one beside it still does`, { options }, async ($, on) => {
+    const ENTRIES: Result[] = [
+      { id: 4, action: GONE, target: 'none', quote: '', arg: '5m', input: '5m', timed: true, status: 'done', text: 'x' },
+      { id: 3, action: 'timer', target: 'none', quote: '', arg: '5m', input: '5m', timed: true, status: 'done', text: 'x' },
+    ]
+    on('state.get', (_$, e, next) => (e.key === 'results' ? { value: { value: ENTRIES, version: 1 } } : next(e)))
+    mock.clock(on)
+    stage(on)
+    await start($)
+    const timer = entryOf(builtIn('timer', options.language))
+    const buttons = await paneButtons($)
+    expect(byKey(buttons, AGAIN(4))).toBeUndefined()
+    expect(byKey(buttons, SET_ARG(4))).toBeUndefined()
+    const again = byKey(buttons, AGAIN(3))
+    const set = byKey(buttons, SET_ARG(3))
+    expect([again?.drawn, again?.name]).toEqual([t.again, t.entryButtonName(t.again, timer)])
+    expect([set?.drawn, set?.name]).toEqual([t.setArg('duration'), t.entryButtonName(t.setArg('duration'), timer)])
   })
 }

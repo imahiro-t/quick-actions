@@ -35,7 +35,8 @@ import { localInputFor, runLocal, tickerStep, truncate } from './local'
 import { quoteLine, showHiddenNoted } from './selection-local'
 import type { Frame } from './local'
 import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
-import { TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
+import { TIP_RESERVE, buttonWidth, dockGivenBack, dockReturn, hintLayout, hintLineColumns, hintMost, isStaleDock, leadFor } from './hint-width'
+import type { DockMeasure } from './hint-width'
 import {
   HINT_KINDS,
   USAGE_KEY,
@@ -917,36 +918,48 @@ async function openPanes($: EngineInterface, lang: Lang, show: Shown, held: Pick
   await $.ui.open(last)
 }
 
-// The cells this plugin's docked pane took off the transcript's column, as
-// last drawn on each surface (dockReturn: its body and the rule beside it),
-// given back to that surface's hint line, which is drawn under the dock across
-// the terminal's whole width (./hint-width); 0 while it is drawn inline there;
-// absent while it is closed or not yet drawn there (a reload starts with
-// none). One entry per surface: a session may draw on several at once, each
-// seating the pane its own way (a terminal docked, a desktop inline), and each
-// hint line gives back its own surface's dock alone. Kept in the module, not
-// in the state: a render hook may not write the state, and this is what one
-// measures.
-const measuredDock = new Map<RenderSurface, number>()
+// The cells the docked pane last drawn on each surface took off the
+// transcript's column (DockMeasure: dockReturn, its body and the rule beside
+// it; 0 while drawn inline), this plugin's or another's (SELM-00067), given
+// back to that surface's hint line, which is drawn under the dock across the
+// terminal's whole width (./hint-width). The dock is one, its panes its tabs,
+// so the last drawn holds. On the terminal kept with the viewport it was drawn
+// beside: another plugin's pane closes unheard, and a line handed other
+// columns drops it (isStaleDock). Absent while this plugin's pane is closed or
+// no pane is drawn yet (a reload starts with none). One entry per surface: a
+// session may draw on several at once, each seating the pane its own way (a
+// terminal docked, a desktop inline), and each hint line gives back its own
+// surface's dock alone. Kept in the module, not in the state: a render hook
+// may not write the state, and this is what one measures.
+const measuredDock = new Map<RenderSurface, DockMeasure>()
+
+/** Whether two measures say the same. */
+const sameDock = (a: DockMeasure | undefined, b: DockMeasure) => a !== undefined && a.dock === b.dock && a.viewport === b.viewport && a.own === b.own
 
 /**
- * Notes the width this plugin's pane took off the transcript's column on
- * `surface`, as the pane is drawn there: docked, its body and the rule beside
- * it; inline, none. On a change the plugin's drawings are asked again, so that
- * surface's hint line follows it (the pane's own redraw then finds it
- * unchanged, and asks nothing more). Each surface writes its own entry alone,
+ * Notes the width a pane took off the transcript's column on `surface`, as it
+ * is drawn there: docked, its body and the rule beside it; inline, none; with
+ * the viewport's columns it was drawn beside on the terminal (the only
+ * surface where that was seen to be the transcript's column; elsewhere none,
+ * and only this plugin's pane is measured there). `own`: this plugin's pane,
+ * `isOpen` its tabs open. On a change the plugin's drawings are asked again, so
+ * that surface's hint line follows it (the panes' own redraws then find it
+ * unchanged, and ask nothing more). Each surface writes its own entry alone,
  * so two seating the pane differently never undo each other's: the redraws settle.
  */
-function noteDock($: EngineInterface, surface: RenderSurface, isOpen: boolean, placement: 'dock' | 'inline', bodyColumns: number) {
-  // A drawing after closeAll (the state it cleared redraws the pane before it
-  // goes) measures nothing: the pane is on its way out.
+function noteDock($: EngineInterface, e: { surface: RenderSurface; viewport?: { columns: number }; props: { placement: 'dock' | 'inline'; bodyColumns: number } }, own: boolean, isOpen = true) {
+  const surface = e.surface
+  // A drawing of this plugin's pane after closeAll (the state it cleared
+  // redraws the pane before it goes) measures nothing: the pane is on its way
+  // out. Another plugin's measure stays.
   if (!isOpen) {
-    measuredDock.delete(surface)
+    if (measuredDock.get(surface)?.own === true) measuredDock.delete(surface)
     return
   }
-  const width = placement === 'dock' ? dockReturn(bodyColumns) : 0
-  if (measuredDock.get(surface) === width) return
-  measuredDock.set(surface, width)
+  const viewport = surface === 'terminal' ? e.viewport?.columns : undefined
+  const measure: DockMeasure = { dock: e.props.placement === 'dock' ? dockReturn(e.props.bodyColumns) : 0, own, ...(viewport === undefined ? {} : { viewport }) }
+  if (sameDock(measuredDock.get(surface), measure)) return
+  measuredDock.set(surface, measure)
   try {
     $.ui.invalidate('ui.render')
   } catch {
@@ -1003,7 +1016,8 @@ export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) =>
 async function closeAll($: EngineInterface, closing?: string) {
   await stopAllTickers($)
   await update($, picking, () => null)
-  measuredDock.clear()
+  // This plugin's dock goes; another plugin's, measured, stays.
+  for (const [surface, measure] of measuredDock) if (measure.own) measuredDock.delete(surface)
   for (const id of [PICKER, PANE]) {
     if (id !== closing) await readQuietly($.ui.close({ id }))
   }
@@ -1314,10 +1328,16 @@ export const register: Register = (on, options) => {
   // switched to the conversation's or the standalone ones.
   //
   // How many icons: as many as fit in the line's width (the transcript's
-  // column, with this plugin's docked pane given back: the line runs under it)
+  // column, with the docked pane given back, this plugin's or another's: the line runs under it)
   // beside the permission mode the engine draws at the row's left
   // (./hint-width).
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    // A dock measured beside other columns than this line is handed has since
+    // opened, closed or changed, or the terminal resized: dropped at once,
+    // before anything is awaited and however the line is drawn (or left to the
+    // engine), so a dock closed is not given back should the terminal later
+    // come to the columns it was measured beside (./hint-width).
+    if (isStaleDock(measuredDock.get(e.surface), e.viewport?.columns)) measuredDock.delete(e.surface)
     if (e.props.isDraft) return next(e)
     // Not while an AskUserQuestion dialog is up (see the tool.call hook).
     if ((await read($, asking)) > 0) return next(e)
@@ -1338,21 +1358,23 @@ export const register: Register = (on, options) => {
 
     // The line's width: the viewport's columns, which on the terminal are the
     // transcript's column, a docked pane's already off (SELM-00066: 180
-    // columns with this plugin's pane docked give a viewport of 123), with this
-    // plugin's dock given back, since the line runs under it across the whole
-    // terminal: the pane opening or closing leaves the line as it was
-    // (SELM-00068). Given back only as measured where the pane was drawn on
-    // this surface (noteDock), never assumed before: until then the line is the
-    // viewport's alone, narrower than it is for one drawing, never wider. And
-    // only while the tabs are open by the engine's record: a tab unloaded
-    // unheard (its drawing threw) leaves its measure behind, given back to nothing.
+    // columns with this plugin's pane docked give a viewport of 123), with the
+    // dock given back, since the line runs under it across the whole
+    // terminal: a pane opening or closing leaves the line as it was
+    // (SELM-00068; another plugin's pane too, SELM-00067). Given back only as
+    // measured where a pane was drawn on this surface (noteDock), never assumed
+    // before: until then the line is the viewport's alone, narrower than it is
+    // for one drawing, never wider. On the terminal only beside the viewport it
+    // was measured beside (dockGivenBack). This plugin's only while its tabs are
+    // open by the engine's record: a tab unloaded unheard (its drawing threw)
+    // leaves its measure behind, given back to nothing.
     const viewport = e.viewport
     // `columns`: the line's less the rest of the row (the mode at its left), what the buttons have.
     let columns: number | undefined
     if (viewport !== undefined) {
-      const isOpen = (await openPicking($)) !== null
-      const dock = isOpen ? (measuredDock.get(e.surface) ?? 0) : 0
-      columns = hintLineColumns(viewport.columns, leadFor(e.surface), dock)
+      const measure = measuredDock.get(e.surface)
+      const ownOpen = measure?.own === true && (await openPicking($)) !== null
+      columns = hintLineColumns(viewport.columns, leadFor(e.surface), dockGivenBack(measure, viewport.columns, ownOpen))
     }
     const kindMark = (k: HintKind, compact: boolean) => markedIcon({ icon: compact ? ' ' : t.hintKinds[k], target: k === 'standalone' ? 'none' : k })
     // What each kind button is named, whatever it draws (a desktop's native
@@ -1499,6 +1521,18 @@ export const register: Register = (on, options) => {
     )
   })
 
+  // Every pane's drawing, another plugin's too (a matcher naming no
+  // requestId is handed them all: SELM-00067, seen in a pseudo-terminal),
+  // measures the dock for the hint line on the terminal (noteDock), and is
+  // left as drawn. This plugin's own two are measured where they are drawn
+  // (below). Not on the other surfaces: where a desktop docks another
+  // plugin's pane, and what its viewport then is, has not been seen, so its
+  // line counts as before.
+  on('ui.render', { component: 'Pane' }, ($, e, next) => {
+    if (e.surface === 'terminal' && e.requestId !== PICKER && e.requestId !== PANE) noteDock($, e, false)
+    return next(e)
+  })
+
   // The ⋯ dialog: every action, the most used first (./order pickerOrder: the
   // pins, then by usage score, a tie or an unused one in the order of
   // definition, whatever its kind), as "[icon] label", "<icon> label" or
@@ -1535,7 +1569,7 @@ export const register: Register = (on, options) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
     const state = await read($, picking)
-    noteDock($, e.surface, state !== null, e.props.placement, e.props.bodyColumns)
+    noteDock($, e, true, state !== null)
     const all = inOrder(await ensureOrder($, orderLoad), l)
     const hasSelection = state !== null && state.text !== null
     // The kind listed (undefined: every kind), and what is listed of it in the
@@ -1805,7 +1839,7 @@ export const register: Register = (on, options) => {
     const paneElements = $.ui.resolve(e)
     const { Box, Text } = paneElements
     const input = canInput(e.surface, paneElements)
-    noteDock($, e.surface, (await read($, picking)) !== null, e.props.placement, e.props.bodyColumns)
+    noteDock($, e, true, (await read($, picking)) !== null)
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     /** What the entry's heading says it ran on. */

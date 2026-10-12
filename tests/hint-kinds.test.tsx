@@ -20,8 +20,9 @@ import type { Clock, Stage } from './stage'
 //
 // How many icons follows the line's width: as many as fit. The width is the
 // viewport's columns as the engine hands them (on the terminal the
-// transcript's column, a docked pane's already off: SELM-00066), with this
-// plugin's dock given back, the line running under it (SELM-00068).
+// transcript's column, a docked pane's already off: SELM-00066), with the
+// dock given back, the line running under it: this plugin's (SELM-00068) or
+// another plugin's (SELM-00067).
 
 const SELECTED = 'ECONNREFUSED 127.0.0.1:3306'
 
@@ -372,6 +373,194 @@ test('not measured (no viewport): UNMEASURED_COUNT', async ($, on) => {
   const band = await mountBand($)
   expect(await actionCount(band)).toBe(6)
   await band.unmount()
+})
+
+// ---------------------------------------------------------------------------
+// Another plugin's docked pane (SELM-00067)
+
+// A pane of another plugin: a `ui.render` matcher naming no requestId is
+// handed its drawing too (seen in a pseudo-terminal: a test plugin's pane
+// docked at a body of 40 on 180 columns drawn with a viewport of 139, 150
+// columns with 109, a body of 30 beside this plugin's on 160 columns with 129).
+const OTHER_PANE = { ...PANE, requestId: 'other-plugin-pane', props: { ...PANE.props, title: 'Other', isFocused: false } } as const
+
+/** Another plugin's pane drawn on `surface` beside a viewport `viewport` wide, docked at a body `body` wide. */
+const mountOther = ($: Engine, viewport: number | undefined, body: number, surface: 'terminal' | 'desktop' = 'terminal', placement: 'dock' | 'inline' = 'dock') =>
+  $.ui.mount({
+    ...OTHER_PANE,
+    surface,
+    props: { ...OTHER_PANE.props, bodyColumns: body, placement },
+    ...(viewport === undefined ? {} : { viewport: { columns: viewport, rows: 40, isFullscreen: true } }),
+  })
+
+for (const [terminal, body] of [[180, 40], [150, 40], [160, 30], [200, 56]] as const) {
+  const viewport = terminal - dockReturn(body)
+  test(`another plugin's pane docked at ${body} on ${terminal} columns (a viewport of ${viewport}): the line keeps its count, never more than the terminal holds; closed, as before`, { options: JA }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    await select(s, clock, SELECTED)
+
+    let band = await mountBand($, terminal, true)
+    const alone = await actionCount(band)
+    expect(alone).toBe(expected(terminal, 'ja').count)
+    await band.unmount()
+
+    // Its pane drawn docked: the transcript's column handed over, its dock given back.
+    const other = await mountOther($, viewport, body)
+    band = await mountBand($, viewport, true)
+    expect(await actionCount(band)).toBe(alone)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(terminal - LEAD_RESERVE)
+    await band.unmount()
+
+    // Closed, unheard: the line is handed the whole terminal again, and drops the measure.
+    await other.unmount()
+    band = await mountBand($, terminal, true)
+    expect(await actionCount(band)).toBe(alone)
+    await band.unmount()
+    // The terminal then resized to the very columns the transcript had beside
+    // the dock: nothing given back, the line those columns alone.
+    band = await mountBand($, viewport, true)
+    expect(await actionCount(band)).toBe(expected(viewport, 'ja').count)
+    expect(await lineWidth(band)).toBeLessThanOrEqual(viewport - LEAD_RESERVE)
+    await band.unmount()
+  })
+}
+
+test('another plugin\'s dock measured beside other columns is never given back: a line handed different columns drops it, drawn by the plugin or not', { options: EN }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+  const other = await mountOther($, 139, 40)
+  await other.unmount()
+  // Resized while the line is the engine's own (a draft in the prompt): the
+  // measure is dropped all the same.
+  const draft = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, isDraft: true }, viewport: { columns: 150, rows: 40, isFullscreen: true } })
+  await draft.unmount()
+  let band = await mountBand($, 139, true)
+  expect(await actionCount(band)).toBe(expected(139, 'en').count)
+  await band.unmount()
+
+  // With no selection nor line opened (the engine's line drawn), the same.
+  const again = await mountOther($, 139, 40)
+  await again.unmount()
+  s.selected = null
+  await clock.advance(400)
+  const plain = await mountBand($, 150, true)
+  expect(await hintIcons(plain)).toEqual([])
+  await plain.unmount()
+  await select(s, clock, SELECTED)
+  band = await mountBand($, 139, true)
+  expect(await actionCount(band)).toBe(expected(139, 'en').count)
+  await band.unmount()
+
+  // A pane drawn where nothing was measured (no viewport) gives nothing back.
+  const unmeasured = await mountOther($, undefined, 40)
+  band = await mountBand($, 139, true)
+  expect(await actionCount(band)).toBe(expected(139, 'en').count)
+  await band.unmount()
+  await unmeasured.unmount()
+})
+
+test('this plugin\'s and another plugin\'s panes as tabs of one dock: the last drawn holds, and a line drawn out of step comes out narrower, never wider', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+  let band = await mountBand($, 160, true)
+  const alone = await actionCount(band)
+  await band.press({ key: '_more' })
+  await band.unmount()
+
+  // This plugin's pane docked at 56 on 160 columns: a viewport of 103.
+  const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' }, viewport: { columns: 103, rows: 40, isFullscreen: true } })
+  band = await mountBand($, 103, true)
+  expect(await actionCount(band)).toBe(alone)
+  await band.unmount()
+
+  // Another plugin's opens beside it at 30: the dock narrows to its tab, a viewport of 129.
+  const other = await mountOther($, 129, 30)
+  band = await mountBand($, 129, true)
+  expect(await actionCount(band)).toBe(alone)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(160 - LEAD_RESERVE)
+  await band.unmount()
+
+  // A line still handed the old 103: this plugin's 57 is no longer the dock,
+  // and the other's 31 was measured beside 129, so nothing is given back.
+  band = await mountBand($, 103, true)
+  expect(await actionCount(band)).toBe(expected(103, 'ja').count)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(103 - LEAD_RESERVE)
+  await band.unmount()
+
+  // This plugin's tab shown again, drawn beside 103: its own dock again.
+  await other.unmount()
+  await pane.redraw({ ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' })
+  band = await mountBand($, 103, true)
+  expect(await actionCount(band)).toBe(alone)
+  await band.unmount()
+  await pane.unmount()
+})
+
+test('closing this plugin\'s pane leaves another plugin\'s dock measured', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+  let band = await mountBand($, 180, true)
+  const alone = await actionCount(band)
+  await band.press({ key: '_more' })
+  await band.unmount()
+  const pane = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, bodyColumns: 56, placement: 'dock' } })
+  // Another plugin's tab drawn last, beside 139.
+  const other = await mountOther($, 139, 40)
+  await pane.press({ key: PICKER_CLOSE })
+  await pane.unmount()
+  band = await mountBand($, 139, true)
+  expect(await actionCount(band)).toBe(alone)
+  expect(await lineWidth(band)).toBeLessThanOrEqual(180 - LEAD_RESERVE)
+  await band.unmount()
+  await other.unmount()
+})
+
+test('another plugin\'s pane changes nothing on the desktop, and drawn inline gives nothing back', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, SELECTED)
+  const desktop = await mountOther($, 100, 40, 'desktop')
+  const desktopBand = await $.ui.mount({ ...BAND, surface: 'desktop', viewport: { columns: 100, rows: 40, isFullscreen: true } })
+  expect(await actionCount(desktopBand)).toBe(expected(100, 'ja').count)
+  await desktopBand.unmount()
+  await desktop.unmount()
+
+  const inline = await mountOther($, 139, 40, 'terminal', 'inline')
+  const band = await mountBand($, 139, true)
+  expect(await actionCount(band)).toBe(expected(139, 'ja').count)
+  await band.unmount()
+  await inline.unmount()
+})
+
+test('another plugin\'s pane asks for a redraw only as its dock changes, and the redraws settle', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  let invalidated = 0
+  on('ui.invalidate', (_$, e, next) => {
+    invalidated++
+    return next(e)
+  })
+  await start($)
+  await select(s, clock, SELECTED)
+  const before = invalidated
+  const other = await mountOther($, 139, 40)
+  expect(invalidated - before).toBe(1)
+  for (let i = 0; i < 3; i++) await other.redraw({ ...OTHER_PANE.props, bodyColumns: 40, placement: 'dock' })
+  expect(invalidated - before).toBe(1)
+  // Its own drawing is left as the engine draws it.
+  expect(await other.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
+  await other.redraw({ ...OTHER_PANE.props, bodyColumns: 30, placement: 'dock' })
+  expect(invalidated - before).toBe(2)
+  await other.unmount()
 })
 
 // ---------------------------------------------------------------------------

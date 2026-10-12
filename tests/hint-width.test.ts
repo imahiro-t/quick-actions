@@ -10,7 +10,9 @@ import {
   MIN_LABELED_ACTIONS,
   TIP_RESERVE,
   buttonWidth,
+  dockGivenBack,
   dockReturn,
+  isStaleDock,
   LEAD_SURFACES,
   hasEmoji,
   hintLayout,
@@ -67,6 +69,34 @@ test('the line is the viewport\'s columns with this plugin\'s dock given back: n
   // The dock is never taken off: the old measure of what comes off is gone.
   expect('dockWidth' in hintWidth).toBe(false)
   expect('DOCK_FRAME' in hintWidth).toBe(false)
+})
+
+test('a dock measured is given back only beside the viewport it was measured beside; another plugin\'s only with that key, this plugin\'s only while open (SELM-00067)', () => {
+  const other = { dock: dockReturn(40), viewport: 139, own: false }
+  // Beside the viewport it was drawn beside: the whole terminal again (180).
+  expect(dockGivenBack(other, 139, false)).toBe(41)
+  expect(hintLineColumns(139, LEAD_RESERVE, dockGivenBack(other, 139, false))).toBe(hintLineColumns(180, LEAD_RESERVE))
+  // Beside other columns (closed, opened again, resized): stale, nothing.
+  expect(isStaleDock(other, 180)).toBe(true)
+  expect(isStaleDock(other, 109)).toBe(true)
+  expect(dockGivenBack(other, 180, true)).toBe(0)
+  expect(dockGivenBack(other, 103, true)).toBe(0)
+  expect(isStaleDock(other, 139)).toBe(false)
+  // No line viewport, or no measure, or no key: nothing says it is stale.
+  expect(isStaleDock(other, undefined)).toBe(false)
+  expect(isStaleDock(undefined, 139)).toBe(false)
+  expect(isStaleDock({ dock: 41, own: true }, 139)).toBe(false)
+  // Another plugin's without the key is never given back.
+  expect(dockGivenBack({ dock: 41, own: false }, 139, true)).toBe(0)
+  expect(dockGivenBack(undefined, 139, true)).toBe(0)
+  // This plugin's: while its tabs are open, keyed or not (a surface keying nothing).
+  expect(dockGivenBack({ dock: 57, own: true }, 103, true)).toBe(57)
+  expect(dockGivenBack({ dock: 57, own: true }, 103, false)).toBe(0)
+  expect(dockGivenBack({ dock: 57, viewport: 103, own: true }, 103, true)).toBe(57)
+  expect(dockGivenBack({ dock: 57, viewport: 103, own: true }, 129, true)).toBe(0)
+  // Inline: none.
+  expect(dockGivenBack({ dock: 0, viewport: 139, own: false }, 139, false)).toBe(0)
+  expect(dockGivenBack({ dock: -3, viewport: 139, own: false }, 139, false)).toBe(0)
 })
 
 test('the hintCount setting is gone: no count in proportion to 80 columns', () => {

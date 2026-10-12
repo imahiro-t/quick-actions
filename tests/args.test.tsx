@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { TEXT_ARG_LIMIT, formatClock, localMidnight, parseArg, splitCommandArgs, utcLabel } from '../hooks/args'
 import type { ArgEnv, ArgSpec } from '../hooks/args'

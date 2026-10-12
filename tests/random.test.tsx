@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { RandomUnavailableError, random, randomBytes, randomBytesWith, unitFrom } from '../hooks/random'
 

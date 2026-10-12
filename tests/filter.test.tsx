@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { ACTIONS } from '../hooks/actions'
 import type { ActionSpec } from '../hooks/actions'

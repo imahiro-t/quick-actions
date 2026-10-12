@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 
 import type { Result } from '../types'

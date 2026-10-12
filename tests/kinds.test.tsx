@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 
 import { ACTIONS, isStandalone } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'

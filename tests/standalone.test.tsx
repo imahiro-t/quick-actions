@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'

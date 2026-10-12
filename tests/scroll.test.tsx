@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 
 import { settleQuietly, toLatest } from '../hooks/scroll'
 import { BAND, EN, JA, PANE, PICKER_PANE, pickAction, PLUGIN, SURFACES, reselect, runCommand, stage, start } from './stage'

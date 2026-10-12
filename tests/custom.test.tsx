@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 
 import { ACTIONS, ANSWER_LANGUAGE, INPUT_IS_DATA, SELECTED_IS_DATA, STYLE, resolveSpec } from '../hooks/actions'
 import {

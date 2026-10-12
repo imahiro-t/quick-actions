@@ -24,7 +24,9 @@ import {
   JSON_LAYOUT_LIMIT,
   minifyJson,
   parseUrl,
+  quoteLine,
   showHidden,
+  showHiddenNoted,
   sortLines,
   urlDecode,
   urlEncode,
@@ -1158,4 +1160,154 @@ test('deep nesting lays out only as far as the pane shows: no output of length t
   // Short of the cap, the layout is whole and not cut.
   expect(layoutJson('[1]', 2, JSON_LAYOUT_LIMIT)).toEqual({ text: '[\n  1\n]', cut: false })
   expect(layoutJson('[1]', 0)).toEqual({ text: '[1]', cut: false })
+})
+
+// ---------------------------------------------------------------------------
+// A model's answer and the heading's quote (SELM-00090): shown by the same
+// rule as a decoder's output. Invisible characters are written as \u{...}
+// escapes here too, never raw.
+
+test('showHiddenNoted: an answer with nothing hidden is left as it is, its line breaks made \\n', () => {
+  for (const s of ['plain', 'C:\\Users\\me and \\d+', '# Title\n\n- a\n- b\n\t**bold** `code`', FAMILY, FLAG, CODER, HEART, ENGLAND, 'sun \u{2600}\u{fe0f}', '\u{845b}\u{e0100}', '日本語']) {
+    expect(showHiddenNoted(s, 'en')).toBe(s)
+    expect(showHiddenNoted(s, 'ja')).toBe(s)
+  }
+  // CR is no hidden character, but a pane's Text takes none: \r\n and \r become \n, nothing else changes.
+  expect(showHiddenNoted('a\r\nb\rc\\d', 'en')).toBe('a\nb\nc\\d')
+  expect(showHiddenNoted(`a\r\n${RLO}`, 'en')).toBe(`a\n\\u202e\n\n${NOTE_EN}`)
+})
+
+test('showHiddenNoted: hidden characters escaped as a decoder shows them, backslashes doubled, the note after a blank line', () => {
+  expect(showHiddenNoted(`abc${RLO}def`, 'en')).toBe(`abc\\u202edef\n\n${NOTE_EN}`)
+  expect(showHiddenNoted(`abc${RLO}def`, 'ja')).toBe(`abc\\u202edef\n\n${NOTE_JA}`)
+  // Once anything is escaped, the text's own backslashes show doubled.
+  expect(showHiddenNoted(`C:\\dir ${RLO}`, 'en')).toBe(`C:\\\\dir \\u202e\n\n${NOTE_EN}`)
+  for (const [c, shown] of [
+    ['\u{1b}', '\\u001b'],
+    ['\u{9b}', '\\u009b'],
+    ['\u{200b}', '\\u200b'],
+    ['\u{feff}', '\\ufeff'],
+    ['\u{2028}', '\\u2028'],
+    ['\u{e0041}', '\\udb40\\udc41'],
+  ] as const) {
+    expect(showHiddenNoted(`a${c}b`, 'en')).toBe(`a${shown}b\n\n${NOTE_EN}`)
+  }
+  // A smuggled run of tag characters, and stray selectors after a letter, are shown.
+  expect(showHiddenNoted(`hi${tags('run')}`, 'en')).toBe(`hi${tagsShown('run')}\n\n${NOTE_EN}`)
+  expect(showHiddenNoted('A\u{fe00}\u{fe01}', 'en')).toBe(`A\\ufe00\\ufe01\n\n${NOTE_EN}`)
+  // What a decoder keeps is kept beside them: emoji ZWJ, a flag's tags, U+FE0F on an emoji, an IVS on an ideograph.
+  const kept = `${FAMILY} ${ENGLAND} \u{2600}\u{fe0f} \u{845b}\u{e0100}`
+  expect(showHiddenNoted(`${kept}${RLO}`, 'en')).toBe(`${kept}\\u202e\n\n${NOTE_EN}`)
+  // The same as a decoder's output: url-decode shows the same text the same way.
+  expect(showHiddenNoted(`x\\${RLO}`, 'en')).toBe(textOf(run(urlDecode, encodeURIComponent(`x\\${RLO}`))))
+})
+
+test('showHiddenNoted: markdown stays as written, in and out of code; only the hidden characters and backslashes change', () => {
+  const answer = [
+    '# Heading',
+    '',
+    `Some **bold** and _em_ text ${RLO}here, a path C:\\tmp.`,
+    '',
+    '- item one',
+    `- item \`co${RLO}de\` two`,
+    '',
+    '```ts',
+    `const re = /\\d+/ // ${RLO}`,
+    '\tindented',
+    '```',
+  ].join('\n')
+  const shown = showHiddenNoted(answer, 'en')
+  const expected = answer.replace(/\\/g, '\\\\').replace(new RegExp(RLO, 'g'), '\\u202e')
+  expect(shown).toBe(`${expected}\n\n${NOTE_EN}`)
+  // Every line break, tab and markdown mark is still there, nothing raw is hidden.
+  expect(shown.split('\n').slice(0, 11)).toHaveLength(11)
+  expect(shown).toContain('# Heading\n\nSome **bold** and _em_ text \\u202ehere')
+  expect(shown).toContain('- item `co\\u202ede` two')
+  expect(shown).toContain('```ts\nconst re = /\\\\d+/ // \\u202e\n\tindented\n```')
+  expect(shown).not.toMatch(RAW_HIDDEN)
+})
+
+/** The heading's quote as it was before SELM-00090: white space made one space, cut at 57 UTF-16 units past 60. */
+const quoteBefore = (text: string) => {
+  const line = text.replace(/\s+/g, ' ').trim()
+  return line.length > 60 ? `${line.slice(0, 57)}...` : line
+}
+
+test('quoteLine: with nothing hidden, the quote as before (60 UTF-16 units kept whole, past that 57 and "...")', () => {
+  const sixty = 'a'.repeat(60)
+  for (const s of ['', '  ECONNREFUSED\n\t127.0.0.1:3306  ', sixty, `${sixty}b`, `${'x'.repeat(40)}\n\n${'y'.repeat(40)}`, 'C:\\Users\\me', `${'日本語'.repeat(30)}`, FAMILY, ENGLAND]) {
+    expect(quoteLine(s)).toBe(quoteBefore(s))
+  }
+  // The unit is UTF-16: 60 units stay whole, 61 are cut to 57 and "...".
+  expect(quoteLine(sixty)).toBe(sixty)
+  expect(quoteLine(`${sixty}b`)).toBe(`${'a'.repeat(57)}...`)
+  // An emoji (two units) across the cut is left out whole, never halved.
+  const emoji = `${'a'.repeat(56)}\u{1f363}${'b'.repeat(10)}`
+  expect(quoteLine(emoji)).toBe(`${'a'.repeat(56)}...`)
+  expect(quoteBefore(emoji)).toBe(`${'a'.repeat(56)}\u{d83c}...`)
+})
+
+test('quoteLine: hidden characters shown first, then white space folded, never cut inside an escape', () => {
+  expect(quoteLine(`abc${RLO}def`)).toBe('abc\\u202edef')
+  expect(quoteLine(`C:\\dir ${RLO}`)).toBe('C:\\\\dir \\u202e')
+  // Hidden characters JS counts as white space are shown, not folded away.
+  expect(quoteLine('a\u{feff}b\u{2028}c\u{85}d')).toBe('a\\ufeffb\\u2028c\\u0085d')
+  // Plain white space still folds, around escapes too.
+  expect(quoteLine(`  a\n\t${RLO}  b  `)).toBe('a \\u202e b')
+  // Kept characters stay.
+  expect(quoteLine(`${FAMILY}${RLO}`)).toBe(`${FAMILY}\\u202e`)
+  // The cut: at most 57 units, between units only, for each place an escape (6), a pair (12) or a doubled backslash (2) may straddle 57.
+  for (let pad = 40; pad <= 57; pad++) {
+    for (const [c, shown] of [
+      [RLO, '\\u202e'],
+      ['\u{e0041}', '\\udb40\\udc41'],
+      ['\\', '\\\\'],
+    ] as const) {
+      const input = `${'a'.repeat(pad)}${c}${'z'.repeat(20)}${RLO}`
+      const q = quoteLine(input)
+      expect(q.endsWith('...')).toBe(true)
+      const body = q.slice(0, -3)
+      expect(body.length).toBeLessThanOrEqual(57)
+      const whole = `${'a'.repeat(pad)}${shown}${'z'.repeat(20)}\\u202e`
+      expect(whole.startsWith(body)).toBe(true)
+      // The cut falls before the escape when it does not fit whole, and after it when it does.
+      expect(body.length).toBe(pad + shown.length <= 57 ? 57 : pad)
+    }
+  }
+})
+
+// SELM-00090 round 2: a sequence `showHidden` keeps for its context (a flag's
+// tags, a ZWJ between emoji, a selector on its base, a Mongolian vowel
+// separator between letters) must not be cut so that what is left of it would
+// be escaped: nothing raw the pane must not show may reach the heading.
+test('quoteLine: a kept sequence across the cut is left whole or left out, never halved into raw hidden characters', () => {
+  const KEPT: readonly (readonly [string, boolean])[] = [
+    // [sequence, whether it is one grapheme cluster: then kept whole or left out whole]
+    [ENGLAND, true],
+    [SCOTLAND, true],
+    [FAMILY, true],
+    [FLAG, true],
+    ['\u{1f469}\u{1f3fd}\u{200d}\u{1f4bb}', true],
+    ['\u{2600}\u{fe0f}', true],
+    ['\u{845b}\u{e0100}', true],
+    ['\u{1828}\u{180e}\u{1820}', false],
+    ['\u{1828}\u{180b}\u{180e}\u{1820}', false],
+  ]
+  for (const [seq, cluster] of KEPT) {
+    // With nothing else hidden (cut by clusters alone) and with an escape after it (cut by escapes and clusters).
+    for (const [tail, tailShown] of [['', ''], [RLO, '\\u202e']] as const) {
+      for (let pad = 57 - seq.length - 2; pad <= 57; pad++) {
+        const input = `${'a'.repeat(pad)}${seq}${'z'.repeat(20)}${tail}`
+        const q = quoteLine(input)
+        expect(q.endsWith('...')).toBe(true)
+        const body = q.slice(0, -3)
+        expect(body.length).toBeLessThanOrEqual(57)
+        expect(`${'a'.repeat(pad)}${seq}${'z'.repeat(20)}${tailShown}`.startsWith(body)).toBe(true)
+        expect(hasHidden(q)).toBe(false)
+        if (cluster) expect(body.length <= pad || body.length >= pad + seq.length).toBe(true)
+        // The cut moves back no further than the sequence's start.
+        expect(body.length).toBeGreaterThanOrEqual(Math.min(pad, 57))
+      }
+    }
+  }
 })

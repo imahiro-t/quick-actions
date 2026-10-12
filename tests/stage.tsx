@@ -305,6 +305,8 @@ export type Stage = {
   toasts: string[]
   // How the models answer: with text, or with none.
   answer: 'text' | 'empty'
+  // Set to have the models answer this text instead of naming themselves.
+  answerText: string | null
   // Set to have every spawn refused with this reason.
   spawnDeny: string | null
   // Set to have every model call, and every subagent registration, refused
@@ -350,14 +352,14 @@ export type Stage = {
 const reply = (s: Stage, text: string) => {
   return s.answer === 'empty'
     ? ({ isAnswered: false, reason: 'empty-reply', usage } as const)
-    : ({ isAnswered: true, text, usage } as const)
+    : ({ isAnswered: true, text: s.answerText ?? text, usage } as const)
 }
 
 /** What stage() starts the mocked $.store with: its entries, as `{ usage: { … } }`. */
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {

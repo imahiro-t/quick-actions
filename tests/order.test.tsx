@@ -15,6 +15,7 @@ import {
   pickerOrder,
   recordUse,
   settleIn,
+  usageOf,
 } from '../hooks/order'
 import type { OrderSlot } from '../hooks/order'
 import type { Usage } from '../hooks/order'
@@ -72,6 +73,53 @@ test('parseUsage: anything but an object is no usage; unusable entries are dropp
       nothing: null,
     }),
   ).toEqual({ ok: { score: 2, at: NOW } })
+})
+
+// IDs that name what every object inherits: a score is read and written for
+// the ID itself, never for the inherited member, and a stored `__proto__`
+// is an entry like any other, not the object's prototype.
+const INHERITED = ['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__']
+
+test('usageOf: an own entry alone; nothing for an ID an object inherits', () => {
+  for (const id of INHERITED) expect(usageOf({}, id)).toBeUndefined()
+  for (const id of INHERITED) expect(decayed(usageOf({}, id), NOW)).toBe(0)
+})
+
+test('recordUse: an ID an object inherits scores 1, then its decayed score plus 1, and is an own entry', () => {
+  for (const id of INHERITED) {
+    const first = recordUse({}, id, NOW)
+    expect(Object.prototype.hasOwnProperty.call(first, id)).toBe(true)
+    expect(Object.getPrototypeOf(first)).toBe(Object.prototype)
+    expect(usageOf(first, id)).toEqual({ score: 1, at: NOW })
+    const later = recordUse(first, id, NOW + 30 * DAY)
+    expectNear(usageOf(later, id)?.score, 1.5)
+    // Kept through JSON, as the store keeps it.
+    expect(usageOf(parseUsage(JSON.parse(JSON.stringify(later))), id)?.at).toBe(NOW + 30 * DAY)
+  }
+})
+
+test('parseUsage: a stored `__proto__` is an entry, the prototype is left as it is', () => {
+  const raw: unknown = JSON.parse('{"__proto__":{"score":3,"at":0},"constructor":{"score":1,"at":0},"why":{"score":2,"at":0}}')
+  const usage = parseUsage(raw)
+  expect(Object.getPrototypeOf(usage)).toBe(Object.prototype)
+  expect(Object.keys(usage)).toEqual(['__proto__', 'constructor', 'why'])
+  expect(usageOf(usage, '__proto__')).toEqual({ score: 3, at: 0 })
+  expect(usageOf(usage, 'constructor')).toEqual({ score: 1, at: 0 })
+  // Nothing inherited from the entry: no `score` read through the prototype.
+  expect((usage as Record<string, unknown>)['score']).toBeUndefined()
+  // An unusable `__proto__` entry is dropped like any other.
+  expect(Object.keys(parseUsage(JSON.parse('{"__proto__":{"score":"x","at":0}}')))).toEqual([])
+})
+
+test('orderActions and defaultsLead: IDs an object inherits, with and without a score', () => {
+  const defs = [...INHERITED, 'plain'].map(id => ({ id }))
+  // No usage: nothing scored, so the default set (here `plain`) leads and the rest keep their order.
+  expect(defaultsLead(defs, [], {}, NOW)).toBe(true)
+  expect(ids(orderActions(defs, [], {}, NOW, ['plain']))).toEqual(['plain', ...INHERITED])
+  // Scored: by score, highest first, the unused in their order.
+  const usage = parseUsage(JSON.parse('{"__proto__":{"score":3,"at":' + NOW + '},"constructor":{"score":5,"at":' + NOW + '},"plain":{"score":1,"at":' + NOW + '}}'))
+  expect(defaultsLead(defs, [], usage, NOW)).toBe(false)
+  expect(ids(orderActions(defs, [], usage, NOW, ['plain']))).toEqual(['constructor', '__proto__', 'plain', 'toString', 'hasOwnProperty', 'valueOf'])
 })
 
 // ---------------------------------------------------------------------------
@@ -318,6 +366,50 @@ test('a use adds to the decayed score kept from before', async ($, on) => {
   const usage = await storedUsage(s)
   expectNear(usage?.['why']?.score, 3)
   expect(usage?.['why']?.at).toBe(NOW)
+})
+
+// A custom action's ID can be `constructor` (the ID format allows it; not
+// `toString` or `__proto__`): its uses are recorded and order it.
+const CONSTRUCTOR = { id: 'constructor', icon: '🧱', label: 'Constructor', kind: 'complete', model: 'haiku', prompt: 'Say what the selected text builds.' }
+
+test('a custom action with the ID `constructor`: its use is recorded and leads the hint line', { options: { customActions: JSON.stringify([CONSTRUCTOR]) } }, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const s = stage(on)
+  await start($)
+  s.selected = 'some text'
+  await runCommand($, 'constructor')
+  await clock.settle()
+  const usage = (await storedUsage(s)) ?? {}
+  expect(Object.keys(usage)).toEqual(['constructor'])
+  expect(usage['constructor']).toEqual({ score: 1, at: NOW })
+  await reselect(s, clock)
+  expect((await iconsOf($))[0]).toBe('[🧱]')
+
+  // A second use adds to it.
+  await runCommand($, 'constructor')
+  await clock.settle()
+  expectNear((await storedUsage(s))?.['constructor']?.score, 2)
+})
+
+// The host may hand the plugin the stored object without its `__proto__` key
+// (the test kit's does); whether it does or not, the order and the scores
+// read stay right and the object read keeps its prototype (parseUsage, above,
+// checks the key itself kept as an entry).
+test('a stored usage with a `__proto__` key still orders the hint line and records uses', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const s = stage(on, { store: { usage: JSON.parse(`{"__proto__":{"score":9,"at":${NOW}},"tldr":{"score":5,"at":${NOW}},"why":{"score":3,"at":${NOW}}}`) } })
+  await start($)
+  s.selected = 'some text'
+  await clock.advance(400)
+  expect((await iconsOf($)).slice(0, 2)).toEqual([iconOf('tldr'), iconOf('why')])
+  await runCommand($, 'why')
+  await clock.settle()
+  const usage = (await storedUsage(s)) ?? {}
+  expect(Object.getPrototypeOf(usage)).toBe(Object.prototype)
+  expectNear(usageOf(usage, 'why')?.score, 4)
+  expectNear(usageOf(usage, 'tldr')?.score, 5)
+  await reselect(s, clock)
+  expect((await iconsOf($)).slice(0, 2)).toEqual([iconOf('tldr'), iconOf('why')])
 })
 
 // ---------------------------------------------------------------------------

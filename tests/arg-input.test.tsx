@@ -635,9 +635,10 @@ test('the mark changes nothing while it runs: the first frame and the stop butto
 // $.clock.every throw, so the entries those ends leave are written here as
 // they are left: marked at the start of the run (before any of those paths),
 // settled done or failed with no frame drawn. A reload's entry, running with
-// no run behind it, is drawn stopped with the buttons too; one marked but not
-// yet drawn while it runs keeps "Thinking…" and gets none.
-test('every end of a marked entry offers it again; one still running does not; one unmarked (older) neither', { options: EN }, async ($, on) => {
+// no run behind it, is drawn stopped with the buttons too, whether its first
+// frame was drawn (ticker) or not yet (marked alone): neither is left at
+// "Thinking…". One unmarked (older) gets none.
+test('every end of a marked entry offers it again, a reload\'s too, with or without a frame; one unmarked (older) does not', { options: EN }, async ($, on) => {
   const ENTRIES = [
     { id: 9, action: 'countdown-to', target: 'none', quote: '', arg: '9:00', input: '9:00', timed: true, status: 'done', text: '🔜 It is 09:00' },
     { id: 8, action: 'breathing', target: 'none', quote: '', timed: true, status: 'failed', text: MESSAGES.en.failed('boom') },
@@ -649,10 +650,11 @@ test('every end of a marked entry offers it again; one still running does not; o
   mock.clock(on)
   stage(on)
   await start($)
-  expect(await paneButtons($)).toEqual([AGAIN(9), SET_ARG(9), AGAIN(8), SET_ARG(8), AGAIN(7), SET_ARG(7)])
+  // eye-rest takes no argument: "again" alone.
+  expect(await paneButtons($)).toEqual([AGAIN(9), SET_ARG(9), AGAIN(8), SET_ARG(8), AGAIN(7), SET_ARG(7), AGAIN(6)])
   const texts = await paneTexts($)
-  expect(texts).toContain(MESSAGES.en.tickerStopped())
-  expect(texts).toContain(MESSAGES.en.thinking)
+  expect(texts.filter(t => t === MESSAGES.en.tickerStopped())).toHaveLength(2)
+  expect(texts).not.toContain(MESSAGES.en.thinking)
 })
 
 test('again with an argument that no longer parses: a new entry, failed with the command\'s words', { options: EN }, async ($, on) => {

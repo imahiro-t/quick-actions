@@ -33,6 +33,22 @@ export type Usage = Record<string, UsageEntry>
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
+const hasOwn = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key)
+
+/**
+ * The entry `usage` holds for `id` as its own key; undefined for none. An ID
+ * such as `constructor` or `__proto__` never reads what the object inherits.
+ */
+export const usageOf = (usage: Usage, id: string): UsageEntry | undefined => (hasOwn(usage, id) ? usage[id] : undefined)
+
+/**
+ * Sets `id` on `usage` as an own, enumerable key: unlike `usage[id] = …`, an
+ * ID of `__proto__` adds an entry rather than replacing the object's prototype.
+ */
+const setOwn = (usage: Usage, id: string, entry: UsageEntry): void => {
+  Object.defineProperty(usage, id, { value: entry, enumerable: true, writable: true, configurable: true })
+}
+
 /**
  * The usage held in the store, checked: anything that is not an object gives
  * none, and an entry whose score (finite, not negative) or time (finite) is
@@ -45,7 +61,7 @@ export function parseUsage(raw: unknown): Usage {
     if (entry === null || typeof entry !== 'object') continue
     const { score, at } = entry as Record<string, unknown>
     if (!isFiniteNumber(score) || score < 0 || !isFiniteNumber(at)) continue
-    usage[id] = { score, at }
+    setOwn(usage, id, { score, at })
   }
   return usage
 }
@@ -59,7 +75,10 @@ export function decayed(entry: UsageEntry | undefined, now: number): number {
 
 /** The usage with one more use of `id` at `now`: its decayed score plus 1. The others are kept as they are. */
 export function recordUse(usage: Usage, id: string, now: number): Usage {
-  return { ...usage, [id]: { score: decayed(usage[id], now) + 1, at: now } }
+  const next: Usage = {}
+  for (const [key, entry] of Object.entries(usage)) setOwn(next, key, entry)
+  setOwn(next, id, { score: decayed(usageOf(usage, id), now) + 1, at: now })
+  return next
 }
 
 /** The IDs a comma-separated setting names: trimmed and lowercased, empty ones left out. */
@@ -105,7 +124,7 @@ export function orderActions<D extends { id: string }>(
   now: number,
   defaultIds: readonly string[] = DEFAULT_ACTION_IDS,
 ): D[] {
-  const scores = new Map(defs.map(d => [d.id, decayed(usage[d.id], now)] as const))
+  const scores = new Map(defs.map(d => [d.id, decayed(usageOf(usage, d.id), now)] as const))
   const lead = defaultsLead(defs, pins, usage, now) ? pickActions(defs, defaultIds) : pickActions(defs, pins.map(p => p.id))
   const leading = new Set(lead.map(d => d.id))
   const rest = defs
@@ -121,7 +140,7 @@ export function orderActions<D extends { id: string }>(
  * score above 0 among `defs`.
  */
 export function defaultsLead(defs: readonly { id: string }[], pins: readonly unknown[], usage: Usage, now: number): boolean {
-  return pins.length === 0 && !defs.some(d => decayed(usage[d.id], now) > 0)
+  return pins.length === 0 && !defs.some(d => decayed(usageOf(usage, d.id), now) > 0)
 }
 
 /**

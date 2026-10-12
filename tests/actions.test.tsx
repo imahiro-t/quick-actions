@@ -69,7 +69,7 @@ const ON_SELECTION = [
   'find-usages', 'find-tests', 'official-docs', 'search-error', 'package-info',
   'to-table', 'json-to-yaml', 'yaml-to-json', 'json-to-types', 'infer-schema',
   'count-text', 'format-json', 'minify-json', 'csv-to-table', 'sort-lines', 'dedupe-lines', 'case-variants',
-  'base64-decode', 'base64-encode', 'url-decode', 'url-encode', 'parse-url', 'decode-jwt', 'epoch-to-date',
+  'base64-decode', 'base64-encode', 'url-decode', 'url-encode', 'parse-url', 'open-urls', 'copy-urls', 'decode-jwt', 'epoch-to-date',
   'hash-text', 'color-convert',
   'make-quiz', 'learn-more',
   'weak-claims', 'logic-check', 'calc-check',
@@ -138,12 +138,12 @@ const REMOVED = [
   'glossary', 'simplify', 'proofread', 'structure', 'naming', 'usages', 'docs', 'next-step', 'send',
 ]
 
-test('the three hundred and eleven built-ins (a hundred and four on the selection, a hundred and two on the conversation, a hundred and five standalone), unique IDs, every field filled in', () => {
+test('the three hundred and thirteen built-ins (a hundred and six on the selection, a hundred and two on the conversation, a hundred and five standalone), unique IDs, every field filled in', () => {
   const ids = ACTIONS.map(a => a.id)
   // In the order of definition: on the selection, on the conversation, standalone.
   expect(ids).toEqual(BUILT_IN)
-  expect(ids).toHaveLength(311)
-  expect(ON_SELECTION).toHaveLength(104)
+  expect(ids).toHaveLength(313)
+  expect(ON_SELECTION).toHaveLength(106)
   expect(ON_CONVERSATION).toHaveLength(102)
   expect(STANDALONE).toHaveLength(105)
   expect(ACTIONS.filter(a => needsSelection(a)).map(a => a.id)).toEqual(ON_SELECTION)
@@ -429,6 +429,8 @@ const CATALOG_ROWS_RESEARCH_DATA: readonly (readonly [string, string, string, st
   ['url-decode', '🔗', 'URLデコード', 'URL decode', 'local', undefined],
   ['url-encode', '🔣', 'URLエンコード', 'URL encode', 'local', undefined],
   ['parse-url', '🧭', 'URLを分解', 'Parse a URL', 'local', undefined],
+  ['open-urls', '🔭', 'URLを開く', 'Open URLs', 'local', undefined],
+  ['copy-urls', '🧲', 'URLをコピー', 'Copy URLs', 'local', undefined],
   ['decode-jwt', '🎫', 'JWTを読む', 'Decode a JWT', 'local', undefined],
   ['epoch-to-date', '⌛', 'UNIX時刻を日時に', 'Epoch to date', 'local', undefined],
   ['hash-text', '🆔', 'ハッシュ値', 'Hash', 'local', undefined],
@@ -440,8 +442,8 @@ const CATALOG_ROWS_RESEARCH_DATA: readonly (readonly [string, string, string, st
   ['calc-check', '➗', '計算の検算', 'Check the math', 'complete', 'sonnet'],
 ]
 
-test('the thirty-one catalog actions on the selection (research, data, learning, checks): as the catalog has them', () => {
-  expect(CATALOG_ROWS_RESEARCH_DATA).toHaveLength(31)
+test('the thirty-three catalog actions on the selection (research, data, learning, checks): as the catalog has them', () => {
+  expect(CATALOG_ROWS_RESEARCH_DATA).toHaveLength(33)
   const byId = new Map(ACTIONS.map(a => [a.id, a]))
   for (const [id, icon, ja, en, kind, model] of CATALOG_ROWS_RESEARCH_DATA) {
     const spec = byId.get(id)
@@ -458,7 +460,7 @@ test('the thirty-one catalog actions on the selection (research, data, learning,
   // In the catalog's order, right after web-check.
   const ids = ACTIONS.map(a => a.id)
   const at = ids.indexOf('web-check') + 1
-  expect(ids.slice(at, at + 31)).toEqual(CATALOG_ROWS_RESEARCH_DATA.map(r => r[0]))
+  expect(ids.slice(at, at + 33)).toEqual(CATALOG_ROWS_RESEARCH_DATA.map(r => r[0]))
 })
 
 // The thirty-two context actions added from the catalog (SELM-00030): looking back over the conversation and
@@ -1572,7 +1574,7 @@ test('parsePins: unset, empty, unknown and odd values pin nothing and never thro
 // generic code exactly as its definition says: nothing is wired per action.
 // The run is split by the hint line's kind (SELM-00070): one test for each
 // kind and language, each pinning that kind's actions alone, so that no one
-// test presses all 311 under a loaded machine's timeout. Together they press
+// test presses all 313 under a loaded machine's timeout. Together they press
 // every definition (see the coverage test below); the order on the line is
 // checked with all of them pinned, without pressing any.
 
@@ -1580,8 +1582,8 @@ test('the runs by kind together press every definition once, in both languages: 
   for (const language of ['ja', 'en'] as const) {
     const defs = actionsFor(language)
     const pressed = HINT_KINDS.flatMap(kind => ofKind(defs, kind).map(a => a.id))
-    expect(pressed).toHaveLength(311)
-    expect(new Set(pressed).size).toBe(311)
+    expect(pressed).toHaveLength(313)
+    expect(new Set(pressed).size).toBe(313)
     expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
     // Each action is pressed on the kind the line shows it under.
     for (const kind of HINT_KINDS) {

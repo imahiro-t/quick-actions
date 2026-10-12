@@ -65,7 +65,7 @@ test('the categories hold as many actions of each kind as the README says', () =
     const cats = CATEGORIES.filter(c => c.target === target)
     return [cats.length, ACTIONS.filter(a => cats.some(c => c.id === a.category)).length]
   }
-  expect(count('selection')).toEqual([10, 104])
+  expect(count('selection')).toEqual([10, 106])
   expect(count('context')).toEqual([8, 102])
   expect(count('none')).toEqual([13, 105])
 })

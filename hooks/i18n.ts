@@ -144,6 +144,8 @@ export type Messages = {
   selectionTooLong: (length: number, limit: number) => string
   /** A local action on the selection that asked to run over time, which only a standalone one may. */
   localTickerOnSelection: string
+  /** A standalone action (`target: 'none'`) that answered an effect (open or copy URLs), which only an action on the selection may. */
+  localEffectStandalone: string
   /** A local action that needed random numbers where crypto could give none: nothing was made. */
   randomUnavailable: string
   /** The stop button of a running timer (or anything else that runs over time). */
@@ -306,6 +308,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     selectionTooLong: (length, limit) =>
       `選択テキストが長すぎます（${grouped(length)} 文字。ローカル実行の上限は ${grouped(limit)} 文字）`,
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
+    localEffectStandalone: '単独のアクションは URL を開く・コピーする操作をできません',
     randomUnavailable: '安全な乱数（crypto.getRandomValues）が使えないため、生成しませんでした',
     stop: '停止',
     gotoSelection: '選択箇所に戻る',
@@ -425,6 +428,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     selectionTooLong: (length, limit) =>
       `the selection is too long (${grouped(length)} characters; a local action takes up to ${grouped(limit)})`,
     localTickerOnSelection: 'an action on the selection cannot run over time',
+    localEffectStandalone: 'a standalone action cannot open or copy URLs',
     randomUnavailable: 'no secure random numbers are available (crypto.getRandomValues), so nothing was generated',
     stop: 'Stop',
     gotoSelection: 'Go to selection',

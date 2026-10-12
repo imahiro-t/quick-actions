@@ -108,8 +108,12 @@ const SAMPLE: Record<string, string> = {
   'color-convert': '#ff8800',
 }
 
-test('the sixteen are the local actions of ACTIONS on the selection, in their order, with these computes', () => {
-  const local = ACTIONS.filter(a => a.kind === 'local' && a.target === undefined)
+// The URL actions (open-urls, copy-urls) are local actions on the selection
+// too, but of ./url-local, and answer an effect: tests/url-local.test.tsx has them.
+const URL_ACTIONS = ['open-urls', 'copy-urls']
+
+test('the sixteen are the local actions of ACTIONS on the selection, the URL actions aside, in their order, with these computes', () => {
+  const local = ACTIONS.filter(a => a.kind === 'local' && a.target === undefined && !URL_ACTIONS.includes(a.id))
   expect(local.map(a => a.id)).toEqual(ALL.map(([id]) => id))
   for (const [id, compute] of ALL) {
     const spec = local.find(a => a.id === id)

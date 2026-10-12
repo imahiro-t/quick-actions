@@ -6,11 +6,12 @@
 // built-in has yet (a local action on the selection) included.
 
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection, textOf } from './actions'
-import type { LocalAction, LocalInput, TickerFrame } from './actions'
+import type { LocalAction, LocalEffect, LocalInput, TickerFrame } from './actions'
 import type { ArgValue } from './args'
 import { MESSAGES } from './i18n'
 import { RandomUnavailableError } from './random'
 import type { Lang } from './i18n'
+import { OPEN_URL_LIMIT, isHttpUrl } from './url-local'
 
 /** What register.tsx gathers for one run: the text or the argument, and the environment's values. */
 export type LocalSource = {
@@ -48,10 +49,16 @@ export function localInputFor(def: Pick<LocalAction, 'target'>, src: LocalSource
 /** The frame function of a run over time. */
 export type Frame = (now: number) => TickerFrame
 
-/** What a local run comes to: its entry settled now (done or failed, with its text), or a run over time to start. */
+/**
+ * What a local run comes to: its entry settled now (done or failed, with its
+ * text), a run over time to start, or an effect for register.tsx to carry out
+ * through `$` (an action on the selection's only), the entry settled with what
+ * came of it.
+ */
 export type LocalOutcome =
   | { kind: 'settle'; ok: boolean; text: string }
   | { kind: 'ticker'; intervalMs: number; frame: Frame }
+  | { kind: 'effect'; effect: LocalEffect }
 
 /** A run's period, raised to the shortest allowed (and a period that is no number, to it too). */
 export const clampInterval = (ms: number) =>
@@ -76,11 +83,30 @@ export function truncate(text: string, lang: Lang): string {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object'
 
+const isUrlList = (v: unknown): v is string[] => Array.isArray(v) && v.every(u => typeof u === 'string' && isHttpUrl(u))
+
+/**
+ * `v` as an effect when it is one of a known shape, copied (so a getter on it
+ * is read once, here): URLs that are all http(s), at least one to act on, and
+ * no more than OPEN_URL_LIMIT to open. Anything else: undefined.
+ */
+function effectOf(v: unknown): LocalEffect | undefined {
+  if (!isRecord(v)) return undefined
+  const urls = v['urls']
+  if (!isUrlList(urls) || urls.length === 0) return undefined
+  if (v['kind'] === 'copy') return { kind: 'copy', urls: [...urls] }
+  if (v['kind'] !== 'open') return undefined
+  const skipped = v['skipped']
+  if (urls.length > OPEN_URL_LIMIT || !isUrlList(skipped)) return undefined
+  return { kind: 'open', urls: [...urls], skipped: [...skipped] }
+}
+
 /**
  * Runs `def`'s compute on `input`, synchronously, and says what comes of it.
  * A throw, a promise or an answer of no known shape is a failure; so is a run
  * over time asked for by an action on the selection (`selection`), which may
- * only answer at once. A selection longer than LOCAL_SELECTION_LIMIT (code
+ * only answer at once, and an effect asked for by a standalone one (or one of
+ * no known shape: see effectOf). A selection longer than LOCAL_SELECTION_LIMIT (code
  * units of `input.text`, as the caller passes it) is refused before the compute is called, saying
  * how long it is and the limit. Never throws.
  */
@@ -114,6 +140,13 @@ function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
   if (isRecord(out) && typeof out['error'] === 'string') {
     // Cut as a text is: an error can quote the input (parse-url's port) at any length.
     return { kind: 'settle', ok: false, text: truncate(out['error'], lang) }
+  }
+  if (isRecord(out) && 'effect' in out) {
+    // Something done outside the module: an action on the selection's alone, of a known shape.
+    if (!selection) return { kind: 'settle', ok: false, text: t.failed(t.localEffectStandalone) }
+    const effect = effectOf(out['effect'])
+    if (effect === undefined) return { kind: 'settle', ok: false, text: t.failed(textOf(out['effect'])) }
+    return { kind: 'effect', effect }
   }
   if (isRecord(out) && isRecord(out['ticker']) && typeof out['ticker']['frame'] === 'function') {
     if (selection) return { kind: 'settle', ok: false, text: t.failed(t.localTickerOnSelection) }

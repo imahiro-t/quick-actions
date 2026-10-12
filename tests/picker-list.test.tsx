@@ -276,7 +276,8 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
     for (let i = 1; i <= pages; i++) {
       expect(await page()).toEqual([i, pages])
       const listed = await listedActions(picker)
-      expect(listed.length).toBeGreaterThanOrEqual(MIN_SHOWN)
+      // MIN_SHOWN a page at least, but the last: it lists what is left, one or more.
+      expect(listed.length).toBeGreaterThanOrEqual(i < pages ? MIN_SHOWN : 1)
       seen.push(...listed)
       await picker.press({ key: PICKER_NEXT })
     }

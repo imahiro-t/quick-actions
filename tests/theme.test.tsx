@@ -30,8 +30,28 @@ async function outer(m: { findAll: (q: { type: string }) => Promise<{ props: Rec
 }
 
 /** The Texts (not the Boxes around them) whose shown text matches. */
-async function texts(m: { findAll: (q: { text: string | RegExp }) => Promise<{ type: string; props: Record<string, unknown> }[]> }, text: string | RegExp) {
+async function texts(m: { findAll: (q: { text: string | RegExp }) => Promise<{ type: string; text: string; props: Record<string, unknown> }[]> }, text: string | RegExp) {
   return (await m.findAll({ text })).filter(f => f.type === 'Text')
+}
+
+type Found = { type: string; text: string; props: Record<string, unknown>; children: unknown[] }
+
+/**
+ * The result headings on `quote`: each heading line's Text (its colour), the
+ * bold Text in it (the action's label) and the quote's own Text. Bold is the
+ * label's alone, so no bold Text holds the quote (SELM-00085): a nested Text
+ * takes its parent's bold, which would draw the quote as the heading inline.
+ */
+async function headings(m: { findAll: (q: { text: string | RegExp }) => Promise<Found[]> }, quote: string) {
+  const found = (await m.findAll({ text: quote })).filter(f => f.type === 'Text')
+  const lines = found.filter(f => f.text !== quote)
+  const labels = lines.flatMap(l => l.children.filter((c): c is Found => typeof c === 'object' && c !== null && (c as Found).type === 'Text' && (c as Found).props?.bold === true))
+  return {
+    lines,
+    labels,
+    quotes: found.filter(f => f.text === quote),
+    bold: found.filter(f => f.props.bold === true),
+  }
 }
 
 /** One explain (answered), one explain (no answer) and a third held running, on the selected text. */
@@ -104,12 +124,27 @@ test('paneTheme: light and dark in any case, anything else auto', () => {
   }
 })
 
-test('paneStyle: auto docked and every inline are the colours as they always were', () => {
-  const auto = { background: undefined, heading: 'text', body: 'text', failed: 'error', muted: undefined }
-  const inline = { background: undefined, heading: undefined, body: undefined, failed: 'red', muted: undefined }
+test('paneStyle: auto docked as it always was; inline the terminal\'s colours, its secondary texts included', () => {
+  const auto = { background: undefined, heading: 'text', body: 'text', failed: 'error', muted: undefined, dimMuted: true }
+  const inline = { background: undefined, heading: undefined, body: undefined, failed: 'red', muted: undefined, dimMuted: false }
   expect(paneStyle('auto', 'dock')).toEqual(auto)
   for (const theme of ['auto', ...THEMES] as const) expect(paneStyle(theme, 'inline')).toEqual(inline)
-  for (const theme of THEMES) expect(paneStyle(theme, 'dock')).toEqual(PALETTES[theme])
+  for (const theme of THEMES) expect(paneStyle(theme, 'dock')).toEqual({ ...PALETTES[theme], dimMuted: false })
+})
+
+// The buttons colour their label with `muted` whenever a background is
+// painted: it is then a real colour, and with none painted there is none to
+// pass (dimColor is `dimMuted`, never a value of `muted`).
+test('paneStyle: muted is a #rrggbb colour where a background is painted, and undefined where none is', () => {
+  for (const theme of ['auto', ...THEMES] as const) {
+    for (const placement of ['dock', 'inline'] as const) {
+      const style = paneStyle(theme, placement)
+      if (style.background !== undefined) {
+        expect(/^#[0-9a-f]{6}$/i.test(String(style.muted))).toBe(true)
+        expect(style.dimMuted).toBe(false)
+      } else expect(style.muted).toBeUndefined()
+    }
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -195,9 +230,11 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
     expect((await texts(pane, 'answer from sonnet')).map(f => f.props.color)).toEqual(['text', 'text'])
     expect((await texts(pane, /回答なし/)).map(f => f.props.color)).toEqual(['error'])
     expect((await texts(pane, t.customProblemsHeading)).map(f => f.props.color)).toEqual(['error'])
-    const quotes = await texts(pane, t.quote('Permission denied (publickey)'))
-    expect(quotes.filter(f => f.props.bold !== true).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined], [true, undefined], [true, undefined]])
-    expect(quotes.filter(f => f.props.bold === true).map(f => f.props.color)).toEqual(['text', 'text', 'text'])
+    const h = await headings(pane, t.quote('Permission denied (publickey)'))
+    expect(h.lines.map(f => f.props.color)).toEqual(['text', 'text', 'text'])
+    expect(h.labels).toHaveLength(3)
+    expect(h.bold).toEqual([])
+    expect(h.quotes.map(f => [f.props.dimColor, f.props.color, f.props.bold])).toEqual([[true, undefined, undefined], [true, undefined, undefined], [true, undefined, undefined]])
     await pane.unmount()
 
     await openPicker($, s, clock, 'terminal')
@@ -250,12 +287,14 @@ for (const theme of THEMES) {
       // The custom definitions left out: the heading and each reason.
       expect((await texts(pane, t.customProblemsHeading)).map(f => f.props.color)).toEqual([p.failed])
       expect((await texts(pane, /^- #\d/)).map(f => f.props.color)).toEqual([p.failed, p.failed])
-      const quotes = await texts(pane, t.quote('Permission denied (publickey)'))
-      expect(quotes.filter(f => f.props.bold === true).map(f => f.props.color)).toEqual([p.heading, p.heading, p.heading])
-      expect(quotes.filter(f => f.props.bold !== true).map(f => [f.props.color, f.props.dimColor])).toEqual([
-        [p.muted, undefined],
-        [p.muted, undefined],
-        [p.muted, undefined],
+      const h = await headings(pane, t.quote('Permission denied (publickey)'))
+      expect(h.lines.map(f => f.props.color)).toEqual([p.heading, p.heading, p.heading])
+      expect(h.labels).toHaveLength(3)
+      expect(h.bold).toEqual([])
+      expect(h.quotes.map(f => [f.props.color, f.props.dimColor, f.props.bold])).toEqual([
+        [p.muted, undefined, undefined],
+        [p.muted, undefined, undefined],
+        [p.muted, undefined, undefined],
       ])
       // No text is left to dimColor, the theme's `inactive`.
       expect((await pane.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
@@ -361,24 +400,38 @@ for (const theme of THEMES) {
   // ---------------------------------------------------------------------------
   // Inline: whatever the setting, as before
 
-  test(`[${theme}] inline: the pane and the ⋯ dialog keep their colours`, { options: { ...JA, ...MIXED, paneTheme: theme } }, async ($, on) => {
+  // Inline, nothing paints the background, so the secondary texts keep the
+  // terminal's foreground too: dimColor (the theme's `inactive`) falls to
+  // about 2.9:1 where the theme and the terminal disagree (SELM-00085).
+  test(`[${theme}] inline: the pane and the ⋯ dialog keep the terminal's colours, their secondary texts included`, { options: { ...JA, ...MIXED, paneTheme: theme } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     const inline = { ...PANE.props, placement: 'inline' } as const
+    const plain = (fs: { props: Record<string, unknown> }[]) => fs.map(f => [f.props.dimColor, f.props.color])
+
+    const empty = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
+    expect(plain(await texts(empty, t.emptyPane))).toEqual([[undefined, undefined]])
+    expect(plain(await texts(empty, t.inlineHint))).toEqual([[undefined, undefined]])
+    await empty.unmount()
 
     const { settle } = await results($, s, clock, 'terminal')
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
     expect((await outer(pane))?.props.backgroundColor).toBeUndefined()
-    expect((await texts(pane, t.thinking)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
+    expect(plain(await texts(pane, t.thinking))).toEqual([[undefined, undefined]])
     await settle()
-    expect((await texts(pane, t.inlineHint)).map(f => f.props.dimColor)).toEqual([true])
+    expect(plain(await texts(pane, t.inlineHint))).toEqual([[undefined, undefined]])
     expect((await texts(pane, 'answer from sonnet')).map(f => f.props.color)).toEqual([undefined, undefined])
     expect((await texts(pane, /回答なし/)).map(f => f.props.color)).toEqual(['red'])
     expect((await texts(pane, t.customProblemsHeading)).map(f => f.props.color)).toEqual(['red'])
-    const quotes = await texts(pane, t.quote('Permission denied (publickey)'))
-    expect(quotes.filter(f => f.props.bold === true).map(f => f.props.color)).toEqual([undefined, undefined, undefined])
-    expect(quotes.filter(f => f.props.bold !== true).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined], [true, undefined], [true, undefined]])
+    // The heading's label bold, the quote beside it not: both in the terminal's foreground.
+    const h = await headings(pane, t.quote('Permission denied (publickey)'))
+    expect(h.lines.map(f => f.props.color)).toEqual([undefined, undefined, undefined])
+    expect(h.labels.map(f => [f.props.bold, f.props.color])).toEqual([[true, undefined], [true, undefined], [true, undefined]])
+    expect(h.bold).toEqual([])
+    expect(h.quotes.map(f => [f.props.dimColor, f.props.color, f.props.bold])).toEqual([[undefined, undefined, undefined], [undefined, undefined, undefined], [undefined, undefined, undefined]])
+    // No text is left to dimColor, the theme's `inactive`.
+    expect((await pane.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
     await pane.unmount()
 
     await openPicker($, s, clock, 'terminal')
@@ -397,6 +450,17 @@ for (const theme of THEMES) {
     expect(await texts(picker, NOTICE)).toEqual([])
     await kindsLeftToCore(picker)
     expect((await picker.find({ key: PICKER_CLOSE }))?.props.dimColor).toBe(true)
+    // The page shown between the page buttons, and "no match", in the terminal's foreground.
+    const page = (await texts(picker, /\d+ \/ \d+/)).filter(f => /^ \d+ \/ \d+/.test(f.text))
+    expect(plain(page)).toEqual([[undefined, undefined]])
+    await picker.input({ key: PICKER_FILTER, text: 'zzzz', kind: 'change' })
+    expect(plain(await texts(picker, t.pickerNoMatch))).toEqual([[undefined, undefined]])
     await picker.unmount()
+
+    // Drawn with no text held: the line saying so, likewise.
+    const again = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, placement: 'inline' } })
+    await again.press({ key: PICKER_CLOSE })
+    expect(plain(await texts(again, t.noSelection))).toEqual([[undefined, undefined]])
+    await again.unmount()
   })
 }

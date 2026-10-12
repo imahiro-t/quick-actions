@@ -1011,6 +1011,25 @@ test('problems and warnings both: the problems\' toast alone', { options: { ...J
   expect(s.toasts[0]).toContain('問題が 1 件')
 })
 
+// Inline, the warnings' heading and lines keep the terminal's foreground
+// (SELM-00085): bold, the heading still stands apart from its lines.
+test('[inline] warnings: the heading and its lines in the terminal\'s foreground, the heading bold', { options: { ...JA, customActions: json([{ ...MINE, model: 'gpt-4' }, MINE, toolsDef('reader', ['Read', 'WebFetch'])]), pinActions: 'mine' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.selected = 'segfault'
+  await clock.advance(400)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'mine' })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, placement: 'inline' } })
+  const heading = (await pane.findAll({ text: MESSAGES.ja.customWarningsHeading })).filter(f => f.type === 'Text')
+  expect(heading.map(f => [f.props.bold, f.props.dimColor, f.props.color])).toEqual([[true, undefined, undefined]])
+  // The one warning (#3); #1 is a problem, drawn in the failure colour.
+  const lines = (await pane.findAll({ text: /^- #3 / })).filter(f => f.type === 'Text')
+  expect(lines.map(f => [f.props.dimColor, f.props.color])).toEqual([[undefined, undefined]])
+  expect((await pane.findAll({ text: /^- #1 / })).filter(f => f.type === 'Text').map(f => f.props.color)).toEqual(['red'])
+})
+
 test('[dock] warnings: an open pane lists them under their own heading, apart from the problems', { options: { ...JA, customActions: json([{ ...MINE, model: 'gpt-4' }, MINE, toolsDef('reader', ['Read', 'WebFetch'])]), pinActions: 'mine' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
@@ -1023,6 +1042,8 @@ test('[dock] warnings: an open pane lists them under their own heading, apart fr
   const heading = (await pane.findAll({ text: MESSAGES.ja.customWarningsHeading })).filter(f => f.type === 'Text')
   expect(heading).toHaveLength(1)
   expect(heading[0]?.props.color).not.toBe('error')
+  // Docked under auto, dimColor as before.
+  expect(heading[0]?.props.dimColor).toBe(true)
   const lines = (await pane.findAll({ text: /^- #\d/ })).filter(f => f.type === 'Text').map(f => f.text)
   expect(lines).toEqual([expect.stringContaining('#1 (mine)'), expect.stringContaining('#3 (reader): Read と WebFetch')])
 })

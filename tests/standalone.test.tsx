@@ -441,6 +441,22 @@ test('again on a timer entry reloaded before its first frame runs it anew with i
   expect((await paneButtons($)).filter(k => k.startsWith('_stop-'))).toHaveLength(1)
 })
 
+// Inline, the stopped line keeps the terminal's foreground (SELM-00085);
+// docked under auto it stays dimColor.
+for (const placement of ['dock', 'inline'] as const) {
+  test(`${placement}: a timer entry with no timer behind it is drawn stopped, ${placement === 'dock' ? 'dimColor' : 'in the terminal\'s foreground'}`, { options: EN }, async ($, on) => {
+    const RELOADED = [{ id: 7, action: 'timer', target: 'none', quote: '', ticker: true, status: 'running', text: '⏳ 12:34 left' }]
+    on('state.get', (_$, e, next) => (e.key === 'results' ? { value: { value: RELOADED, version: 1 } } : next(e)))
+    mock.clock(on)
+    stage(on)
+    await start($)
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, placement } })
+    const stopped = (await pane.findAll({ text: MESSAGES.en.tickerStopped() })).filter(f => f.type === 'Text')
+    expect(stopped.map(f => [f.props.dimColor, f.props.color])).toEqual([placement === 'dock' ? [true, undefined] : [undefined, undefined]])
+    await pane.unmount()
+  })
+}
+
 // The person's close of the result pane (its close mark) stops every timer,
 // through the same stop as the button. The test kit cannot raise a person's
 // close (its $ has no ui.close), so that hook is checked in a session; the

@@ -240,8 +240,10 @@ for (const surface of SURFACES) {
 }
 
 // Docked, core paints the pane's background in the theme, so the heading and
-// the answer are drawn in the theme too; inline, nothing is painted, so they
-// keep the terminal's foreground. The dimmed texts are the theme's either way.
+// the answer are drawn in the theme too, the quote dimColor (the theme's
+// `inactive`); inline, nothing is painted, so they keep the terminal's
+// foreground, the quote too (SELM-00085). The quote is never bold: bold is the
+// heading's label alone.
 for (const surface of SURFACES) {
   for (const placement of ['dock', 'inline'] as const) {
     test(`[${surface}] ${placement}: heading and answer colours follow what paints the background`, { options: JA }, async ($, on) => {
@@ -258,12 +260,13 @@ for (const surface of SURFACES) {
       const expected = placement === 'dock' ? 'text' : undefined
       const answer = (await pane.findAll({ text: 'answer from sonnet' })).filter(f => f.type === 'Text')
       expect(answer.map(f => f.props.color)).toEqual([expected])
-      const heading = (await pane.findAll({ text: /「Permission denied \(publickey\)」/ })).filter(
-        f => f.type === 'Text' && f.props.bold === true,
-      )
+      const quoted = '「Permission denied (publickey)」'
+      const found = (await pane.findAll({ text: quoted })).filter(f => f.type === 'Text')
+      const heading = found.filter(f => f.text !== quoted)
       expect(heading.map(f => f.props.color)).toEqual([expected])
-      const quote = (await pane.findAll({ text: '「Permission denied (publickey)」' })).filter(f => f.type === 'Text')
-      expect(quote.map(f => f.props.dimColor)).toContain(true)
+      expect(found.filter(f => f.props.bold === true)).toEqual([])
+      const quote = found.filter(f => f.text === quoted)
+      expect(quote.map(f => [f.props.dimColor, f.props.color])).toEqual([placement === 'dock' ? [true, undefined] : [undefined, undefined]])
     })
   }
 }

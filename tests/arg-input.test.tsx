@@ -383,6 +383,28 @@ for (const paneTheme of ['light', 'dark'] as const) {
   })
 }
 
+// Inline, whatever the setting, the default's line keeps the terminal's
+// foreground: neither dimColor (the theme's `inactive`, which falls to about
+// 2.9:1 where the theme and the terminal disagree) nor a colour (SELM-00085).
+// Docked under auto it stays dimColor.
+for (const paneTheme of ['auto', 'light', 'dark'] as const) {
+  for (const placement of ['dock', 'inline'] as const) {
+    test(`[${paneTheme}] ${placement}: the argument screen's line on the default`, { options: { ...EN, paneTheme } }, async ($, on) => {
+      mock.clock(on)
+      stage(on)
+      await start($)
+      await runCommand($, '')
+      const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, placement } })
+      await pickAction(picker, 'timer')
+      const line = (await picker.findAll({ text: MESSAGES.en.argDefault('25m') })).filter(f => f.type === 'Text')
+      const style = paneStyle(paneTheme, placement)
+      expect(line.map(f => [f.props.dimColor, f.props.color])).toEqual([style.dimMuted ? [true, undefined] : [undefined, style.muted]])
+      if (placement === 'inline') expect(line.map(f => [f.props.dimColor, f.props.color])).toEqual([[undefined, undefined]])
+      await picker.unmount()
+    })
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The hint line
 

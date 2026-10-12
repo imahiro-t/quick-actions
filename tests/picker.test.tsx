@@ -576,7 +576,8 @@ for (const surface of SURFACES) {
       expect(field?.props.placeholder).toBe(t.pickerFilterPlaceholder)
       expect(field?.props.value).toBe('')
       expect(field?.props.autoFocus).toBe(true)
-      expect(field?.props.label).toBeUndefined()
+      // Its label, drawn before it and its name (SELM-00086).
+      expect(field?.props.label).toBe(t.pickerFilterLabel)
       // What Enter does, in the dialog's language: the first action left runs;
       // with none left, it says so.
       expect(field?.props.submitLabel).toBe(t.pickerFilterSubmit)

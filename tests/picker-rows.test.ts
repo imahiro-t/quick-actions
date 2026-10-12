@@ -6,6 +6,7 @@ import {
   BUTTON_FRAME,
   EMOJI_SLACK,
   FIELD_FRAME,
+  LABEL_GAP,
   MIN_SHOWN,
   buttonLines,
   fieldLine,
@@ -253,21 +254,43 @@ test('labels with an emoji: their rows as wrappedRows counts "[ label ]" a cell 
 // or fewer) the filter row takes two rows or more, and the close button
 // wraps too where the pane is narrower still.
 
-test('the filter field is counted as its mark, its text or placeholder (the wider), and its Enter label in brackets', () => {
+test('the filter field is counted as its label, its mark, its text or placeholder (the wider), and its Enter label in brackets', () => {
   const row = dialog('en').filterRow
-  expect(fieldLine(row)).toBe('> Filter (ID, name, kind)  (run first)')
-  expect(textWidth(fieldLine(row)) - textWidth(row.placeholder) - textWidth(row.submitLabel)).toBe(FIELD_FRAME)
+  expect(row.label).toBe(MESSAGES.en.pickerFilterLabel)
+  expect(fieldLine(row)).toBe('Filter: > Filter (ID, name, kind)  (run first)')
+  expect(fieldLine(dialog('ja').filterRow)).toBe('絞り込み: > 絞り込み（ID・名前・種類）  (先頭を実行)')
+  expect(LABEL_GAP).toBe(': ')
+  expect(textWidth(fieldLine(row)) - textWidth(`${MESSAGES.en.pickerFilterLabel}${LABEL_GAP}`) - textWidth(row.placeholder) - textWidth(row.submitLabel)).toBe(
+    FIELD_FRAME,
+  )
   expect(FIELD_FRAME).toBe(6)
   // A text wider than the placeholder is counted in its place; a narrower one is not.
   expect(fieldLine({ ...row, value: 'x' })).toBe(fieldLine(row))
-  expect(fieldLine({ ...row, value: 'x'.repeat(30) })).toBe(`> ${'x'.repeat(30)}  (run first)`)
+  expect(fieldLine({ ...row, value: 'x'.repeat(30) })).toBe(`Filter: > ${'x'.repeat(30)}  (run first)`)
+  // A field with no label (none drawn) is counted without one, as before SELM-00086.
+  const { label: _label, ...unlabelled } = row
+  expect(fieldLine(unlabelled)).toBe('> Filter (ID, name, kind)  (run first)')
+  // The label is counted into the row's wrap: never fewer rows with it than without.
+  for (let columns = 8; columns <= 60; columns++) {
+    expect(filterRowLines(row, columns)).toBeGreaterThanOrEqual(filterRowLines(unlabelled, columns))
+  }
 })
 
-test('the filter row: one row where there is room (a docked body\'s 54 to 56 columns), two or more at 28 columns and fewer', () => {
+test('the filter row: one row where there is room (an empty field at a docked body\'s 54 to 56 columns), two or more at 28 columns and fewer', () => {
   for (const lang of ['en', 'ja'] as const) {
     for (const value of ['', 'tr']) {
       const { filterRow } = dialog(lang, value)
-      for (const columns of [54, 55, 56, 60]) expect([lang, value, columns, filterRowLines(filterRow, columns)]).toEqual([lang, value, columns, 1])
+      // The field's label (SELM-00086) takes room too: an empty field stays one
+      // row at a docked body's widths; one holding text, with Clear beside it,
+      // one row from 56 columns in English, two in Japanese (its label and
+      // placeholder in full-width characters).
+      const one = value === '' ? [54, 55, 56, 60] : lang === 'en' ? [56, 60] : []
+      for (const columns of one) expect([lang, value, columns, filterRowLines(filterRow, columns)]).toEqual([lang, value, columns, 1])
+      if (value !== '') {
+        for (const columns of [54, 55, 56, 60].filter(c => !one.includes(c))) {
+          expect([lang, value, columns, filterRowLines(filterRow, columns)]).toEqual([lang, value, columns, 2])
+        }
+      }
       for (const columns of [28, 22, 16, 12]) expect([lang, value, columns, filterRowLines(filterRow, columns) >= 2]).toEqual([lang, value, columns, true])
     }
     // Clear beside the field takes room of its own: never fewer rows than without it.
@@ -275,7 +298,7 @@ test('the filter row: one row where there is room (a docked body\'s 54 to 56 col
       expect(filterRowLines(dialog(lang, 'tr').filterRow, columns)).toBeGreaterThanOrEqual(filterRowLines(dialog(lang).filterRow, columns))
     }
   }
-  // English at 28 columns, as seen on a real terminal (SELM-00062): "> Filter (ID, name, kind) " and "(run first)".
+  // English at 28 columns, as seen on a real terminal (SELM-00062), its label ahead of it now (SELM-00086): two rows.
   expect(filterRowLines(dialog('en').filterRow, 28)).toBe(2)
   // Clear goes onto a third row at 28: the field's two rows leave it no room beside "(run first)".
   expect(filterRowLines(dialog('en', 'tr').filterRow, 28)).toBe(3)

@@ -68,15 +68,28 @@ export function isHttpUrl(s: string): boolean {
 
 // A URL's start, then what it runs on. It ends at white space, at the
 // characters a URL never holds as written (< > " `, which also close `<url>`
-// and the like), and at full-width punctuation and brackets, which in
-// Japanese text often follow a URL with no space between.
-const CANDIDATE = /https?:\/\/[^\s<>"`、。，．！？「」『』（）【】＜＞［］｛｝]+/giu
+// and the like), at full-width punctuation and brackets, which in Japanese
+// text often follow a URL with no space between, and at an ellipsis (… ‥),
+// which a sentence cut short ends with.
+const CANDIDATE = /https?:\/\/[^\s<>"`、。，．！？「」『』（）【】＜＞［］｛｝…‥]+/giu
+
+// Japanese text run straight on from a URL (`https://example.comを参照`): a
+// letter or digit of ASCII followed by a kana or a kanji. The URL ends between
+// the two. Japanese right after `//`, `.`, `/`, `=` and the like is kept, so
+// an IDN host (`https://例え.テスト`) and a Japanese path or query
+// (`https://ja.wikipedia.org/wiki/日本`, `?q=東京`) stay whole; a Japanese path
+// segment written straight after ASCII (`/wiki/Python入門`) is the price.
+const JAPANESE_AFTER_ASCII = /[A-Za-z0-9](?=[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆])/u
+
+/** The candidate cut where Japanese text runs straight on from it (JAPANESE_AFTER_ASCII). */
+function cutAtJapanese(s: string): string {
+  const m = JAPANESE_AFTER_ASCII.exec(s)
+  return m === null ? s : s.slice(0, m.index + 1)
+}
 
 // What a URL is seldom meant to end with: sentence punctuation and Markdown emphasis.
 const TRAILING = new Set(['.', ',', ';', ':', '!', '?', '*', '_', '~'])
 const CLOSERS: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
-
-const count = (s: string, c: string) => s.split(c).length - 1
 
 /** The candidate cut at its first hidden character (a control, a bidirectional or zero-width one). */
 function cutAtHidden(s: string): string {
@@ -96,17 +109,22 @@ function cutAtHidden(s: string): string {
  * unpaired.
  */
 function trimEnd(s: string): string {
-  let url = s
-  for (;;) {
-    const last = url.at(-1)
-    if (last === undefined) return url
+  // Linear however long the run trimmed off: the brackets and quotes are
+  // counted once, and each character dropped from the end takes itself off
+  // its count, so nothing is counted again (a run of n closing brackets is n
+  // steps, not n scans of the URL).
+  const counts = new Map<string, number>()
+  for (const c of s) if (c in CLOSERS || c === '(' || c === '[' || c === '{' || c === "'") counts.set(c, (counts.get(c) ?? 0) + 1)
+  const n = (c: string) => counts.get(c) ?? 0
+  let end = s.length
+  while (end > 0) {
+    const last = s[end - 1]!
     const opener = CLOSERS[last]
-    if (TRAILING.has(last) || (opener !== undefined && count(url, last) > count(url, opener)) || (last === "'" && count(url, "'") % 2 === 1)) {
-      url = url.slice(0, -1)
-      continue
-    }
-    return url
+    if (!(TRAILING.has(last) || (opener !== undefined && n(last) > n(opener)) || (last === "'" && n("'") % 2 === 1))) break
+    counts.set(last, n(last) - 1)
+    end--
   }
+  return s.slice(0, end)
 }
 
 /**
@@ -121,8 +139,16 @@ export function extractUrls(text: string): string[] {
   const urls: string[] = []
   // Where a Markdown link's text ends and its target starts (`](`), one URL
   // ends: in `[https://a.example](https://b.example)` the two are two URLs.
-  for (const m of text.replaceAll('](', '] (').matchAll(CANDIDATE)) {
-    const url = trimEnd(cutAtHidden(m[0]))
+  // So does a comma right before the next URL's scheme: `https://a.example,https://b.example`
+  // is two (a comma elsewhere in a path is the URL's own).
+  const split = text.replaceAll('](', '] (').replace(/,(?=https?:\/\/)/giu, ', ')
+  const candidate = new RegExp(CANDIDATE)
+  for (let m = candidate.exec(split); m !== null; m = candidate.exec(split)) {
+    const cut = cutAtJapanese(cutAtHidden(m[0]))
+    // What was cut off is read again: another URL may start in it
+    // (`https://a.exampleを見てhttps://b.example`). The cut keeps at least `http://`, so this always moves on.
+    candidate.lastIndex = m.index + cut.length
+    const url = trimEnd(cut)
     if (seen.has(url) || !isHttpUrl(url)) continue
     seen.add(url)
     urls.push(url)
@@ -162,7 +188,38 @@ export function copyUrls(input: LocalInput): LocalOutput {
 /** What copy-urls puts on the clipboard: its URLs, one per line. */
 export const copyTextOf = (effect: Extract<LocalEffect, { kind: 'copy' }>) => effect.urls.join('\n')
 
-const list = (urls: readonly string[]) => urls.map(u => `- ${u}`).join('\n')
+/**
+ * `url` as a result shows it: as written, but with the password of its user
+ * info (`user:password@`) hidden as `***`, as parse-url shows it. What is
+ * opened or copied is the URL as written; only the text shown and kept in the
+ * results is masked.
+ */
+export function shownUrl(url: string): string {
+  const slashes = url.indexOf('//')
+  if (slashes < 0) return url
+  const start = slashes + 2
+  const rest = url.slice(start)
+  const authorityEnd = rest.search(/[/?#\\]/u)
+  const authority = authorityEnd < 0 ? rest : rest.slice(0, authorityEnd)
+  const at = authority.lastIndexOf('@')
+  if (at < 0) return url
+  const colon = authority.indexOf(':')
+  if (colon < 0 || colon > at) return url
+  return `${url.slice(0, start)}${authority.slice(0, colon)}:***${url.slice(start + at)}`
+}
+
+const items = (lines: readonly string[]) => lines.map(l => `- ${l}`).join('\n')
+const list = (urls: readonly string[]) => items(urls.map(shownUrl))
+
+/** The most code points of an engine's message (a rejection's, an exception's) a result shows. */
+export const MESSAGE_LIMIT = 500
+
+/** An engine's message as a result shows it: hidden characters escaped, cut at MESSAGE_LIMIT code points. */
+function messageShown(message: string): string {
+  const points = Array.from(message)
+  const cut = points.length > MESSAGE_LIMIT ? `${points.slice(0, MESSAGE_LIMIT).join('')}…` : message
+  return escapeHidden(cut)
+}
 
 /** Why a copy did not take, as `$.ui.copy` says (`reason`) or as its call threw (`thrown`). */
 export type CopyFailure = { reason: 'no-surface' | 'no-clipboard' | 'refused' } | { thrown: string }
@@ -183,7 +240,7 @@ export function copyResultText(lang: Lang, urls: readonly string[], failure?: Co
     const head = lang === 'ja' ? `${n} 件の URL をクリップボードにコピーしました（改行区切り）:` : `Copied ${n} ${n === 1 ? 'URL' : 'URLs'} to the clipboard, one per line:`
     return `${head}\n${list(urls)}`
   }
-  const why = 'reason' in failure ? COPY_REASONS[failure.reason][lang] : escapeHidden(failure.thrown)
+  const why = 'reason' in failure ? COPY_REASONS[failure.reason][lang] : messageShown(failure.thrown)
   const head =
     lang === 'ja'
       ? `URL をクリップボードにコピーできませんでした: ${why}\n見つかった URL（${n} 件）:`
@@ -215,7 +272,7 @@ export function attemptOfExit(platform: Platform, url: string, exitCode: number)
 // A rejection is read as the timeout when its message says so, or when it came
 // this close to OPEN_TIMEOUT_MS: the clock read around the call is a little
 // off either way, so a timeout is not missed for a few milliseconds.
-const TIMEOUT_MESSAGE = /time(d)?[\s-]?out/i
+const TIMEOUT_MESSAGE = /timed?[\s-]?out/i
 const TIMEOUT_SHARE = 0.9
 
 /** What a rejected command for `url` came to: the timeout (`unconfirmed`) or a start that failed. */
@@ -227,7 +284,7 @@ export function attemptOfRejection(url: string, message: string, elapsedMs: numb
 function failureText(lang: Lang, reason: OpenFailure): string {
   if ('exitCode' in reason) return lang === 'ja' ? `終了コード ${reason.exitCode}` : `exit code ${reason.exitCode}`
   if ('missingXdgOpen' in reason) return lang === 'ja' ? 'xdg-open が見つかりません' : 'xdg-open was not found'
-  const message = escapeHidden(reason.notStarted)
+  const message = messageShown(reason.notStarted)
   return lang === 'ja' ? `起動できませんでした（${message}）` : `could not start (${message})`
 }
 
@@ -243,14 +300,14 @@ export const openSucceeded = (attempts: readonly OpenAttempt[]) => attempts.some
 export function openResultText(lang: Lang, attempts: readonly OpenAttempt[], skipped: readonly string[]): string {
   const ja = lang === 'ja'
   const requested = attempts.filter(a => a.status === 'requested').map(a => a.url)
-  const failed = attempts.flatMap(a => (a.status === 'failed' ? [`${a.url} — ${failureText(lang, a.reason)}`] : []))
+  const failed = attempts.flatMap(a => (a.status === 'failed' ? [`${shownUrl(a.url)} — ${failureText(lang, a.reason)}`] : []))
   const unconfirmed = attempts.filter(a => a.status === 'unconfirmed').map(a => a.url)
   const sections: string[] = []
   if (requested.length > 0) {
     sections.push(`${ja ? `ブラウザで開くよう依頼しました（${requested.length} 件）:` : `Asked the system to open in the browser (${requested.length}):`}\n${list(requested)}`)
   }
   if (failed.length > 0) {
-    sections.push(`${ja ? `開けませんでした（${failed.length} 件）:` : `Could not open (${failed.length}):`}\n${list(failed)}`)
+    sections.push(`${ja ? `開けませんでした（${failed.length} 件）:` : `Could not open (${failed.length}):`}\n${items(failed)}`)
   }
   if (unconfirmed.length > 0) {
     const head = ja

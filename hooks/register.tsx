@@ -31,7 +31,7 @@ import { parseCustomActions, problemFor, problemLine, reasonText, warningLine, w
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
-import { localInputFor, runLocal, tickerStep } from './local'
+import { localInputFor, runLocal, tickerStep, truncate } from './local'
 import { quoteLine, showHiddenNoted } from './selection-local'
 import type { Frame } from './local'
 import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
@@ -515,7 +515,7 @@ async function runEffect($: EngineInterface, lang: Lang, id: number, effect: Loc
     const attempts: OpenAttempt[] = []
     // One at a time, so the browser's tabs come in the order of the selection.
     for (const url of effect.urls) attempts.push(await openOne($, platform, url))
-    await settle($, id, openSucceeded(attempts), openResultText(lang, attempts, effect.skipped))
+    await settle($, id, openSucceeded(attempts), truncate(openResultText(lang, attempts, effect.skipped), lang))
   } catch (err) {
     await settle($, id, false, MESSAGES[lang].failed(messageOf(err)))
   }
@@ -526,9 +526,10 @@ async function copyEffect($: EngineInterface, lang: Lang, id: number, effect: Ex
   const text = copyTextOf(effect)
   try {
     const r = await $.ui.copy(surface === undefined ? { text } : { text, surface })
-    await settle($, id, r.isCopied, r.isCopied ? copyResultText(lang, effect.urls) : copyResultText(lang, effect.urls, { reason: r.reason }))
+    const shown = r.isCopied ? copyResultText(lang, effect.urls) : copyResultText(lang, effect.urls, { reason: r.reason })
+    await settle($, id, r.isCopied, truncate(shown, lang))
   } catch (err) {
-    await settle($, id, false, copyResultText(lang, effect.urls, { thrown: messageOf(err) }))
+    await settle($, id, false, truncate(copyResultText(lang, effect.urls, { thrown: messageOf(err) }), lang))
   }
 }
 
@@ -549,16 +550,29 @@ async function openOne($: EngineInterface, platform: Platform, url: string): Pro
   }
 }
 
-// The OS, made out once a module load and kept: there is no API that says it,
-// so `OS` (Windows_NT on Windows), then `uname -s` (Darwin on macOS), and
-// anything else (uname failing too) is taken for Linux and the like.
+// The OS: there is no API that says it, so `OS` (Windows_NT on Windows), then
+// `uname -s` (Darwin on macOS, anything else Linux and the like). Kept for the
+// module load only once it is known for sure: OS=Windows_NT, or uname
+// answering with 0. uname failing (timed out, rejected, another exit code) is
+// taken for Linux for that run alone, and asked again on the next, so a
+// moment's trouble on the first run never leaves macOS read as Linux.
+let knownPlatform: Platform | undefined
 let pendingPlatform: Promise<Platform> | undefined
-const platformOf = ($: EngineInterface) => (pendingPlatform ??= detectPlatform($))
+
+function platformOf($: EngineInterface): Promise<Platform> {
+  if (knownPlatform !== undefined) return Promise.resolve(knownPlatform)
+  // Runs at the same time share one detection; once it ends, the next asks afresh unless it was sure.
+  pendingPlatform ??= detectPlatform($).finally(() => {
+    pendingPlatform = undefined
+  })
+  return pendingPlatform
+}
 
 async function detectPlatform($: EngineInterface): Promise<Platform> {
-  if ((await readQuietly($.env.get('OS'))) === 'Windows_NT') return 'win32'
+  if ((await readQuietly($.env.get('OS'))) === 'Windows_NT') return (knownPlatform = 'win32')
   const uname = await readQuietly($.process.run(['uname', '-s'], { timeoutMs: OPEN_TIMEOUT_MS }))
-  return uname !== undefined && uname.exitCode === 0 && uname.stdout.trim() === 'Darwin' ? 'darwin' : 'linux'
+  if (uname === undefined || uname.exitCode !== 0) return 'linux'
+  return (knownPlatform = uname.stdout.trim() === 'Darwin' ? 'darwin' : 'linux')
 }
 
 /** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */

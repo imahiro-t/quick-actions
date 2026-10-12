@@ -144,6 +144,7 @@ export type Messages = {
   selectionTooLong: (length: number, limit: number) => string
   /** A local action on the selection that asked to run over time, which only a standalone one may. */
   localTickerOnSelection: string
+  /** A standalone action (`target: 'none'`) that answered an effect (open or copy URLs), which only an action on the selection may. */
   localEffectStandalone: string
   /** A local action that needed random numbers where crypto could give none: nothing was made. */
   randomUnavailable: string

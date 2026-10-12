@@ -6,6 +6,7 @@ import { ACTIONS } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { runLocal } from '../hooks/local'
+import { LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import {
   LINUX_OPEN_SCRIPT,
   OPEN_TIMEOUT_MS,
@@ -20,6 +21,8 @@ import {
   openResultText,
   openSucceeded,
   openUrls,
+  MESSAGE_LIMIT,
+  shownUrl,
 } from '../hooks/url-local'
 import type { OpenAttempt } from '../hooks/url-local'
 import { BAND, PANE, runCommand, stage, start } from './stage'
@@ -70,7 +73,7 @@ test('extractUrls: trailing punctuation, full-width punctuation and unpaired bra
     'https://d.example',
     'https://e.example',
   ])
-  expect(extractUrls('詳細はhttps://example.com/docsを参照。')).toEqual(['https://example.com/docsを参照'])
+  expect(extractUrls('詳細はhttps://example.com/docsを参照。')).toEqual(['https://example.com/docs'])
   expect(extractUrls('詳細は https://example.com/docs 、または（https://example.org）。「https://example.net」')).toEqual([
     'https://example.com/docs',
     'https://example.org',
@@ -83,6 +86,69 @@ test('extractUrls: trailing punctuation, full-width punctuation and unpaired bra
   // A bracket paired inside the URL is its own.
   expect(extractUrls('https://en.wikipedia.org/wiki/Foo_(bar)')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
   expect(extractUrls('(https://en.wikipedia.org/wiki/Foo_(bar))')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+})
+
+test('extractUrls: Japanese run straight on from a URL is not taken into it; an IDN host and a Japanese path or query are kept', () => {
+  // Right after the host: the host is not taken for an IDN one.
+  expect(extractUrls('詳細はhttps://example.comを参照してください')).toEqual(['https://example.com'])
+  // Right after the path.
+  expect(extractUrls('https://example.com/docsを見て')).toEqual(['https://example.com/docs'])
+  expect(extractUrls('https://example.com/a?q=1で検索、https://example.org/b参照')).toEqual(['https://example.com/a?q=1', 'https://example.org/b'])
+  expect(extractUrls('https://example.com/docsのページとhttps://example.org/カタカナ')).toEqual(['https://example.com/docs', 'https://example.org/カタカナ'])
+  // Japanese after `/`, `.`, `=` or `//` is the URL's own.
+  expect(extractUrls('https://ja.wikipedia.org/wiki/日本')).toEqual(['https://ja.wikipedia.org/wiki/日本'])
+  expect(extractUrls('https://ja.wikipedia.org/wiki/東京_(曖昧さ回避) を見て')).toEqual(['https://ja.wikipedia.org/wiki/東京_(曖昧さ回避)'])
+  expect(extractUrls('https://example.com/search?q=東京')).toEqual(['https://example.com/search?q=東京'])
+  expect(extractUrls('https://例え.テスト/パス')).toEqual(['https://例え.テスト/パス'])
+})
+
+test('extractUrls: an ellipsis right after a URL ends it', () => {
+  expect(extractUrls('https://a.example…')).toEqual(['https://a.example'])
+  expect(extractUrls('https://a.example/x…')).toEqual(['https://a.example/x'])
+  expect(extractUrls('続きは https://a.example/y‥')).toEqual(['https://a.example/y'])
+})
+
+test('extractUrls: URLs joined by a comma with no space are two; a comma inside a path is the URL\'s own', () => {
+  expect(extractUrls('https://a.example,https://b.example,HTTP://c.example')).toEqual(['https://a.example', 'https://b.example', 'HTTP://c.example'])
+  expect(extractUrls('https://a.example/x,y,z')).toEqual(['https://a.example/x,y,z'])
+})
+
+test('extractUrls: a long run of closing brackets (or of brackets and periods) is trimmed in linear time', () => {
+  for (const tail of [')'.repeat(200_000), ').'.repeat(100_000), ']'.repeat(200_000), '}.,;'.repeat(50_000)]) {
+    const started = performance.now()
+    expect(extractUrls(`https://a.example/${tail}`)).toEqual(['https://a.example/'])
+    expect(performance.now() - started).toBeLessThan(2_000)
+  }
+  // At the selection limit of a local action, through the compute.
+  const started = performance.now()
+  const out = run(copyUrls, `https://a.example/${')'.repeat(999_000)}`)
+  expect(out).toEqual({ effect: { kind: 'copy', urls: ['https://a.example/'] } })
+  expect(performance.now() - started).toBeLessThan(5_000)
+  // The pairing still holds after the change.
+  expect(extractUrls('((https://en.wikipedia.org/wiki/Foo_(bar))))')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+})
+
+test('shownUrl: the password of the user info is hidden, as parse-url hides it; nothing else changes', () => {
+  expect(shownUrl('https://user:secret@example.com/p')).toBe('https://user:***@example.com/p')
+  expect(shownUrl('https://user:se:c@r@et@example.com')).toBe('https://user:***@example.com')
+  expect(shownUrl('https://user@example.com/p')).toBe('https://user@example.com/p')
+  expect(shownUrl('https://example.com:8080/a@b')).toBe('https://example.com:8080/a@b')
+  expect(shownUrl('https://example.com/?u=a:b@c')).toBe('https://example.com/?u=a:b@c')
+  expect(shownUrl('https://example.com')).toBe('https://example.com')
+})
+
+test('copyResultText / openResultText: a URL\'s password is hidden in the result; an engine message is cut at MESSAGE_LIMIT', () => {
+  const u = 'https://me:hunter2@example.com/x'
+  expect(copyResultText('en', [u])).toBe('Copied 1 URL to the clipboard, one per line:\n- https://me:***@example.com/x')
+  const open = openResultText('en', [{ url: u, status: 'requested' }, { url: u, status: 'failed', reason: { exitCode: 1 } }, { url: u, status: 'unconfirmed' }], [u])
+  expect(open).not.toContain('hunter2')
+  expect(open).toContain('- https://me:***@example.com/x — exit code 1')
+  const long = 'x'.repeat(MESSAGE_LIMIT * 10)
+  const copied = copyResultText('en', ['https://a.example'], { thrown: long })
+  expect(copied).toContain(`${'x'.repeat(MESSAGE_LIMIT)}…`)
+  expect(copied).not.toContain('x'.repeat(MESSAGE_LIMIT + 1))
+  const notStarted = openResultText('ja', [{ url: 'https://a.example', status: 'failed', reason: { notStarted: long } }], [])
+  expect(notStarted).not.toContain('x'.repeat(MESSAGE_LIMIT + 1))
 })
 
 test('extractUrls: a Markdown link and an angle-bracketed URL give the URL alone', () => {
@@ -389,6 +455,70 @@ test('open-urls: uname failing counts as Linux', { options: { language: 'en', pi
   await select(s, clock, 'https://a.example')
   await runCommand($, 'open-urls')
   expect(s.processRuns.at(-1)?.argv.slice(0, 4)).toEqual(['/bin/sh', '-c', LINUX_OPEN_SCRIPT, 'sh'])
+})
+
+test('open-urls: a uname that failed is not kept: the next run asks again, and macOS is found then', { options: { language: 'en', pinActions: 'open-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  let unameFails = true
+  s.processAnswer = argv => (argv[0] === 'uname' ? (unameFails ? { deny: 'timed out' } : { exitCode: 0, stdout: 'Darwin\n' }) : { exitCode: 0 })
+  await start($)
+  await select(s, clock, 'https://a.example')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns.at(-1)?.argv[0]).toBe('/bin/sh')
+
+  unameFails = false
+  await select(s, clock, 'https://b.example')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns.slice(-2)).toEqual([
+    { argv: ['uname', '-s'], timeoutMs: OPEN_TIMEOUT_MS },
+    { argv: ['open', 'https://b.example'], timeoutMs: OPEN_TIMEOUT_MS },
+  ])
+
+  // Known for sure now: not asked a third time.
+  await select(s, clock, 'https://c.example')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns.filter(r => r.argv[0] === 'uname')).toHaveLength(2)
+  expect(s.processRuns.at(-1)).toEqual({ argv: ['open', 'https://c.example'], timeoutMs: OPEN_TIMEOUT_MS })
+})
+
+test('open-urls: a uname ending with another exit code is not kept either', { options: { language: 'en', pinActions: 'open-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  let unameExit = 1
+  s.processAnswer = argv => (argv[0] === 'uname' ? { exitCode: unameExit, stdout: unameExit === 0 ? 'Darwin\n' : '' } : { exitCode: 0 })
+  await start($)
+  await select(s, clock, 'https://a.example')
+  await runCommand($, 'open-urls')
+  unameExit = 0
+  await select(s, clock, 'https://b.example')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns.filter(r => r.argv[0] === 'uname')).toHaveLength(2)
+  expect(s.processRuns.at(-1)?.argv).toEqual(['open', 'https://b.example'])
+})
+
+test('copy-urls: every URL is copied, but the result shown is cut at the result limit; a password is hidden in it, not in the copy', { options: { language: 'en', pinActions: 'copy-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  const urls = ['https://me:hunter2@example.com/x', ...Array.from({ length: 2_000 }, (_, i) => `https://host${i}.example/path`)]
+  await select(s, clock, urls.join(' '))
+  await runCommand($, 'copy-urls')
+  expect(s.copies).toEqual([{ text: urls.join('\n') }])
+  const r = await entry($, 'Copied 2001 URLs')
+  expect(r?.failed).toBe(false)
+  expect(r?.text.startsWith('Copied 2001 URLs to the clipboard, one per line:\n- https://me:***@example.com/x\n')).toBe(true)
+  expect(r?.text).not.toContain('hunter2')
+  expect(r?.text.endsWith(`\n${MESSAGES.en.truncated}`)).toBe(true)
+  expect(Array.from(r?.text ?? '').length).toBeLessThanOrEqual(LOCAL_TEXT_LIMIT + 1 + MESSAGES.en.truncated.length)
+
+  // Failed too: the URLs listed to copy by hand are cut the same way.
+  s.copyAnswer = { isCopied: false, reason: 'refused' }
+  await select(s, clock, urls.join(' '))
+  await runCommand($, 'copy-urls')
+  const f = await entry($, 'Could not copy')
+  expect(f?.failed).toBe(true)
+  expect(f?.text.endsWith(`\n${MESSAGES.en.truncated}`)).toBe(true)
 })
 
 test('open-urls: asked, failed, not started and timed out told apart in one run; done while any was not a failure', { options: { language: 'en', pinActions: 'open-urls' } }, async ($, on) => {

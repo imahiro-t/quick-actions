@@ -503,7 +503,7 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     for (const [columns, kinds, count] of table[lang]) {
       const band = await mountBand($, columns)
       expect({ columns, kinds: await kindsDrawn(band), count: await actionCount(band) }).toEqual({ columns, kinds, count })
-      expect(expected(columns, lang)).toEqual({ kinds, count })
+      expect(expected(columns, lang)).toMatchObject({ kinds, count })
       await band.unmount()
     }
   })

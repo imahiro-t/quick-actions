@@ -86,9 +86,11 @@ const PICKER_LIST_KEY = '_picker-list'
 const PICKER_ROW_KEY = '_picker-row'
 // The hint line's Box of the actions, the one part of the row that shrinks.
 const HINT_ACTIONS_KEY = '_hint-actions'
-// How readily it shrinks beside a hover label (flexShrink 1): far less, so a
-// label shown takes the cut first and the actions stay as laid out.
+// The flexShrink of that Box of the actions.
 const ACTIONS_SHRINK = 1
+// The flexShrink of a hover label's Box: a hundred times ACTIONS_SHRINK, so
+// where the row runs short a label shown shrinks first, all but wholly, and
+// the actions stay as laid out.
 const TIP_SHRINK = 100
 // The dialog's filter field, and the button beside it that empties it.
 const PICKER_FILTER_KEY = FILTER_KEY
@@ -1248,13 +1250,11 @@ export const register: Register = (on, options) => {
     const shownKinds = layout.kinds === 'none' ? [] : kinds
     const kindLabel = (k: HintKind) => kindMark(k, layout.kinds === 'marks')
     const enabled = candidates.slice(0, layout.count)
-    // What the row has left beside its buttons, for a hover label: it is cut
-    // there, so a label shown neither pushes the mode at the row's left nor
-    // takes the actions' room (undefined, not measured: it takes what is left).
-    const tipColumns =
-      columns === undefined
-        ? undefined
-        : Math.max(0, columns - ends - shownKinds.reduce((sum, k) => sum + buttonWidth(kindLabel(k)), 0) - enabled.reduce((sum, a) => sum + buttonWidth(markedIcon(a)), 0))
+    // What the row has left beside its buttons, for a hover label: the line's
+    // columns less the cells the buttons laid out take (hintLayout's `used`).
+    // The label is cut there, so it neither pushes the mode at the row's left
+    // nor takes the actions' room (undefined, not measured: it takes what is left).
+    const tipColumns = columns === undefined ? undefined : Math.max(0, columns - layout.used)
     const hintElements = $.ui.resolve(e)
     const { Box, Button, Text } = hintElements
     const input = canInput(e.surface, hintElements)
@@ -1303,13 +1303,17 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
-    // Each button is kept whole (flexShrink 0): squeezed, its `]` would fall
-    // onto a second row. The row takes what the mode at its left leaves (grown
-    // from nothing, so the mode is never squeezed for it either), and should
-    // the buttons still be more than that, the actions alone are cut at their
-    // end (their Box the one that shrinks): the kind buttons, ✕ and ⋯ stay
-    // whole, and ⋯ reaches every action. The actions' Box gives way to a hover
-    // label only once that label is all but gone (its weight a hundredth).
+    // The row's Box has neither flexGrow nor a width: it takes no more than
+    // what it holds, the buttons laid out (and a hover label shown), and never
+    // grows to push the mode at its left. Each button (each kind button, each
+    // action, ✕ and ⋯) is in a Box of its own kept whole (flexShrink 0):
+    // squeezed, its `]` would fall onto a second row. The one Box that shrinks
+    // and cuts is the actions' (HINT_ACTIONS_KEY, ACTIONS_SHRINK): should the
+    // buttons still be more than the row holds, the actions are cut at its
+    // end, while the kind buttons, ✕ and ⋯ stay whole, and ⋯ reaches every
+    // action. A hover label's Box (its width tipColumns) shrinks with
+    // TIP_SHRINK, a hundred times ACTIONS_SHRINK, so where the row runs short
+    // the label gives way first and the actions' Box stays as laid out.
     return (
       <Box flexDirection="row" overflow="hidden">
         {shownKinds.map(k => (

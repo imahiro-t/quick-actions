@@ -216,6 +216,16 @@ export type HintLayoutInput = {
   tip?: number
 }
 
+/** How the hint line is laid out (hintLayout). */
+export type HintLayout = {
+  /** How the kind buttons are drawn. */
+  kinds: KindsDrawn
+  /** How many actions are laid out, from the first of `widths`. */
+  count: number
+  /** The cells the buttons laid out take: ✕ and ⋯, the kind buttons as drawn, the first `count` actions. */
+  used: number
+}
+
 /**
  * How the hint line is laid out: the kind buttons with their names while
  * MIN_LABELED_ACTIONS actions (or as many as there are, when fewer) still fit
@@ -230,8 +240,13 @@ export type HintLayoutInput = {
  * actions laid out for it, as long as the kind buttons are drawn as they would
  * be without it and MIN_LABELED_ACTIONS actions (or as many as there would
  * be, when fewer) still fit; else the most cells short of `tip` that do.
+ *
+ * `used` is the cells those buttons take (✕ and ⋯, the kind buttons as drawn,
+ * the actions laid out), whatever `tip` kept clear: what the line has left for
+ * a hover label is `line` less it. It is never cut to `line`, so where ✕ and ⋯
+ * alone are wider than the line it is more than the line.
  */
-export function hintLayout({ tip = 0, ...input }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
+export function hintLayout({ tip = 0, ...input }: HintLayoutInput): HintLayout {
   const base = layoutIn(input)
   if (input.line === undefined || tip <= 0) return base
   const keep = Math.min(MIN_LABELED_ACTIONS, base.count)
@@ -242,13 +257,21 @@ export function hintLayout({ tip = 0, ...input }: HintLayoutInput): { kinds: Kin
   return base
 }
 
-function layoutIn({ line, kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput): { kinds: KindsDrawn; count: number } {
-  if (line === undefined) return { kinds: 'labeled', count: Math.min(UNMEASURED_COUNT, widths.length) }
+function layoutIn(input: HintLayoutInput): HintLayout {
+  const { line, kindsLabeled, kindsMarks, ends, widths } = input
+  if (line === undefined) return laidOut(input, 'labeled', Math.min(UNMEASURED_COUNT, widths.length))
   const wanted = Math.min(MIN_LABELED_ACTIONS, widths.length)
   if (ends + kindsLabeled <= line) {
     const count = fitting(line - ends - kindsLabeled, widths)
-    if (count >= wanted) return { kinds: 'labeled', count }
+    if (count >= wanted) return laidOut(input, 'labeled', count)
   }
-  if (ends + kindsMarks <= line) return { kinds: 'marks', count: fitting(line - ends - kindsMarks, widths) }
-  return { kinds: 'none', count: fitting(line - ends, widths) }
+  if (ends + kindsMarks <= line) return laidOut(input, 'marks', fitting(line - ends - kindsMarks, widths))
+  return laidOut(input, 'none', fitting(line - ends, widths))
+}
+
+/** The layout with the kind buttons drawn as `kinds` and the first `count` actions, and the cells they take. */
+function laidOut({ kindsLabeled, kindsMarks, ends, widths }: HintLayoutInput, kinds: KindsDrawn, count: number): HintLayout {
+  const kindCells = kinds === 'labeled' ? kindsLabeled : kinds === 'marks' ? kindsMarks : 0
+  const used = widths.slice(0, count).reduce((sum, width) => sum + width, ends + kindCells)
+  return { kinds, count, used }
 }

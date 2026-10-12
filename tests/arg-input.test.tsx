@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, actionsFor, argSpecOf, isStandalone, takesArg } from '../hooks/actions'
+import { ACTIONS, INPUT_IS_DATA, actionsFor, argSpecOf, isStandalone, takesArg } from '../hooks/actions'
 import { parseCustomActions } from '../hooks/custom'
 import { ARG_KEY, FILTER_KEY, toArgField, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
@@ -451,7 +451,7 @@ for (const [options, t] of LANGS) {
     await pickAction(picker, 'ideas')
     await picker.input({ key: PICKER_ARG, text: ' Tea Ceremony ' })
     await picker.unmount()
-    expect(s.models.at(-1)?.prompt).toBe('<input>\nTea Ceremony\n</input>')
+    expect(s.models.at(-1)?.prompt).toBe(`${INPUT_IS_DATA}\n<input>\nTea Ceremony\n</input>`)
     for (const m of s.models) expect(`${m.system}${m.prompt}`).not.toContain('SECRET')
   })
 }

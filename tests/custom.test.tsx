@@ -1,7 +1,23 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ACTIONS, ANSWER_LANGUAGE, SELECTED_IS_DATA, STYLE, resolveSpec } from '../hooks/actions'
-import { ALLOWED_SUBAGENT_TOOLS, KINDS, MODELS, TARGETS, parseCustomActions, problemFor, problemLine, withProblems } from '../hooks/custom'
+import { ACTIONS, ANSWER_LANGUAGE, INPUT_IS_DATA, SELECTED_IS_DATA, STYLE, resolveSpec } from '../hooks/actions'
+import {
+  ALLOWED_SUBAGENT_TOOLS,
+  DESCRIPTION_MAX,
+  FILE_CONTENT_TOOLS,
+  ICON_MAX,
+  ID_MAX,
+  KINDS,
+  LABEL_MAX,
+  MODELS,
+  RUNNING_TEXT_MAX,
+  TARGETS,
+  parseCustomActions,
+  problemFor,
+  problemLine,
+  warningLine,
+  withNotices,
+} from '../hooks/custom'
 import type { CustomReason } from '../hooks/custom'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
 import { BAND, EN, JA, JAPANESE, PANE, PICKER, PLUGIN, SURFACES, hintIcons, promptOf, reselect, runCommand, showKind, stage, start, submitArg } from './stage'
@@ -40,7 +56,8 @@ const REVIEW = {
   task: 'Review the following code.',
   prompt: 'You review code and answer in {ANSWER_LANGUAGE}.',
   description: { ja: 'コードをレビューします', en: 'Reviews code' },
-  tools: ['Read', 'Grep', 'WebFetch', 'Read'],
+  // Glob with a web tool earns no warning: Glob gives paths, not the files' contents.
+  tools: ['Glob', 'WebFetch', 'Glob'],
 }
 const LOOK = {
   id: 'look',
@@ -60,7 +77,7 @@ const json = (defs: unknown[]) => JSON.stringify(defs)
 
 test('parse: unset or blank gives nothing and no problem', () => {
   for (const setting of [undefined, null, '', '   ']) {
-    expect(parseCustomActions(setting, RESERVED)).toEqual({ specs: [], problems: [] })
+    expect(parseCustomActions(setting, RESERVED)).toEqual({ specs: [], problems: [], warnings: [] })
   }
 })
 
@@ -72,6 +89,7 @@ test('parse: a value that is not a string leaves every definition out, and says 
     expect(parseCustomActions(setting, RESERVED)).toEqual({
       specs: [],
       problems: [{ index: null, id: null, reason: { code: 'notString' } }],
+      warnings: [],
     })
   }
 })
@@ -86,6 +104,7 @@ test('parse: a setting that is not a JSON array leaves every definition out, wit
     expect(parseCustomActions(setting, RESERVED)).toEqual({
       specs: [],
       problems: [{ index: null, id: null, reason: { code: 'notArray' } }],
+      warnings: [],
     })
   }
 })
@@ -105,7 +124,7 @@ test('parse: valid definitions of each kind, with labels as one string or { ja, 
   expect(promptOf(relate)).toBe('Relate the selected text to what we are working on.')
 
   // ANSWER_LANGUAGE says how already: nothing is added. Tools are kept once each.
-  expect(review).toMatchObject({ kind: 'subagent', model: 'opus', task: REVIEW.task, description: REVIEW.description, tools: ['Read', 'Grep', 'WebFetch'] })
+  expect(review).toMatchObject({ kind: 'subagent', model: 'opus', task: REVIEW.task, description: REVIEW.description, tools: ['Glob', 'WebFetch'] })
   expect(promptOf(review)).toBe(REVIEW.prompt)
 
   // No tools given: none are set, so the read-only default applies.
@@ -275,11 +294,11 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
       // By the command, with an argument: in <input>, as written.
       await runCommand($, 'ideas  Tea Ceremony ')
-      expect(s.models.at(-1)?.prompt).toBe('<input>\nTea Ceremony\n</input>')
+      expect(s.models.at(-1)?.prompt).toBe(`${INPUT_IS_DATA}\n<input>\nTea Ceremony\n</input>`)
       await runCommand($, 'scout')
       expect(s.spawned.at(-1)).toMatchObject({ subagentType: `${PLUGIN}:scout`, prompt: SCOUT.task })
       await runCommand($, 'scout src/hooks')
-      expect(s.spawned.at(-1)?.prompt).toBe(`${SCOUT.task}\n\n<input>\nsrc/hooks\n</input>`)
+      expect(s.spawned.at(-1)?.prompt).toBe(`${SCOUT.task}\n\n${INPUT_IS_DATA}\n<input>\nsrc/hooks\n</input>`)
       for (const m of s.models) expect(`${m.system}${m.prompt}`).not.toContain('SECRET')
       for (const sp of s.spawned) {
         expect(sp.prompt).not.toContain('SECRET')
@@ -422,10 +441,10 @@ test('the reasons read in each language, English with no Japanese in it', () => 
     '#1 (look): tools a subagent cannot have: Bash (allowed: Read, Grep, Glob, WebFetch, WebSearch)',
   )
   expect(problemLine(problems[2]!, 'en')).toBe('#3: the definition is not an object')
-  const en = withProblems('result', problems, 'en')
+  const en = withNotices('result', { problems, warnings: [] }, 'en')
   expect(en.split('\n')).toEqual(['result', '', MESSAGES.en.customProblemsHeading, ...problems.map(p => `- ${problemLine(p, 'en')}`)])
   expect(en).not.toMatch(JAPANESE)
-  expect(withProblems('result', [], 'ja')).toBe('result')
+  expect(withNotices('result', { problems: [], warnings: [] }, 'ja')).toBe('result')
 })
 
 test('the reasons about target read in each language, English with no Japanese in it', () => {
@@ -498,7 +517,7 @@ for (const surface of SURFACES) {
     await reselect(s, clock)
     await band.press({ key: 'look' })
     expect(s.registered).toEqual([
-      { name: 'review-pr', model: 'opus', tools: ['Read', 'Grep', 'WebFetch'], description: 'コードをレビューします', prompt: 'You review code and answer in Japanese.', omitClaudeMd: true },
+      { name: 'review-pr', model: 'opus', tools: ['Glob', 'WebFetch'], description: 'コードをレビューします', prompt: 'You review code and answer in Japanese.', omitClaudeMd: true },
       {
         name: 'look',
         model: 'sonnet',
@@ -532,7 +551,7 @@ test('each custom kind runs by `/quick-actions <id>`, in English too', { options
   expect(s.forks[0]?.split('Answer in English')).toHaveLength(2)
 
   await runCommand($, 'review-pr')
-  expect(s.registered[0]).toMatchObject({ name: 'review-pr', tools: ['Read', 'Grep', 'WebFetch'], prompt: 'You review code and answer in English.' })
+  expect(s.registered[0]).toMatchObject({ name: 'review-pr', tools: ['Glob', 'WebFetch'], prompt: 'You review code and answer in English.' })
   expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:review-pr`])
 
   // With no ID, the ⋯ dialog opens and nothing runs.
@@ -730,4 +749,199 @@ test('each custom kind sends the selection with its tags made harmless and the d
     expect(text.match(/<[\s\p{Cf}]*\/?[\s\p{Cf}]*selected\b/giu)).toHaveLength(2)
     expect(text.match(/<\/selected>/g)).toHaveLength(1)
   }
+})
+
+// ---------------------------------------------------------------------------
+// SELM-00082: limits and characters of the texts shown, the ID's length, and
+// the warning for a file-reading tool beside a web one.
+
+test('the limits are the ones the README gives', () => {
+  expect([ID_MAX, ICON_MAX, LABEL_MAX, RUNNING_TEXT_MAX, DESCRIPTION_MAX]).toEqual([64, 16, 64, 64, 500])
+  expect([...FILE_CONTENT_TOOLS]).toEqual(['Read', 'Grep'])
+})
+
+test('id: 64 characters are kept, 65 are refused for their length, before the format', () => {
+  const at = `a${'-b'.repeat(31)}c`
+  expect(at.length).toBe(64)
+  const over = `${at}d`
+  const { specs, problems } = parseCustomActions(json([{ ...MINE, id: at }, { ...MINE, id: over }, { ...MINE, id: `${'X'.repeat(100_000)}` }]), RESERVED)
+  expect(specs.map(sp => sp.id)).toEqual([at])
+  expect(problems.map(p => p.reason)).toEqual([
+    { code: 'tooLong', field: 'id', max: 64 },
+    // Not of the format either: told for its length all the same.
+    { code: 'tooLong', field: 'id', max: 64 },
+  ])
+  expect(problemLine(problems[0]!, 'ja')).toBe(`#2 (${over.slice(0, 37)}...): id が長すぎます（64 文字まで）`)
+  expect(problemLine(problems[0]!, 'en')).toBe(`#2 (${over.slice(0, 37)}...): id is too long (up to 64 characters)`)
+})
+
+/** The definitions of MINE (complete) and LOOK (subagent) with `field` set to `value`, one at a time. */
+const withField = (field: string, value: unknown) => [
+  { ...(field === 'description' ? LOOK : MINE), id: 'one', [field]: value },
+]
+
+test('the texts shown: the limit in code points is kept, one more is refused, in each language of { ja, en }', () => {
+  for (const [field, max] of [['icon', ICON_MAX], ['label', LABEL_MAX], ['runningText', RUNNING_TEXT_MAX], ['description', DESCRIPTION_MAX]] as const) {
+    // Emoji outside the BMP: counted as one each, not two.
+    const at = '😀'.repeat(max)
+    const over = '😀'.repeat(max + 1)
+    expect(parseCustomActions(json(withField(field, at)), RESERVED).problems).toEqual([])
+    const values: unknown[] = field === 'icon' ? [over] : [over, { ja: over, en: 'ok' }, { ja: 'ok', en: over }]
+    for (const value of values) {
+      const { specs, problems } = parseCustomActions(json(withField(field, value)), RESERVED)
+      expect(specs).toEqual([])
+      expect({ field, reason: problems[0]?.reason }).toEqual({ field, reason: { code: 'tooLong', field, max } })
+    }
+  }
+})
+
+test('the texts shown: control, bidirectional control and separator characters are refused, named as U+XXXX', () => {
+  const forbidden = [
+    ['\u0000', 'U+0000'],
+    ['\u001b', 'U+001B'],
+    ['\u001b]8;;https://example.com\u0007x\u001b]8;;\u0007', 'U+001B'],
+    ['\t', 'U+0009'],
+    ['\n', 'U+000A'],
+    ['\u007f', 'U+007F'],
+    ['\u009d', 'U+009D'],
+    ['\u061C', 'U+061C'],
+    ['\u200E', 'U+200E'],
+    ['\u200F', 'U+200F'],
+    ['\u202A', 'U+202A'],
+    ['\u202E', 'U+202E'],
+    ['\u2066', 'U+2066'],
+    ['\u2069', 'U+2069'],
+    ['\u2028', 'U+2028'],
+    ['\u2029', 'U+2029'],
+  ] as const
+  for (const field of ['icon', 'label', 'runningText', 'description']) {
+    for (const [ch, name] of forbidden) {
+      const value = `ab${ch}cd`
+      const values: unknown[] = field === 'icon' ? [value] : [value, { ja: 'ok', en: value }]
+      for (const v of values) {
+        const { specs, problems } = parseCustomActions(json(withField(field, v)), RESERVED)
+        expect(specs).toEqual([])
+        expect({ field, name, reason: problems[0]?.reason }).toEqual({ field, name, reason: { code: 'forbiddenChar', field, char: name } })
+      }
+    }
+  }
+  // The character first, the length after: a long value with an escape is told for the escape.
+  const both = parseCustomActions(json(withField('label', `${'x'.repeat(100)}\u202E`)), RESERVED).problems[0]
+  expect(both?.reason).toEqual({ code: 'forbiddenChar', field: 'label', char: 'U+202E' })
+  const ja = problemLine(both!, 'ja')
+  const en = problemLine(both!, 'en')
+  expect(ja).toBe('#1 (one): label に使えない文字 U+202E が含まれています（制御文字・双方向制御文字・行区切りは使えません）')
+  expect(en).toBe('#1 (one): label contains a character it cannot have: U+202E (no control, bidirectional control or line separator characters)')
+  expect(en).not.toMatch(JAPANESE)
+  // No raw control character reaches the line.
+  expect(ja).not.toMatch(/[\p{Cc}\u202E]/u)
+})
+
+test('the texts shown: emoji made with ZWJ, variation selectors, skin tones and flags are kept', () => {
+  for (const icon of ['👨\u200D👩\u200D👧\u200D👦', '❤\uFE0F', '☺\uFE0E', '👍🏽', '🏳\uFE0F\u200D🌈', '🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}', '🇯🇵', '✨', 'AB']) {
+    const { specs, problems } = parseCustomActions(json(withField('icon', icon)), RESERVED)
+    expect({ icon, problems }).toEqual({ icon, problems: [] })
+    expect(specs[0]?.icon).toBe(icon)
+  }
+  // The longest of these (the Scottish flag, seven code points) is well within the limit.
+  expect([...'🏴\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}'].length).toBeLessThanOrEqual(ICON_MAX)
+  for (const label of ['海賊風の要約', 'Ünïcödé — “quoted”', 'עברית', 'a\u200Db']) {
+    expect(parseCustomActions(json(withField('label', label)), RESERVED).problems).toEqual([])
+  }
+})
+
+/** A subagent definition with these tools. */
+const toolsDef = (id: string, list: string[]) => ({ ...LOOK, id, tools: list })
+
+test('warnings: Read or Grep beside WebFetch or WebSearch is warned of, and the definition is kept', () => {
+  const { specs, problems, warnings } = parseCustomActions(
+    json([
+      toolsDef('rw', ['Read', 'WebFetch']),
+      toolsDef('gs', ['Grep', 'WebSearch']),
+      toolsDef('all', ['WebSearch', 'Read', 'Glob', 'Grep', 'WebFetch']),
+      toolsDef('glob-web', ['Glob', 'WebFetch']),
+      toolsDef('local', ['Read', 'Grep', 'Glob']),
+      toolsDef('web', ['WebFetch', 'WebSearch']),
+      LOOK,
+      { ...MINE, id: 'complete' },
+    ]),
+    RESERVED,
+  )
+  expect(problems).toEqual([])
+  expect(specs.map(sp => sp.id)).toEqual(['rw', 'gs', 'all', 'glob-web', 'local', 'web', 'look', 'complete'])
+  expect(warnings).toEqual([
+    { index: 0, id: 'rw', reason: { code: 'fileReadWithWeb', read: ['Read'], web: ['WebFetch'] } },
+    { index: 1, id: 'gs', reason: { code: 'fileReadWithWeb', read: ['Grep'], web: ['WebSearch'] } },
+    // In the order written.
+    { index: 2, id: 'all', reason: { code: 'fileReadWithWeb', read: ['Read', 'Grep'], web: ['WebSearch', 'WebFetch'] } },
+  ])
+})
+
+test('warnings read in each language, English with no Japanese in it; the command lists them after the problems', () => {
+  const { problems, warnings } = parseCustomActions(
+    json([toolsDef('all', ['Read', 'Grep', 'WebFetch', 'WebSearch']), { ...MINE, model: 'gpt-4' }]),
+    RESERVED,
+  )
+  expect(warningLine(warnings[0]!, 'ja')).toBe('#1 (all): Read・Grep と WebFetch・WebSearch を同時に許しているため、読んだファイルの内容を外部へ送り得ます')
+  expect(warningLine(warnings[0]!, 'en')).toBe(
+    '#1 (all): it allows Read, Grep together with WebFetch, WebSearch, so it could send the contents of files it reads out to the web',
+  )
+  const en = withNotices('result', { problems, warnings }, 'en')
+  expect(en.split('\n')).toEqual([
+    'result',
+    '',
+    MESSAGES.en.customProblemsHeading,
+    `- ${problemLine(problems[0]!, 'en')}`,
+    '',
+    MESSAGES.en.customWarningsHeading,
+    `- ${warningLine(warnings[0]!, 'en')}`,
+  ])
+  expect(en).not.toMatch(JAPANESE)
+  expect(withNotices('result', { problems: [], warnings }, 'ja').split('\n')).toEqual([
+    'result',
+    '',
+    'customActions の注意:',
+    `- ${warningLine(warnings[0]!, 'ja')}`,
+  ])
+})
+
+const WARNED = { customActions: json([MINE, toolsDef('reader', ['Read', 'WebFetch'])]), pinActions: 'mine,reader' }
+
+for (const [options, count] of [[{ ...JA, ...WARNED }, '注意が 1 件'], [{ ...EN, ...WARNED }, '1 warning(s)']] as const) {
+  test(`[${options.language}] warnings alone: one toast at start, the command lists them, and the action still runs`, { options }, async ($, on) => {
+    const s = stage(on)
+    await start($)
+    expect(s.toasts).toHaveLength(1)
+    expect(s.toasts[0]).toContain(count)
+    expect(s.toasts[0]).toContain('#2 (reader)')
+    if (options.language === 'en') expect(s.toasts[0]).not.toMatch(JAPANESE)
+    s.selected = 'some text'
+    const r = await runCommand($, 'reader')
+    expect(JSON.stringify(r)).toContain(MESSAGES[options.language].customWarningsHeading)
+    expect(JSON.stringify(r)).not.toContain(MESSAGES[options.language].customProblemsHeading)
+    expect(s.spawned.map(x => x.subagentType)).toEqual([`${PLUGIN}:reader`])
+  })
+}
+
+test('problems and warnings both: the problems\' toast alone', { options: { ...JA, customActions: json([{ ...MINE, model: 'gpt-4' }, toolsDef('reader', ['Read', 'WebFetch'])]) } }, async ($, on) => {
+  const s = stage(on)
+  await start($)
+  expect(s.toasts).toHaveLength(1)
+  expect(s.toasts[0]).toContain('問題が 1 件')
+})
+
+test('[dock] warnings: an open pane lists them under their own heading, apart from the problems', { options: { ...JA, customActions: json([{ ...MINE, model: 'gpt-4' }, MINE, toolsDef('reader', ['Read', 'WebFetch'])]), pinActions: 'mine' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.selected = 'segfault'
+  await clock.advance(400)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'mine' })
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const heading = (await pane.findAll({ text: MESSAGES.ja.customWarningsHeading })).filter(f => f.type === 'Text')
+  expect(heading).toHaveLength(1)
+  expect(heading[0]?.props.color).not.toBe('error')
+  const lines = (await pane.findAll({ text: /^- #\d/ })).filter(f => f.type === 'Text').map(f => f.text)
+  expect(lines).toEqual([expect.stringContaining('#1 (mine)'), expect.stringContaining('#3 (reader): Read と WebFetch')])
 })

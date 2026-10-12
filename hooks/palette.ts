@@ -44,8 +44,14 @@ export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
 // `error`; inline it stays the raw name `red`, as it was, which the terminal
 // draws from its own palette, tuned to its own background where the theme's
 // `error` is not (a colour prop admits a theme key, a name or hex, never an
-// `ansi:` value). dimColor needs nothing: core draws it in the theme's
-// `inactive`.
+// `ansi:` value). The secondary texts (a quote, 考え中…, the notes) split the
+// same way: docked they are dimColor, which core draws in the theme's
+// `inactive`, on the theme's own background; inline they too keep the
+// terminal's foreground, since `inactive` is tuned to the theme's background,
+// not the terminal's, and falls to about 2.9:1 where the two disagree (the
+// light theme's #666666 on a #1e1e1e terminal, the dark theme's #999999 on a
+// white one). ANSI `gray` would not do instead: some terminals' default
+// palettes draw it at 3-3.8:1 on their own dark background.
 export const PANE_COLORS = {
   dock: { heading: 'text', body: 'text', failed: 'error' },
   inline: { heading: undefined, body: undefined, failed: 'red' },
@@ -53,10 +59,14 @@ export const PANE_COLORS = {
 
 /**
  * How the pane and the ⋯ dialog are drawn. `background` undefined: the plugin
- * paints none (core's, or the terminal's, shows). `muted` undefined: the
- * secondary texts are drawn dimColor, as before; a palette names a colour
- * instead, since dimColor is the theme's `inactive`, which need not read on a
- * fixed background.
+ * paints none (core's, or the terminal's, shows).
+ *
+ * The secondary texts, one of three ways: `dimMuted`, dimColor as before (auto,
+ * docked); `muted` a `#rrggbb` colour, a palette's (dimColor is the theme's
+ * `inactive`, which need not read on a fixed background); neither, the
+ * terminal's foreground (inline). `muted` is a hex or undefined, never a
+ * stand-in for dimColor: the buttons that colour their label with it when a
+ * background is painted (only a palette paints one) get a real colour or none.
  */
 export type PaneStyle = {
   readonly background: string | undefined
@@ -64,6 +74,7 @@ export type PaneStyle = {
   readonly body: string | undefined
   readonly failed: string
   readonly muted: string | undefined
+  readonly dimMuted: boolean
 }
 
 /**
@@ -73,10 +84,23 @@ export type PaneStyle = {
  * their palette, background and all.
  */
 export function paneStyle(theme: PaneTheme, placement: 'dock' | 'inline'): PaneStyle {
-  if (placement === 'inline') return { background: undefined, muted: undefined, ...PANE_COLORS.inline }
-  if (theme === 'auto') return { background: undefined, muted: undefined, ...PANE_COLORS.dock }
-  return PALETTES[theme]
+  if (placement === 'inline') return { background: undefined, muted: undefined, dimMuted: false, ...PANE_COLORS.inline }
+  if (theme === 'auto') return { background: undefined, muted: undefined, dimMuted: true, ...PANE_COLORS.dock }
+  return { ...PALETTES[theme], dimMuted: false }
 }
+
+/**
+ * The colour of the hint line's accents: a kind button's label while it is
+ * the kind shown, and the hover labels. The theme key Claude Code marks its
+ * own suggestions with, tuned to the theme as raw `cyan` (the terminal's
+ * palette) is not: on the light theme #5769f7, 4.4:1 on white where `cyan`
+ * falls to 1.9-3.4:1; on the dark theme #b1b9f9, 8.9:1 or more. `text` would
+ * read better still, but the kind shown would then stand apart by bold alone.
+ * Nothing paints the line's background, so where the theme and the terminal
+ * disagree it still reads poorly (the dark theme's on white, about 1.8:1), as
+ * `cyan` does there too.
+ */
+export const HINT_ACCENT = 'suggestion'
 
 /** WCAG 2.x relative luminance of a `#rrggbb` colour. */
 function luminance(hex: string): number {

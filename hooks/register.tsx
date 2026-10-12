@@ -52,7 +52,7 @@ import {
   settleIn,
 } from './order'
 import type { HintKind, OrderSlot } from './order'
-import { paneStyle, parsePaneTheme } from './palette'
+import { HINT_ACCENT, paneStyle, parsePaneTheme } from './palette'
 import { nextEntryId } from './entries'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
@@ -138,8 +138,12 @@ const canInput = <T extends object>(surface: RenderSurface, elements: T): elemen
 /** The Box props that paint the style's background: none when it has none. */
 const painted = (style: PaneStyle) => (style.background === undefined ? {} : { backgroundColor: style.background })
 
-/** The Text props of a secondary text: the palette's muted colour, or dimColor as before. */
-const muted = (style: PaneStyle) => (style.muted === undefined ? { dimColor: true } : { color: style.muted })
+/**
+ * The Text props of a secondary text: dimColor as before (auto, docked), the
+ * palette's muted colour, or none, the terminal's foreground (inline).
+ */
+const muted = (style: PaneStyle) =>
+  style.dimMuted ? { dimColor: true } : style.muted === undefined ? {} : { color: style.muted }
 
 /**
  * A button of the result pane or the ⋯ dialog (stop, again, back, close, ...):
@@ -1325,7 +1329,7 @@ export const register: Register = (on, options) => {
     // The hover labels: cut where the row ends rather than wrapped onto another.
     const tip = (scope: string, label: string) => (
       <Box display="none" flexShrink={TIP_SHRINK} {...(tipColumns === undefined ? {} : { width: tipColumns })} hover={{ scope, display: 'flex' }}>
-        <Text color="cyan" wrap="truncate"> {label}</Text>
+        <Text color={HINT_ACCENT} wrap="truncate"> {label}</Text>
       </Box>
     )
 
@@ -1346,7 +1350,7 @@ export const register: Register = (on, options) => {
           <Box key={`act-${kindKey(k)}`} flexShrink={0} hover={{ scope: `tip-kind-${k}` }}>
             {k === kind ? (
               <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
-                <Text bold color="cyan">{kindLabel(k)}</Text>
+                <Text bold color={HINT_ACCENT}>{kindLabel(k)}</Text>
               </Button>
             ) : (
               <Button key={kindKey(k)} label={kindName(k)} dimColor onPress={() => update($, hintKind, () => k)}>
@@ -1808,7 +1812,7 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         {e.props.placement === 'inline' && (
-          <Text dimColor>{t.inlineHint}</Text>
+          <Text {...muted(style)}>{t.inlineHint}</Text>
         )}
         {list.length === 0 && (
           <Text {...muted(style)}>{t.emptyPane}</Text>
@@ -1817,8 +1821,10 @@ export const register: Register = (on, options) => {
           const def = findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
-              <Text bold color={style.heading}>
-                {def === undefined ? '•' : emojiIcon(def.icon)} {def?.label ?? r.action}{' '}
+              {/* Bold is the label's alone: a nested Text takes its parent's
+                  bold, which would draw the quote as the heading inline. */}
+              <Text color={style.heading}>
+                <Text bold>{def === undefined ? '•' : emojiIcon(def.icon)} {def?.label ?? r.action}</Text>{' '}
                 <Text {...muted(style)}>{onWhat(r)}</Text>
               </Text>
               {r.status === 'running' ? (

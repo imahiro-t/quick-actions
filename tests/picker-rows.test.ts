@@ -295,7 +295,7 @@ test('the filter field says its label\'s word once with the label, and not at al
   expect(MESSAGES.ja.pickerFilterPlaceholder).toBe('ID・名前・種類')
 })
 
-test('the filter row: one row where there is room (an empty field at a docked body\'s 54 to 56 columns), two or more at 28 columns and fewer', () => {
+test('the filter row: one row where there is room (an empty field or one with Clear beside it, at a docked body\'s 54 to 60 columns), two or more at 28 columns and fewer', () => {
   for (const lang of ['en', 'ja'] as const) {
     for (const value of ['', 'tr']) {
       const { filterRow } = dialog(lang, value)

@@ -820,7 +820,10 @@ function bothTimes(ms: number, input: LocalInput): { utc: string; local: string 
   return { utc: `${isoFields(utc)}Z`, local: `${isoFields(shifted)}${offsetText(offset)} (${input.timeZone})` }
 }
 
-/** A UNIX time (seconds up to 11 digits, milliseconds from 12 to 14) in UTC and in local time, ISO 8601. */
+/**
+ * A UNIX time (seconds up to 11 digits, milliseconds from 12 to 14) in UTC and in local time, ISO 8601.
+ * Milliseconds take a fraction only when it is all zeros (`.0`).
+ */
 export const epochToDate = onText((text, input) => {
   const ja = input.lang === 'ja'
   const m = /^([+-]?)([0-9]+)(?:\.([0-9]+))?$/.exec(text)
@@ -833,7 +836,7 @@ export const epochToDate = onText((text, input) => {
   if (digits > 14) {
     return { error: ja ? `UNIX 時刻として読めません: 整数部が ${digits} 桁です（秒は 11 桁まで、ミリ秒は 12〜14 桁）。` : `Not a UNIX time: its whole part has ${digits} digits (seconds up to 11, milliseconds 12 to 14).` }
   }
-  if (!seconds && frac !== '') {
+  if (!seconds && !/^0*$/.test(frac)) {
     return {
       error: ja
         ? 'UNIX 時刻として読めません: ミリ秒（整数部 12〜14 桁）に小数部は付けられません。'
@@ -859,11 +862,14 @@ const SIGNATURE_NOTE: Texts = {
   en: 'Note: the signature is not verified (the contents are only decoded).',
 }
 
-/** A JWT's header and payload decoded and laid out, exp/iat/nbf as dates; always saying the signature is not verified. */
+/**
+ * A JWT's header and payload decoded and laid out, exp/iat/nbf as dates; always saying the signature is not verified.
+ * A leading `Bearer ` (in any case, followed by white space) is skipped.
+ */
 export const decodeJwt = onText((text, input) => {
   const { lang } = input
   const ja = lang === 'ja'
-  const parts = text.split('.')
+  const parts = text.replace(/^bearer\s+/i, '').split('.')
   if (parts.length === 5) {
     return { error: ja ? 'JWT として読めません: 5 つに区切られた JWE（暗号化されたトークン）は読めません。' : 'Not a readable JWT: a JWE (an encrypted token, in five parts) cannot be read.' }
   }

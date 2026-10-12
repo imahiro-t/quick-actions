@@ -20,8 +20,8 @@ import type { LocalInput, LocalOutput, TickerFrame } from './actions'
 import { DURATION_MAX_MS, DURATION_MIN_MS, addDays, dayOf, daysIn, formatClock, localDay, localMidnight, utcLabel, utcMidnight } from './args'
 import type { Day } from './args'
 import type { Lang } from './i18n'
-
-type Texts = Record<Lang, string>
+import { INT_TEXT, invalid, isInt } from './local-args'
+import type { Texts } from './local-args'
 
 const pick = (lang: Lang, t: Texts) => t[lang]
 
@@ -31,11 +31,6 @@ const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
 const two = (n: number) => String(n).padStart(2, '0')
-
-/** `{ error }` for an argument the action does not take, saying what it takes. */
-const invalid = (lang: Lang, expected: Texts): LocalOutput => ({
-  error: lang === 'ja' ? `引数が正しくありません: ${expected.ja}` : `Invalid argument: ${expected.en}`,
-})
 
 // ---------------------------------------------------------------------------
 // Days and their written forms.
@@ -131,13 +126,9 @@ const isYear = (y: number) => y >= 1 && y <= 9999
 // ---------------------------------------------------------------------------
 // The checks of an argument, by its type.
 
-const INT_TEXT = (min: number, max: number): Texts => ({ ja: `${min}〜${max} の整数`, en: `a whole number from ${min} to ${max}` })
 const TIME_TEXT: Texts = { ja: '時刻（0:00〜23:59 を 0 時からの分で）', en: 'a time from 0:00 to 23:59 (minutes after midnight)' }
 const DATE_TEXT: Texts = { ja: '1〜9999 年の日付', en: 'a date in the years 1 to 9999' }
 const DURATION_TEXT: Texts = { ja: '1 秒〜24 時間の時間', en: 'a duration from 1 second to 24 hours' }
-
-const isInt = (arg: unknown, min: number, max: number): arg is number =>
-  typeof arg === 'number' && Number.isInteger(arg) && arg >= min && arg <= max
 
 const isTime = (arg: unknown): arg is number => isInt(arg, 0, 1439)
 

@@ -14,9 +14,28 @@
 // is docked, the line's width is the viewport's columns with that dock given
 // back (dockReturn, the dock as the pane measures it where it is drawn): the
 // pane takes nothing off the line, and its opening or closing leaves the count
-// of actions as it was (SELM-00068). Another plugin's dock cannot be seen from
-// here and is not given back: beside it the line may come out narrower than
-// it is, never wider.
+// of actions as it was (SELM-00068). Another plugin's dock is given back too
+// (SELM-00067): a `ui.render` matcher on `Pane` naming no `requestId` is handed
+// every pane's drawing, another plugin's as well (seen in a pseudo-terminal: a
+// test plugin's pane docked at a body of 40 on 180 columns reached this
+// plugin's hook with `placement` dock, `bodyColumns` 40 and a viewport of 139,
+// 180 less 41: its dock is dockReturn too). Nothing else hands over the
+// line's width: PromptHint's props hold none, `$.ui.panes()` lists this
+// plugin's panes alone, `CommandPresentation.columns` is the width as a
+// command runs and follows no resize, and a `Client` laid out to fill the
+// rest of the row squeezes the mode's `·` onto a second row as it measures.
+//
+// The engine says nothing when another plugin's pane closes, so the dock
+// measured is kept with the viewport it was drawn beside (DockMeasure) and
+// given back only to a line handed that same viewport (dockGivenBack): the dock
+// opening, closing or the terminal resizing changes the viewport and redraws
+// the line, which drops the measure (isStaleDock) until a pane is drawn again.
+// Beside a dock not measured yet the line comes out narrower than it is, never
+// wider. What this cannot tell apart: a dock closed while no prompt hint is
+// drawn (no line to drop the measure) and the terminal then resized, still
+// with none drawn, to the very columns the transcript had beside the dock; the
+// next line would be given that dock back. Both the closing and the resizing
+// redraw the line wherever it is drawn, so it takes both happening unseen.
 //
 // The row also holds, at its left, the permission mode the engine draws there
 // (`⏵⏵ auto mode on ·`, shift+tab cycles it), and the footer keeps two
@@ -164,13 +183,44 @@ export function leadFor(surface: string): number {
   return LEAD_SURFACES.includes(surface) ? LEAD_RESERVE : 0
 }
 
-/** The columns this plugin's pane docked with a body `bodyColumns` wide took off the viewport, given back to the hint line. */
+/** The columns a pane (this plugin's or another's) docked with a body `bodyColumns` wide took off the viewport, given back to the hint line. */
 export const dockReturn = (bodyColumns: number) => Math.max(0, bodyColumns) + DOCK_GUTTER
 
 /**
+ * A docked pane's width as last measured on a surface, where a pane was drawn
+ * (./register): what it took off the transcript's column (`dock`, dockReturn;
+ * 0 drawn inline), the viewport's columns it was drawn beside (`viewport`;
+ * absent where that surface keys nothing on it: one other than the terminal,
+ * or none measured) and whether the pane is this plugin's (`own`).
+ */
+export type DockMeasure = { dock: number; viewport?: number; own: boolean }
+
+/**
+ * Whether `measure` no longer holds for a line handed `viewportColumns`: it was
+ * drawn beside other columns, so the dock it measured has since opened,
+ * closed or changed, or the terminal resized. A measure keyed by no viewport,
+ * or a line handed none, says nothing either way.
+ */
+export function isStaleDock(measure: DockMeasure | undefined, viewportColumns: number | undefined): boolean {
+  return measure?.viewport !== undefined && viewportColumns !== undefined && measure.viewport !== viewportColumns
+}
+
+/**
+ * The dock given back to a line handed `viewportColumns`: `measure`'s, while
+ * it holds (isStaleDock), and for this plugin's pane only while its tabs are
+ * open (`ownOpen`); a measure keyed by no viewport only if this plugin's
+ * (another's is never taken without the key); else 0.
+ */
+export function dockGivenBack(measure: DockMeasure | undefined, viewportColumns: number, ownOpen: boolean): number {
+  if (measure === undefined || isStaleDock(measure, viewportColumns)) return 0
+  if (measure.own ? !ownOpen : measure.viewport === undefined) return 0
+  return Math.max(0, measure.dock)
+}
+
+/**
  * The columns the hint line has for its buttons: the viewport's (on the
- * terminal the transcript's column, a docked pane's already off) with this
- * plugin's dock given back (`dock`, dockReturn; 0: none), less the rest of the
+ * terminal the transcript's column, a docked pane's already off) with the
+ * dock given back (`dock`, dockGivenBack; 0: none), less the rest of the
  * row (leadFor; 0: none).
  */
 export function hintLineColumns(viewportColumns: number, lead = 0, dock = 0): number {

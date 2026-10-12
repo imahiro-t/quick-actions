@@ -247,6 +247,15 @@ const escapeOne = (c: string) => {
   return out
 }
 
+/**
+ * A new global pattern for the hidden characters, one at a time. Each one it
+ * matches is one `hasHidden` flags on its own (with nothing around it, no ZWJ
+ * joins emoji, no selector has a base, no tag is inside a flag), so a text can
+ * be cut at its first match in one forward search instead of a `hasHidden`
+ * call a character.
+ */
+export const hiddenCharPattern = () => new RegExp(HIDDEN.source, 'gu')
+
 /** Whether the text holds a hidden character the pane must not show raw. */
 export function hasHidden(s: string): boolean {
   const flags = flagsIn(s)

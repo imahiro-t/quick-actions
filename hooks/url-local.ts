@@ -13,7 +13,7 @@
 
 import type { LocalEffect, LocalInput, LocalOutput } from './actions'
 import type { Lang } from './i18n'
-import { escapeHidden, hasHidden } from './selection-local'
+import { escapeHidden, hasHidden, hiddenCharPattern } from './selection-local'
 
 type Texts = Record<Lang, string>
 
@@ -74,31 +74,41 @@ export function isHttpUrl(s: string): boolean {
 const CANDIDATE = /https?:\/\/[^\s<>"`、。，．！？「」『』（）【】＜＞［］｛｝…‥]+/giu
 
 // Japanese text run straight on from a URL (`https://example.comを参照`): a
-// letter or digit of ASCII followed by a kana or a kanji. The URL ends between
-// the two. Japanese right after `//`, `.`, `/`, `=` and the like is kept, so
-// an IDN host (`https://例え.テスト`) and a Japanese path or query
+// letter or digit of ASCII, or a closing bracket or quote (`) ] } '`), followed
+// by a kana or a kanji. The URL ends between the two, so `(https://example.com)を見て`
+// gives `https://example.com)` and trimEnd then drops the unpaired `)`, while
+// `https://en.wikipedia.org/wiki/Foo_(bar)を参照` keeps its paired one.
+// Japanese right after `//`, `.`, `/`, `=` and the like is kept, so an IDN
+// host (`https://例え.テスト`) and a Japanese path or query
 // (`https://ja.wikipedia.org/wiki/日本`, `?q=東京`) stay whole; a Japanese path
 // segment written straight after ASCII (`/wiki/Python入門`) is the price.
-const JAPANESE_AFTER_ASCII = /[A-Za-z0-9](?=[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆])/u
+// Global: it is searched forward from a position (see nextMatchFrom).
+const JAPANESE_AFTER = /[A-Za-z0-9)\]}'](?=[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆])/gu
 
-/** The candidate cut where Japanese text runs straight on from it (JAPANESE_AFTER_ASCII). */
-function cutAtJapanese(s: string): string {
-  const m = JAPANESE_AFTER_ASCII.exec(s)
-  return m === null ? s : s.slice(0, m.index + 1)
-}
+// A URL's start inside a candidate, where another URL may begin once one is cut.
+const SCHEME = /https?:\/\//gi
 
 // What a URL is seldom meant to end with: sentence punctuation and Markdown emphasis.
 const TRAILING = new Set(['.', ',', ';', ':', '!', '?', '*', '_', '~'])
 const CLOSERS: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
 
-/** The candidate cut at its first hidden character (a control, a bidirectional or zero-width one). */
-function cutAtHidden(s: string): string {
-  let end = 0
-  for (const ch of s) {
-    if (hasHidden(ch)) break
-    end += ch.length
+/**
+ * A search for the global `pattern` in `s` that only ever moves forward: each
+ * call answers where its first match at or after `from` starts (`s.length`
+ * when there is none), and the calls' `from` must never go back. A match found
+ * once is kept while it still lies ahead, so `s` is read once in all, however
+ * many times it is asked: no stretch is searched twice.
+ */
+function nextMatchFrom(pattern: RegExp, s: string): (from: number) => number {
+  const re = new RegExp(pattern)
+  let found = -1
+  return from => {
+    if (found >= from) return found
+    re.lastIndex = from
+    const m = re.exec(s)
+    found = m === null ? s.length : m.index
+    return found
   }
-  return s.slice(0, end)
 }
 
 /**
@@ -128,11 +138,43 @@ function trimEnd(s: string): string {
 }
 
 /**
+ * The URLs written in one candidate (`run`: a match of CANDIDATE, so it starts
+ * with a scheme), before trimEnd: from its start up to its first hidden
+ * character (a control, a bidirectional or zero-width one) or Japanese run
+ * straight on (JAPANESE_AFTER), whichever comes first, or to its end. What
+ * is cut off may hold another URL (`https://a.exampleを見てhttps://b.example`),
+ * so the next one starts at the next `http://` or `https://` after the cut,
+ * and is cut the same way. A candidate with no cut is one URL, whatever it
+ * holds (`https://a.example/?u=https://b.example`). Each of the three
+ * searches only moves forward (nextMatchFrom), so the run is read a bounded
+ * number of times however many cuts it has: linear in its length.
+ */
+function urlsInRun(run: string): string[] {
+  const nextHidden = nextMatchFrom(hiddenCharPattern(), run)
+  const nextJapanese = nextMatchFrom(JAPANESE_AFTER, run)
+  const nextScheme = nextMatchFrom(SCHEME, run)
+  const found: string[] = []
+  let start = 0
+  while (start < run.length) {
+    const japanese = nextJapanese(start)
+    // The cut goes after the ASCII character or closer, before the Japanese.
+    const end = Math.min(nextHidden(start), japanese < run.length ? japanese + 1 : run.length)
+    found.push(run.slice(start, end))
+    // `end` is past `start`: the scheme holds no hidden character, and no
+    // Japanese can follow a character of it, so a URL is never empty.
+    start = end < run.length ? nextScheme(end) : run.length
+  }
+  return found
+}
+
+/**
  * The http(s) URLs in `text`, in the order they first appear, each once, as
  * written: a URL is `http://` or `https://` (any case) and what follows up to
- * white space, cut at a hidden character and trimmed of what follows it
- * (trimEnd), kept when `URL` reads it as http(s) with a host. Other schemes
- * (javascript:, file:, ftp:) and bare `www.` are not taken.
+ * white space (CANDIDATE), cut at a hidden character or where Japanese runs
+ * on (urlsInRun) and trimmed of what follows it (trimEnd), kept when `URL`
+ * reads it as http(s) with a host. Other schemes (javascript:, file:, ftp:)
+ * and bare `www.` are not taken. Linear in the length of `text`: each
+ * candidate is read once by urlsInRun, and the search goes on from its end.
  */
 export function extractUrls(text: string): string[] {
   const seen = new Set<string>()
@@ -142,16 +184,13 @@ export function extractUrls(text: string): string[] {
   // So does a comma right before the next URL's scheme: `https://a.example,https://b.example`
   // is two (a comma elsewhere in a path is the URL's own).
   const split = text.replaceAll('](', '] (').replace(/,(?=https?:\/\/)/giu, ', ')
-  const candidate = new RegExp(CANDIDATE)
-  for (let m = candidate.exec(split); m !== null; m = candidate.exec(split)) {
-    const cut = cutAtJapanese(cutAtHidden(m[0]))
-    // What was cut off is read again: another URL may start in it
-    // (`https://a.exampleを見てhttps://b.example`). The cut keeps at least `http://`, so this always moves on.
-    candidate.lastIndex = m.index + cut.length
-    const url = trimEnd(cut)
-    if (seen.has(url) || !isHttpUrl(url)) continue
-    seen.add(url)
-    urls.push(url)
+  for (const m of split.matchAll(CANDIDATE)) {
+    for (const cut of urlsInRun(m[0])) {
+      const url = trimEnd(cut)
+      if (seen.has(url) || !isHttpUrl(url)) continue
+      seen.add(url)
+      urls.push(url)
+    }
   }
   return urls
 }

@@ -25,6 +25,7 @@ import {
   shownUrl,
 } from '../hooks/url-local'
 import type { OpenAttempt } from '../hooks/url-local'
+import { hasHidden, hiddenCharPattern } from '../hooks/selection-local'
 import { BAND, PANE, runCommand, stage, start } from './stage'
 import type { Stage } from './stage'
 
@@ -102,6 +103,22 @@ test('extractUrls: Japanese run straight on from a URL is not taken into it; an 
   expect(extractUrls('https://例え.テスト/パス')).toEqual(['https://例え.テスト/パス'])
 })
 
+test('extractUrls: Japanese right after a closing bracket or quote ends the URL too; a paired bracket stays', () => {
+  expect(extractUrls('(https://example.com)を見て')).toEqual(['https://example.com'])
+  expect(extractUrls('(https://example.com/foo)を参照')).toEqual(['https://example.com/foo'])
+  expect(extractUrls('[https://example.com/a]を参照')).toEqual(['https://example.com/a'])
+  expect(extractUrls('{https://example.com/b}を参照')).toEqual(['https://example.com/b'])
+  expect(extractUrls("'https://example.com/c'を参照")).toEqual(['https://example.com/c'])
+  expect(extractUrls('[リンク](https://example.com/d)を参照')).toEqual(['https://example.com/d'])
+  expect(extractUrls('詳細は(https://example.com)、または(https://example.org)で')).toEqual(['https://example.com', 'https://example.org'])
+  // A pair inside the URL is the URL's own, Japanese or not after it.
+  expect(extractUrls('https://en.wikipedia.org/wiki/Foo_(bar)を参照')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+  expect(extractUrls('(https://en.wikipedia.org/wiki/Foo_(bar))を参照')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+  expect(extractUrls('https://ja.wikipedia.org/wiki/東京_(曖昧さ回避)の記事')).toEqual(['https://ja.wikipedia.org/wiki/東京_(曖昧さ回避)'])
+  // And the URL that follows in the same run is still found.
+  expect(extractUrls('(https://a.example)とhttps://b.example')).toEqual(['https://a.example', 'https://b.example'])
+})
+
 test('extractUrls: an ellipsis right after a URL ends it', () => {
   expect(extractUrls('https://a.example…')).toEqual(['https://a.example'])
   expect(extractUrls('https://a.example/x…')).toEqual(['https://a.example/x'])
@@ -126,6 +143,96 @@ test('extractUrls: a long run of closing brackets (or of brackets and periods) i
   expect(performance.now() - started).toBeLessThan(5_000)
   // The pairing still holds after the change.
   expect(extractUrls('((https://en.wikipedia.org/wiki/Foo_(bar))))')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+})
+
+test('extractUrls: a run of URLs each cut by Japanese or a hidden character, with no space, is read in linear time', () => {
+  const within = (text: string, limitMs: number, check: (urls: string[]) => void) => {
+    const started = performance.now()
+    check(extractUrls(text))
+    expect(performance.now() - started).toBeLessThan(limitMs)
+  }
+  // The same URL over and over: one URL, each cut found once.
+  within('https://aあ'.repeat(10_000), 2_000, urls => expect(urls).toEqual(['https://a']))
+  within('https://aあ'.repeat(20_000), 2_000, urls => expect(urls).toEqual(['https://a']))
+  within('https://a\u200b'.repeat(20_000), 2_000, urls => expect(urls).toEqual(['https://a']))
+  within('https://a\u200b'.repeat(40_000), 2_000, urls => expect(urls).toEqual(['https://a']))
+  within('(https://a.example)を'.repeat(10_000), 2_000, urls => expect(urls).toEqual(['https://a.example']))
+  // Every one a different URL.
+  within(Array.from({ length: 20_000 }, (_, i) => `https://a${i}.exampleを`).join(''), 2_000, urls => {
+    expect(urls.length).toBe(20_000)
+    expect(urls[19_999]).toBe('https://a19999.example')
+  })
+  // One cut and a long run after it with no other URL, and a long run of hidden characters.
+  within(`https://a.exampleを${'あa'.repeat(400_000)}`, 2_000, urls => expect(urls).toEqual(['https://a.example']))
+  within(`https://a.example${'\u200b'.repeat(900_000)}`, 2_000, urls => expect(urls).toEqual(['https://a.example']))
+  // At the selection limit of a local action, through the compute: kana, zero-width and closing brackets.
+  for (const unit of ['https://aあ', 'https://a\u200b', '(https://a)を']) {
+    const text = unit.repeat(Math.floor(999_000 / unit.length))
+    const started = performance.now()
+    expect(run(copyUrls, text)).toEqual({ effect: { kind: 'copy', urls: ['https://a'] } })
+    expect(performance.now() - started).toBeLessThan(5_000)
+  }
+})
+
+test('hiddenCharPattern: each character it matches is one hasHidden flags on its own', () => {
+  // The kinds hasHidden keeps in context (a ZWJ, selectors, Mongolian ones, a tag) are flagged alone.
+  for (const c of ['\u0000', '\u0007', '\u007f', '\u0085', '\u00ad', '\u200b', '\u200d', '\u202e', '\u2066', '\u2028', '\ufe0f', '\ufe00', '\u180b', '\u180e', '\u{e0041}', '\u{e007f}', '\u{e0100}', '\u3164', '\ufeff']) {
+    expect(new RegExp(hiddenCharPattern().source, 'u').test(c)).toBe(true)
+    expect(hasHidden(c)).toBe(true)
+  }
+  for (const c of ['a', 'あ', ' ', '\n', '👍']) expect(hiddenCharPattern().test(c)).toBe(false)
+})
+
+test('extractUrls: the same URLs as reading again from each cut (the rule before it was made linear), on random text', () => {
+  // The rule, written the plain way: a candidate, cut at its first hidden
+  // character (hasHidden a character) and where Japanese runs on, read again
+  // from the cut, trimmed by counting afresh at each step. Slow on long text,
+  // so only short texts are compared.
+  const count = (s: string, c: string) => s.split(c).length - 1
+  const closers: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
+  const trim = (s: string) => {
+    for (;;) {
+      const last = s.at(-1)
+      if (last === undefined) return s
+      const opener = closers[last]
+      if (!('.,;:!?*_~'.includes(last) || (opener !== undefined && count(s, last) > count(s, opener)) || (last === "'" && count(s, "'") % 2 === 1))) return s
+      s = s.slice(0, -1)
+    }
+  }
+  const japanese = /[A-Za-z0-9)\]}'](?=[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆])/u
+  const reference = (text: string) => {
+    const candidate = /https?:\/\/[^\s<>"`、。，．！？「」『』（）【】＜＞［］｛｝…‥]+/giu
+    const split = text.replaceAll('](', '] (').replace(/,(?=https?:\/\/)/giu, ', ')
+    const urls: string[] = []
+    for (let m = candidate.exec(split); m !== null; m = candidate.exec(split)) {
+      let cut = ''
+      for (const ch of m[0]) {
+        if (hasHidden(ch)) break
+        cut += ch
+      }
+      const j = japanese.exec(cut)
+      if (j !== null) cut = cut.slice(0, j.index + 1)
+      candidate.lastIndex = m.index + cut.length
+      const url = trim(cut)
+      if (!urls.includes(url) && isHttpUrl(url)) urls.push(url)
+    }
+    return urls
+  }
+  const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007']
+  let seed = 12345
+  const next = (n: number) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed % n
+  }
+  let withUrls = 0
+  for (let i = 0; i < 5_000; i++) {
+    let text = ''
+    for (let k = 1 + next(30); k > 0; k--) text += pieces[next(pieces.length)]
+    const urls = extractUrls(text)
+    expect({ text, urls }).toEqual({ text, urls: reference(text) })
+    if (urls.length > 0) withUrls++
+  }
+  expect(withUrls).toBeGreaterThan(500)
 })
 
 test('shownUrl: the password of the user info is hidden, as parse-url hides it; nothing else changes', () => {

@@ -1,5 +1,5 @@
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, ProcessRunResult, UiCopyResult } from 'claude-code'
 
 import type { ActionDef, ActionSpec } from '../hooks/actions'
 import type { Messages } from '../hooks/i18n'
@@ -16,6 +16,12 @@ import type { FilterRow } from '../hooks/picker-rows'
 // $.store to read back what the plugin wrote, and the kit takes one hook per
 // event, so mock.store's could not be watched. Values go in and out as JSON
 // text, as the engine keeps them.
+//
+// It answers $.process.run and $.ui.copy too (open-urls and copy-urls,
+// SELM-00089), recording each call: no test ever starts a command on the
+// machine (a browser opened) or writes its clipboard. `processAnswer` and
+// `copyAnswer` say how they answer; by default `uname -s` reads Darwin and
+// every other command exits 0, and every copy takes.
 
 export const PLUGIN = 'quick-actions'
 
@@ -347,7 +353,30 @@ export type Stage = {
   // `<component>:<requestId>`: a transcript row drawn again asks the engine's
   // drawing again.
   drawn: Record<string, number>
+  // Every $.process.run the plugin asked for (its argv and timeout), in order,
+  // and how each is answered: a result, a reason to refuse it with (the
+  // plugin's call then rejects with it), or a promise of either.
+  processRuns: { argv: string[]; timeoutMs?: number }[]
+  processAnswer: (argv: readonly string[]) => ProcessAnswer | Promise<ProcessAnswer>
+  // Every $.ui.copy the plugin asked for (its text and surface), in order, and what each answers.
+  copies: { text: string; surface?: string }[]
+  copyAnswer: UiCopyResult
 }
+
+/** How the stage answers one $.process.run: what the command came to, or a refusal (the call rejects). */
+export type ProcessAnswer = { exitCode: number; stdout?: string } | { deny: string }
+
+/** The default answer to $.process.run: `uname -s` reads Darwin, any other command exits 0. */
+export const defaultProcessAnswer = (argv: readonly string[]): ProcessAnswer =>
+  argv[0] === 'uname' ? { exitCode: 0, stdout: 'Darwin\n' } : { exitCode: 0 }
+
+const processResult = (a: { exitCode: number; stdout?: string }): ProcessRunResult => ({
+  exitCode: a.exitCode,
+  stdout: a.stdout ?? '',
+  stderr: '',
+  isStdoutTruncated: false,
+  isStderrTruncated: false,
+})
 
 const reply = (s: Stage, text: string) => {
   return s.answer === 'empty'
@@ -359,7 +388,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {} }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {}, processRuns: [], processAnswer: defaultProcessAnswer, copies: [], copyAnswer: { isCopied: true } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -372,6 +401,15 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   })
   on('store.keys', () => ({ value: Object.keys(s.stored) }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('process.run', async (_$, e) => {
+    s.processRuns.push({ argv: [...e.argv], ...(e.init?.timeoutMs === undefined ? {} : { timeoutMs: e.init.timeoutMs }) })
+    const a = await s.processAnswer(e.argv)
+    return 'deny' in a ? { deny: a.deny } : { value: processResult(a) }
+  })
+  on('ui.copy', (_$, e) => {
+    s.copies.push({ text: e.text, ...(e.surface === undefined ? {} : { surface: e.surface }) })
+    return { value: s.copyAnswer }
+  })
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
     const site = `${e.component}:${e.requestId}`

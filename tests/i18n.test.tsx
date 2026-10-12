@@ -225,12 +225,12 @@ for (const [options, thinking] of [
 // What the model is asked to answer in.
 
 // Pressed a kind at a time (SELM-00070), each kind's actions pinned alone,
-// so that no one test presses all 311 under a loaded machine's timeout; the
+// so that no one test presses all 313 under a loaded machine's timeout; the
 // three kinds together press every action (checked below).
 test('the answer-language runs by kind together press every action once: none left out, none twice', () => {
   const pressed = HINT_KINDS.flatMap(kind => ofKind(ACTIONS, kind).map(a => a.id))
-  expect(pressed).toHaveLength(311)
-  expect(new Set(pressed).size).toBe(311)
+  expect(pressed).toHaveLength(313)
+  expect(new Set(pressed).size).toBe(313)
   expect([...pressed].sort()).toEqual(ACTIONS.map(a => a.id).sort())
   // So the complete, fork and subagent actions each test checks add up to all of them.
   for (const k of ['complete', 'fork', 'subagent'] as const) {

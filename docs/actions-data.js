@@ -2,7 +2,7 @@
 // Regenerate after changing the built-in actions: node scripts/gen-catalog.mjs (Node 24 or later).
 // tests/catalog.test.ts fails while this file and the definitions differ.
 globalThis.QUICK_ACTIONS_CATALOG = {
-  "total": 311,
+  "total": 313,
   "kinds": [
     {
       "id": "selection",
@@ -218,6 +218,8 @@ globalThis.QUICK_ACTIONS_CATALOG = {
         "url-decode",
         "url-encode",
         "parse-url",
+        "open-urls",
+        "copy-urls",
         "decode-jwt",
         "epoch-to-date",
         "hash-text",
@@ -2172,6 +2174,36 @@ globalThis.QUICK_ACTIONS_CATALOG = {
       "summary": {
         "ja": "URL をスキーム・ユーザー（パスワードは伏せる）・ホスト・ポート・パス・クエリ・フラグメントに分解する",
         "en": "Takes a URL apart: scheme, user (password hidden), host, port, path, query and fragment"
+      }
+    },
+    {
+      "id": "open-urls",
+      "icon": "🔭",
+      "kind": "selection",
+      "method": "local",
+      "category": "data",
+      "label": {
+        "ja": "URLを開く",
+        "en": "Open URLs"
+      },
+      "summary": {
+        "ja": "選択中の http(s) の URL をブラウザ（OS の既定の方法）で開く（最大 5 件）",
+        "en": "Opens the http(s) URLs in the selection in the browser, the OS's default way (up to 5)"
+      }
+    },
+    {
+      "id": "copy-urls",
+      "icon": "🧲",
+      "kind": "selection",
+      "method": "local",
+      "category": "data",
+      "label": {
+        "ja": "URLをコピー",
+        "en": "Copy URLs"
+      },
+      "summary": {
+        "ja": "選択中の http(s) の URL を抜き出し、改行区切りでクリップボードにコピーする",
+        "en": "Copies the http(s) URLs in the selection to the clipboard, one per line"
       }
     },
     {

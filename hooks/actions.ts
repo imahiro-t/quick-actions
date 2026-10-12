@@ -83,6 +83,7 @@ import {
   taxCalc,
   unitConvert,
 } from './calc-local'
+import { copyUrls, openUrls } from './url-local'
 
 type ActionBase<T> = {
   /** The ID written in the `pinActions` setting: lowercase letters, digits, hyphens. */
@@ -194,6 +195,19 @@ export type LocalOutput =
   | { text: string }
   | { error: string }
   | { ticker: { intervalMs: number; frame: (now: number) => TickerFrame } }
+  | { effect: LocalEffect }
+
+/**
+ * What an action on the selection may ask register.tsx to do through `$`, its
+ * compute staying pure (an action on the selection's only): open http(s) URLs
+ * with the OS's default handler (`open`, at most OPEN_URL_LIMIT of them;
+ * `skipped`, those past it, listed and not opened) or copy URLs to the
+ * clipboard, one per line (`copy`). register.tsx carries it out and settles
+ * the entry with what came of it (./url-local words it).
+ */
+export type LocalEffect =
+  | { kind: 'open'; urls: string[]; skipped: string[] }
+  | { kind: 'copy'; urls: string[] }
 
 /**
  * Run in the module, with no model: a built-in alone (no custom action can be
@@ -207,7 +221,9 @@ export type LocalOutput =
  * localeCompare or toLocale*String (their answers vary by machine), nor
  * Date.now(), Math.random() or crypto's random functions: the time and the
  * randomness come in LocalInput. It never reaches the network, a file, a
- * shell, the store or a model, and it returns no promise.
+ * shell, the store or a model, and it returns no promise. What it would have
+ * done outside (open-urls, copy-urls) it answers as an effect, for
+ * register.tsx to carry out (LocalEffect).
  */
 export type LocalAction<T = string> = ActionBase<T> & {
   kind: 'local'
@@ -2105,6 +2121,8 @@ export const ACTIONS: readonly ActionSpec[] = [
   { id: 'url-decode', icon: '🔗', label: { ja: 'URLデコード', en: 'URL decode' }, category: 'data', summary: { ja: 'パーセントエンコードをデコードする', en: 'Decodes percent-encoding' }, kind: 'local', compute: urlDecode },
   { id: 'url-encode', icon: '🔣', label: { ja: 'URLエンコード', en: 'URL encode' }, category: 'data', summary: { ja: 'テキストをパーセントエンコードする', en: 'Percent-encodes the text' }, kind: 'local', compute: urlEncode },
   { id: 'parse-url', icon: '🧭', label: { ja: 'URLを分解', en: 'Parse a URL' }, category: 'data', summary: { ja: 'URL をスキーム・ユーザー（パスワードは伏せる）・ホスト・ポート・パス・クエリ・フラグメントに分解する', en: 'Takes a URL apart: scheme, user (password hidden), host, port, path, query and fragment' }, kind: 'local', compute: parseUrl },
+  { id: 'open-urls', icon: '🔭', label: { ja: 'URLを開く', en: 'Open URLs' }, category: 'data', summary: { ja: '選択中の http(s) の URL をブラウザ（OS の既定の方法）で開く（最大 5 件）', en: 'Opens the http(s) URLs in the selection in the browser, the OS\'s default way (up to 5)' }, kind: 'local', compute: openUrls },
+  { id: 'copy-urls', icon: '🧲', label: { ja: 'URLをコピー', en: 'Copy URLs' }, category: 'data', summary: { ja: '選択中の http(s) の URL を抜き出し、改行区切りでクリップボードにコピーする', en: 'Copies the http(s) URLs in the selection to the clipboard, one per line' }, kind: 'local', compute: copyUrls },
   { id: 'decode-jwt', icon: '🎫', label: { ja: 'JWTを読む', en: 'Decode a JWT' }, category: 'data', summary: { ja: 'JWT のヘッダーとペイロードをデコードする（exp・iat・nbf は日時で。署名は検証しない）', en: 'Decodes a JWT\'s header and payload (exp, iat, nbf as dates; the signature is not verified)' }, kind: 'local', compute: decodeJwt },
   { id: 'epoch-to-date', icon: '⌛', label: { ja: 'UNIX時刻を日時に', en: 'Epoch to date' }, category: 'data', summary: { ja: 'UNIX 時刻（秒・ミリ秒）を UTC とローカルの日時（ISO 8601）にする', en: 'A UNIX time (seconds or milliseconds) as a date in UTC and local time (ISO 8601)' }, kind: 'local', compute: epochToDate },
   { id: 'hash-text', icon: '🆔', label: { ja: 'ハッシュ値', en: 'Hash' }, category: 'data', summary: { ja: 'テキストの SHA-256 と SHA-1 を求める', en: 'The SHA-256 and SHA-1 of the text' }, kind: 'local', compute: hashText },

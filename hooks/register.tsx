@@ -23,7 +23,7 @@ import {
   wrap,
   wrapInput,
 } from './actions'
-import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from './actions'
+import type { ActionDef, ActionSpec, LocalAction, LocalEffect, ResolvedSubagentAction } from './actions'
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgSpec, ArgValue } from './args'
 import { kindOfTarget } from './catalog'
@@ -59,6 +59,17 @@ import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
 import { ARG_KEY, FILTER_KEY, toArgField, toFilterField } from './focus'
 import { settleQuietly, toLatest, toRow } from './scroll'
+import {
+  OPEN_TIMEOUT_MS,
+  attemptOfExit,
+  attemptOfRejection,
+  copyResultText,
+  copyTextOf,
+  openCommandFor,
+  openResultText,
+  openSucceeded,
+} from './url-local'
+import type { OpenAttempt, Platform } from './url-local'
 
 // Everything below is driven by the definitions in ./actions and the person's
 // own from the `customActions` setting (./custom): no action is named here, so
@@ -460,7 +471,14 @@ async function startTicker($: EngineInterface, lang: Lang, id: number, label: st
  * selection) or the argument (a standalone one), what comes of it decided by
  * runLocal. Only the time, the zone, the offset and the randomness are read here.
  */
-async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, id: number, src: { text?: string; arg?: ArgValue }) {
+async function runLocalAction(
+  $: EngineInterface,
+  def: LocalAction,
+  lang: Lang,
+  id: number,
+  src: { text?: string; arg?: ArgValue },
+  surface?: RenderSurface,
+) {
   const t = MESSAGES[lang]
   let now: number
   try {
@@ -475,7 +493,72 @@ async function runLocalAction($: EngineInterface, def: LocalAction, lang: Lang, 
     await settle($, id, outcome.ok, outcome.text)
     return
   }
+  if (outcome.kind === 'effect') {
+    await runEffect($, lang, id, outcome.effect, surface)
+    return
+  }
   await startTicker($, lang, id, def.label, now, outcome)
+}
+
+/**
+ * A local action's effect on entry `id` (open-urls, copy-urls), carried out
+ * here through `$` and settled with what came of it, worded by ./url-local.
+ * Never leaves the entry running: whatever throws settles it failed.
+ */
+async function runEffect($: EngineInterface, lang: Lang, id: number, effect: LocalEffect, surface: RenderSurface | undefined) {
+  try {
+    if (effect.kind === 'copy') {
+      await copyEffect($, lang, id, effect, surface)
+      return
+    }
+    const platform = await platformOf($)
+    const attempts: OpenAttempt[] = []
+    // One at a time, so the browser's tabs come in the order of the selection.
+    for (const url of effect.urls) attempts.push(await openOne($, platform, url))
+    await settle($, id, openSucceeded(attempts), openResultText(lang, attempts, effect.skipped))
+  } catch (err) {
+    await settle($, id, false, MESSAGES[lang].failed(messageOf(err)))
+  }
+}
+
+/** copy-urls: the URLs on the clipboard of `surface` (the session's first when it is not known), one per line. */
+async function copyEffect($: EngineInterface, lang: Lang, id: number, effect: Extract<LocalEffect, { kind: 'copy' }>, surface: RenderSurface | undefined) {
+  const text = copyTextOf(effect)
+  try {
+    const r = await $.ui.copy(surface === undefined ? { text } : { text, surface })
+    await settle($, id, r.isCopied, r.isCopied ? copyResultText(lang, effect.urls) : copyResultText(lang, effect.urls, { reason: r.reason }))
+  } catch (err) {
+    await settle($, id, false, copyResultText(lang, effect.urls, { thrown: messageOf(err) }))
+  }
+}
+
+/**
+ * One URL handed to the OS's default handler (openCommandFor), and what came
+ * of it: the command's exit code, or, rejected, whether that was the timeout
+ * (OPEN_TIMEOUT_MS) or a command that could not start.
+ */
+async function openOne($: EngineInterface, platform: Platform, url: string): Promise<OpenAttempt> {
+  const startedAt = await readQuietly($.clock.now())
+  try {
+    const r = await $.process.run(openCommandFor(platform, url), { timeoutMs: OPEN_TIMEOUT_MS })
+    return attemptOfExit(platform, url, r.exitCode)
+  } catch (err) {
+    const endedAt = await readQuietly($.clock.now())
+    const elapsed = startedAt === undefined || endedAt === undefined ? 0 : endedAt - startedAt
+    return attemptOfRejection(url, messageOf(err), elapsed)
+  }
+}
+
+// The OS, made out once a module load and kept: there is no API that says it,
+// so `OS` (Windows_NT on Windows), then `uname -s` (Darwin on macOS), and
+// anything else (uname failing too) is taken for Linux and the like.
+let pendingPlatform: Promise<Platform> | undefined
+const platformOf = ($: EngineInterface) => (pendingPlatform ??= detectPlatform($))
+
+async function detectPlatform($: EngineInterface): Promise<Platform> {
+  if ((await readQuietly($.env.get('OS'))) === 'Windows_NT') return 'win32'
+  const uname = await readQuietly($.process.run(['uname', '-s'], { timeoutMs: OPEN_TIMEOUT_MS }))
+  return uname !== undefined && uname.exitCode === 0 && uname.stdout.trim() === 'Darwin' ? 'darwin' : 'linux'
 }
 
 /** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */
@@ -560,7 +643,7 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // standalone action runs through runStandalone instead, which takes no text.
 // `requestId` is the transcript row the selection lies in, when the engine
 // named one: the entry then keeps it (its origin), to go back to.
-async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string) {
+async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string, surface?: RenderSurface) {
   const context = isContext(def)
   const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId }
   const id = await begin(
@@ -572,7 +655,7 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string,
   )
 
   if (def.kind === 'local') {
-    await runLocalAction($, def, lang, id, { text })
+    await runLocalAction($, def, lang, id, { text }, surface)
     return
   }
   if (def.kind === 'subagent') {
@@ -685,18 +768,18 @@ async function selectedText($: EngineInterface, lang: Lang): Promise<Picked | un
   return picked
 }
 
-async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, picked: Picked) {
+async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, picked: Picked, surface?: RenderSurface) {
   // Done with this selection: its icons go until another one is made. The
   // engine keeps answering it after a click elsewhere, so this is what hides them.
   await update($, dismissed, () => picked.text)
-  await run($, def, lang, picked.text, picked.requestId)
+  await run($, def, lang, picked.text, picked.requestId, surface)
 }
 
 /** Runs `def` on the text selected now; false (and a toast saying so) when there is none. */
-async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang): Promise<boolean> {
+async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang, surface?: RenderSurface): Promise<boolean> {
   const picked = await selectedText($, lang)
   if (picked === undefined) return false
-  await runOnText($, def, lang, picked)
+  await runOnText($, def, lang, picked, surface)
   return true
 }
 
@@ -945,7 +1028,7 @@ export const closeGoesBack = (state: { text: string | null; requestId?: string; 
  * argument, where an Input can be drawn (`input`), runs nothing yet: the
  * dialog's tab turns to its argument screen.
  */
-async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, input: boolean) {
+async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, input: boolean, surface?: RenderSurface) {
   if (def !== undefined && input && takesArg(def)) {
     await update($, picking, p => (p === null ? p : { ...p, arg: { action: def.id, value: '' } }))
     // The list it was picked in is gone: the field takes the focus ring.
@@ -971,7 +1054,7 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, 
     $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
-  await runOnText($, def, lang, pickedOf(text, held?.requestId))
+  await runOnText($, def, lang, pickedOf(text, held?.requestId), surface)
 }
 
 export const register: Register = (on, options) => {
@@ -1309,9 +1392,9 @@ export const register: Register = (on, options) => {
         if (current !== null) await update($, dismissed, () => current)
         await runOnConversation($, a, l)
       } else if (current !== null) {
-        await runOnSelection($, a, l)
+        await runOnSelection($, a, l, e.surface)
       } else if (text !== null) {
-        await run($, a, l, text, opened?.requestId)
+        await run($, a, l, text, opened?.requestId, e.surface)
       }
     }
     // What the ⋯ dialog opens on: the selection now with its row (as read
@@ -1505,7 +1588,7 @@ export const register: Register = (on, options) => {
         await setFilter(value)
         return
       }
-      await pick($, l, first, input)
+      await pick($, l, first, input, e.surface)
     }
     // A kind button: lists its kind alone, or, pressed while it does, every
     // kind again; ahead of them, "all" lists every kind. Named as the hint
@@ -1650,7 +1733,7 @@ export const register: Register = (on, options) => {
           <Box key={`${PICKER_LIST_KEY}-${listed.length}`} flexDirection="column">
             {listed.map((a, i) => {
               const label = labelOf(a)
-              const button = { label, onPress: () => pick($, l, a, input) }
+              const button = { label, onPress: () => pick($, l, a, input, e.surface) }
               // With a palette the label is a child Text in its colour, and,
               // with no filter field to take it, the first takes the focus ring
               // as the dialog takes the keys; otherwise the button is its label.

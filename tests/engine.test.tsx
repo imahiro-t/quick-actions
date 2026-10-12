@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 // What the environment the hooks run in offers, observed rather than required:
 // Intl (register.tsx reads the time zone's name from it, falling back to

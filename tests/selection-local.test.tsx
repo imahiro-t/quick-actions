@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, test } from './kit'
 
 import { ACTIONS, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'

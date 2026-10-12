@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { textWidth } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'

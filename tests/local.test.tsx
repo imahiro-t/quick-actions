@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, textOf } from '../hooks/actions'
 import type { LocalAction, LocalInput, LocalOutput } from '../hooks/actions'

@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { ACTIONS, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import type { LocalInput, LocalOutput, TickerFrame } from '../hooks/actions'

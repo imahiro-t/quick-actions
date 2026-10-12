@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test } from './kit'
 
 import { ACTIONS, isContext, isStandalone, resolveSpec, translateInto } from '../hooks/actions'
 import { CATALOG_METHODS, CATEGORIES, buildCatalog, kindOfTarget } from '../hooks/catalog'

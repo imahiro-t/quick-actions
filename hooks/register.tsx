@@ -32,6 +32,7 @@ import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
 import { localInputFor, runLocal, tickerStep } from './local'
+import { quoteLine, showHiddenNoted } from './selection-local'
 import type { Frame } from './local'
 import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
 import { TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from './hint-width'
@@ -192,11 +193,6 @@ const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
 const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
 const hintKind = atom({ plugin: 'quick-actions', key: 'hintKind' } as const, null)
 const asking = atom({ plugin: 'quick-actions', key: 'asking' } as const, 0)
-
-const quoteOf = (text: string) => {
-  const line = text.replace(/\s+/g, ' ').trim()
-  return line.length > 60 ? `${line.slice(0, 57)}...` : line
-}
 
 // The language: settled in register when the setting names one; for `auto`,
 // by the first hook that needs it, whichever event comes first, and once only.
@@ -538,13 +534,19 @@ async function begin($: EngineInterface, def: ActionDef, lang: Lang, head: Entry
   return id
 }
 
-/** A model call on entry `id`, settled with its answer or why there is none. */
+/**
+ * A model call on entry `id`, settled with its answer or why there is none.
+ * The answer's hidden characters are escaped here, once, as it is kept
+ * (showHiddenNoted; turn.complete does the same for a subagent's): never as
+ * it is drawn, nor on a local action's output, which would double its
+ * backslashes again.
+ */
 type ModelAnswer = { isAnswered: true; text: string } | { isAnswered: false; reason: string }
 async function complete($: EngineInterface, lang: Lang, id: number, call: () => Promise<ModelAnswer>) {
   const t = MESSAGES[lang]
   try {
     const r = await call()
-    await settle($, id, r.isAnswered, r.isAnswered ? r.text.trim() : t.noAnswer(r.reason))
+    await settle($, id, r.isAnswered, r.isAnswered ? showHiddenNoted(r.text.trim(), lang) : t.noAnswer(r.reason))
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(messageOf(err)))
@@ -565,7 +567,7 @@ async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string,
     $,
     def,
     lang,
-    context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteOf(text), ...(origin === undefined ? {} : { origin }) },
+    context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteLine(text), ...(origin === undefined ? {} : { origin }) },
     context ? undefined : pickedOf(text, requestId),
   )
 
@@ -633,7 +635,7 @@ const invalidArgText = (lang: Lang, id: string, typed: string, spec: ArgSpec): s
  */
 async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: GivenArg) {
   const t = MESSAGES[lang]
-  const id = await begin($, def, lang, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteOf(given.raw), input: given.raw }) })
+  const id = await begin($, def, lang, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteLine(given.raw), input: given.raw }) })
 
   let value: ArgValue | undefined = given?.value
   if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
@@ -1130,7 +1132,7 @@ export const register: Register = (on, options) => {
       pendingAgents.delete(e.agentId)
       const l = await ensureLanguage($)
       const ok = e.reason === 'answer' && e.answer.trim() !== ''
-      await settle($, id, ok, ok ? e.answer.trim() : MESSAGES[l].noAnswer(e.reason))
+      await settle($, id, ok, ok ? showHiddenNoted(e.answer.trim(), l) : MESSAGES[l].noAnswer(e.reason))
     }
 
     return next(e)
@@ -1766,7 +1768,7 @@ export const register: Register = (on, options) => {
         return
       }
       // Not expected (it parsed once): the new entry fails, saying why.
-      const id = await begin($, def, l, { target: 'none', quote: '', arg: quoteOf(r.input), input: r.input })
+      const id = await begin($, def, l, { target: 'none', quote: '', arg: quoteLine(r.input), input: r.input })
       await settle($, id, false, parsed.error)
     }
     /**

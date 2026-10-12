@@ -284,6 +284,48 @@ const withHiddenShown = (decoded: string, lang: Lang): string[] => {
   return escaped ? [shown, pick(lang, HIDDEN_NOTE)] : [decoded]
 }
 
+/**
+ * A model's answer as the result pane shows it: its line breaks made \n (a
+ * pane's Text takes no CR), then as a decoder's output is shown: as it is
+ * when nothing in it is hidden; otherwise its hidden characters escaped and
+ * its backslashes doubled (`showHidden`), the same note after a blank line.
+ *
+ * The pane draws an answer in a Text, as written: its markdown is not read,
+ * so a backslash written here is never taken for a markdown escape, in a code
+ * span or block or out of one. Drawn as Markdown, these escapes would need
+ * another form (a code span round each, say).
+ */
+export function showHiddenNoted(text: string, lang: Lang): string {
+  return withHiddenShown(text.replace(/\r\n?/g, '\n'), lang).join('\n\n')
+}
+
+// What `quoteLine` cuts between once the text is escaped: a doubled
+// backslash, an escaped surrogate pair (one character past U+FFFF), one
+// escape, or one code point. Never inside one, so the cut leaves no half
+// escape, no lone backslash and no lone surrogate.
+const QUOTE_UNIT_SHOWN = /\\\\|\\ud[89ab][0-9a-f]{2}\\ud[c-f][0-9a-f]{2}|\\u[0-9a-f]{4}|[^]/gu
+const QUOTE_UNIT = /[^]/gu
+
+/**
+ * A text as the result's heading quotes it: its hidden characters shown as
+ * `showHidden` shows them (first, so a hidden U+FEFF or U+2028 is escaped
+ * rather than taken for white space), its white space then made one space and
+ * trimmed; past `max` UTF-16 units, cut to at most `max - 3` and `...` added,
+ * between two units of QUOTE_UNIT_SHOWN (QUOTE_UNIT when nothing is hidden).
+ * No note: the heading is one line.
+ */
+export function quoteLine(text: string, max = 60): string {
+  const { shown, escaped } = showHidden(text)
+  const line = shown.replace(/\s+/g, ' ').trim()
+  if (line.length <= max) return line
+  let end = 0
+  for (const m of line.matchAll(escaped ? QUOTE_UNIT_SHOWN : QUOTE_UNIT)) {
+    if (end + m[0].length > max - 3) break
+    end += m[0].length
+  }
+  return `${line.slice(0, end)}...`
+}
+
 // ---------------------------------------------------------------------------
 // count-text
 

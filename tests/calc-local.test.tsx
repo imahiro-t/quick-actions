@@ -111,6 +111,48 @@ test('calc: division by zero, sqrt of a negative, unknown names, missing operato
   expect(isError(run(calc, 12))).toBe(true)
 })
 
+test('calc: a name Object.prototype has (constructor, __proto__, toString, ...) is an unknown name, never what the object inherits', () => {
+  const names = ['constructor', 'Constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__defineGetter__']
+  for (const name of names) {
+    const forms: [string, number][] = [
+      [name, 1],
+      [`${name}(1)`, 1],
+      [`${name}(1, 2)`, 1],
+      [`1 + ${name}`, 5],
+      [`sqrt(${name})`, 6],
+    ]
+    for (const [expr, at] of forms) {
+      // Thrown as a CalcError by evaluate, so calc answers with { error } and never throws.
+      expect(() => evaluate(expr)).toThrow(`unknown name "${name}" at position ${at}`)
+      const ja = run(calc, expr)
+      expect(isError(ja)).toBe(true)
+      expect((ja as { error: string }).error).toBe(`計算できません: 知らない名前「${name}」があります（${at} 文字目）`)
+      const en = run(calc, expr, 'en')
+      expect(isError(en)).toBe(true)
+      expect((en as { error: string }).error).toBe(`Cannot calculate: unknown name "${name}" at position ${at}`)
+    }
+  }
+})
+
+test('calc: the names it has keep working once only its own names are read', () => {
+  const cases: [string, string][] = [
+    ['pi', '3.14159265358979'],
+    ['e', '2.71828182845905'],
+    ['sqrt(16)', '4'],
+    ['abs(-3)', '3'],
+    ['round(2.5)', '3'],
+    ['floor(2.7)', '2'],
+    ['ceil(2.1)', '3'],
+    ['min(3, 1, 2)', '1'],
+    ['max(3, 1, 2)', '3'],
+  ]
+  for (const [expr, value] of cases) expect(answer(calc, expr)).toBe(`${expr} = ${value}`)
+  expect((run(calc, 'sqrt(-1)', 'en') as { error: string }).error).toBe('Cannot calculate: sqrt of a negative number')
+  expect((run(calc, 'abs(1, 2)', 'en') as { error: string }).error).toBe('Cannot calculate: abs takes one argument (2 given)')
+  expect((run(calc, 'pi(1)', 'en') as { error: string }).error).toBe('Cannot calculate: an operator is missing before "(" at position 3')
+  expect((run(calc, 'sqrt', 'en') as { error: string }).error).toBe('Cannot calculate: "(" is missing after the function sqrt')
+})
+
 test('calc: no expression shows what can be written and examples, in both languages', () => {
   expect(answer(calc, undefined)).toContain('書ける式')
   expect(answer(calc, '', 'en')).toContain('What you can write')

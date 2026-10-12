@@ -448,6 +448,48 @@ test('a long value is never cut between the halves of a surrogate pair', () => {
   }
 })
 
+// The ID as the problem line shows it, read from the brackets so the wording of either language does not matter.
+// The IDs below hold no ')' for this.
+const shownId = (id: string, lang: 'ja' | 'en' = 'en') => {
+  const line = problemLine(parseCustomActions(json([{ ...MINE, id }]), RESERVED).problems[0]!, lang)
+  return /\(([^)]*)\)/.exec(line)?.[1]
+}
+
+test('a long value is cut only between whole U+XXXX names, never in the middle of one', () => {
+  for (const pad of [30, 31, 32, 33, 34, 35, 36, 37]) {
+    const id = `${'a'.repeat(pad)}\u001b${'b'.repeat(20)}`
+    for (const lang of ['ja', 'en'] as const) {
+      const value = shownId(id, lang)
+      // U+001B fits in the 37 code units before "..." only as a whole, or else it is left out whole.
+      expect(value).toBe(pad <= 31 ? `${'a'.repeat(pad)}U+001B${'b'.repeat(31 - pad)}...` : `${'a'.repeat(pad)}...`)
+      expect(value).not.toMatch(/U\+[0-9A-F]{0,3}\.\.\.$/)
+      expect(value!.length).toBeLessThanOrEqual(40)
+      expect(value).not.toMatch(DISPLAY_FORBIDDEN)
+    }
+  }
+})
+
+test('a value of U+XXXX names only is cut after a whole number of them', () => {
+  expect(shownId('\u001b'.repeat(10))).toBe(`${'U+001B'.repeat(6)}...`)
+})
+
+test('a U+XXXX name and a surrogate pair together: neither is split', () => {
+  for (const pad of [29, 30]) {
+    const value = shownId(`\u202E${'a'.repeat(pad)}\u{1F600}${'b'.repeat(10)}`)
+    expect(value).toBe(pad === 29 ? `U+202E${'a'.repeat(29)}\u{1F600}...` : `U+202E${'a'.repeat(30)}...`)
+    expect(value).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
+  }
+})
+
+test('a value of 40 code units after U+XXXX is shown whole, and one of 41 is shortened', () => {
+  expect(shownId(`${'a'.repeat(34)}\u001b`)).toBe(`${'a'.repeat(34)}U+001B`)
+  expect(shownId(`${'a'.repeat(35)}\u001b`)).toBe(`${'a'.repeat(35)}...`)
+})
+
+test('a "U+" the person wrote is plain text, cut like any other characters', () => {
+  expect(shownId(`${'a'.repeat(35)}U+0041xyz`)).toBe(`${'a'.repeat(35)}U+...`)
+})
+
 test('the answer language: STYLE and ANSWER_LANGUAGE are filled in for each language, never twice', () => {
   const { specs } = parseCustomActions(
     json([MINE, REVIEW, { ...MINE, id: 'styled', prompt: 'Be brief. {STYLE}' }, { ...RELATE, prompt: 'In {ANSWER_LANGUAGE}, relate it. {STYLE}' }]),

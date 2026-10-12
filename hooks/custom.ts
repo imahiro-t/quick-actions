@@ -122,7 +122,10 @@ const codePointName = (ch: string) => `U+${(ch.codePointAt(0) ?? 0).toString(16)
  */
 const displaySafe = (s: string): string => s.replace(DISPLAY_FORBIDDEN_ALL, codePointName)
 
-/** A value as the person wrote it, with displaySafe applied, short enough for one line. */
+/**
+ * A value as the person wrote it, with displaySafe applied, short enough for
+ * one line: at most 40 code units as is, or else at most 37 and "...".
+ */
 const shown = (v: unknown): string => {
   let s: string
   try {
@@ -130,11 +133,17 @@ const shown = (v: unknown): string => {
   } catch {
     s = String(v)
   }
-  s = displaySafe(s)
-  if (s.length <= 40) return s
-  // Cut at 37 code units, never between the halves of a surrogate pair.
-  const cut = /[\uD800-\uDBFF]/.test(s.charAt(36)) ? 36 : 37
-  return `${s.slice(0, cut)}...`
+  // One piece per code point: its U+XXXX name when DISPLAY_FORBIDDEN, else itself.
+  // Cutting only between pieces never leaves half a U+XXXX name or half a surrogate pair.
+  const pieces = Array.from(s, ch => (DISPLAY_FORBIDDEN.test(ch) ? codePointName(ch) : ch))
+  const whole = pieces.join('')
+  if (whole.length <= 40) return whole
+  let head = ''
+  for (const piece of pieces) {
+    if (head.length + piece.length > 37) break
+    head += piece
+  }
+  return `${head}...`
 }
 
 /** A text in both languages: one string for both, or `{ ja, en }` with both filled in. */

@@ -494,9 +494,9 @@ type Band = {
   press: (target: { key: string }) => Promise<unknown>
 }
 
-/** The labels of the hint line's buttons, the kind buttons left out: its icons, ✕ and ⋯. */
+/** What the hint line's buttons draw, the kind buttons left out: its icons, ✕ and ⋯ (their labels are their accessible names). */
 export const hintIcons = async (band: Band) =>
-  (await band.findAll({ type: 'Button' })).filter(b => !String(b.key).startsWith(KIND_KEY)).map(b => b.props.label)
+  (await band.findAll({ type: 'Button' })).filter(b => !String(b.key).startsWith(KIND_KEY)).map(b => b.text)
 
 /** The hint line's kind buttons by their keys' kind, in the order drawn. */
 export const hintKinds = async (band: Band) =>
@@ -521,7 +521,7 @@ export const kindButtons = async (band: Band) =>
  * left to run (SELM-00070).
  */
 export const pickerDialogRows = (t: Messages, value = ''): { filterRow: FilterRow; close: string } => ({
-  filterRow: { placeholder: t.pickerFilterPlaceholder, value, submitLabel: t.pickerFilterSubmit, ...(value !== '' && { clear: t.pickerFilterClear }) },
+  filterRow: { label: t.pickerFilterLabel, placeholder: t.pickerFilterPlaceholder, value, submitLabel: t.pickerFilterSubmit, ...(value !== '' && { clear: t.pickerFilterClear }) },
   close: t.pickerClose,
 })
 

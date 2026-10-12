@@ -436,7 +436,7 @@ test('tabs the engine unloaded unheard leave the line as it was, and a run never
   band = await mountBand($)
   await showKind(band, 'context')
   const first = (await hintIcons(band))[0]
-  const context = (await band.findAll({ type: 'Button' })).find(b => b.props.label === first)
+  const context = (await band.findAll({ type: 'Button' })).find(b => b.text === first)
   await band.press({ key: String(context?.key) })
   await band.unmount()
 

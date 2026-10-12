@@ -26,6 +26,7 @@ import {
 import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from './actions'
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgSpec, ArgValue } from './args'
+import { kindOfTarget } from './catalog'
 import { parseCustomActions, problemFor, problemLine, reasonText, warningLine, withNotices } from './custom'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
@@ -144,21 +145,38 @@ const muted = (style: PaneStyle) => (style.muted === undefined ? { dimColor: tru
  * A button of the result pane or the ⋯ dialog (stop, again, back, close, ...):
  * as it always was, dimColor when `dim`; with a palette, its label a child
  * Text in the palette's muted colour (a Button's own label takes no colour).
+ *
+ * With a `name`, the button still draws its `label` (as a child, a string or
+ * the muted Text) and is named `name` instead: the Button's label is then its
+ * accessible name (what a desktop's native button and assistive tech read),
+ * and the drawing is left as it was. Its address stays `key`.
  */
 const mutedButton = (
   { Button, Text }: { Button: ElementConstructor<ButtonProps>; Text: ElementConstructor<TextProps> },
   style: PaneStyle,
   key: string,
-  props: ButtonProps & { label: string },
+  { name, ...props }: ButtonProps & { label: string; name?: string },
   dim = false,
-) =>
-  style.background !== undefined ? (
-    <Button key={key} {...props}>
+) => {
+  if (name === undefined) {
+    return style.background !== undefined ? (
+      <Button key={key} {...props}>
+        <Text color={style.muted}>{props.label}</Text>
+      </Button>
+    ) : (
+      <Button key={key} {...props} {...(dim && { dimColor: true })} />
+    )
+  }
+  return style.background !== undefined ? (
+    <Button key={key} {...props} label={name}>
       <Text color={style.muted}>{props.label}</Text>
     </Button>
   ) : (
-    <Button key={key} {...props} {...(dim && { dimColor: true })} />
+    <Button key={key} {...props} label={name} {...(dim && { dimColor: true })}>
+      {props.label}
+    </Button>
   )
+}
 
 // The engine reads these references statically before the module runs, so
 // `plugin` has to be the string literal itself: PLUGIN cannot stand in here.
@@ -1342,27 +1360,33 @@ export const register: Register = (on, options) => {
             <Box key={`act-${a.id}`} flexShrink={0} hover={{ scope: `tip-action-${a.id}` }}>
               <Button
                 key={a.id}
-                label={markedIcon(a)}
+                label={t.hintActionName(markedIcon(a), a.label, t.hintKindTips[kindOfTarget(a.target)])}
                 onPress={() => press(a)}
-              />
+              >
+                {markedIcon(a)}
+              </Button>
             </Box>
           ))}
         </Box>
         <Box key="act-close" flexShrink={0} hover={{ scope: 'tip-close' }}>
           <Button
             key="close"
-            label="✕"
+            label={t.hintCloseName}
             dimColor
             role="dismiss"
             onPress={close}
-          />
+          >
+            ✕
+          </Button>
         </Box>
         <Box key={`act-${MORE_KEY}`} flexShrink={0} hover={{ scope: 'tip-more' }}>
           <Button
             key={MORE_KEY}
-            label="⋯"
+            label={t.hintMoreName}
             onPress={async () => openPanes($, l, 'picker', await forPicker(), true)}
-          />
+          >
+            ⋯
+          </Button>
         </Box>
         {shownKinds.map(k => tip(`tip-kind-${k}`, t.hintKindTips[k]))}
         {enabled.map(a => tip(`tip-action-${a.id}`, a.label))}
@@ -1428,6 +1452,7 @@ export const register: Register = (on, options) => {
     const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
     // The filter row as drawn below, and so as counted: one set of strings for both.
     const filterRow = {
+      label: t.pickerFilterLabel,
       placeholder: t.pickerFilterPlaceholder,
       value: filter,
       submitLabel: shown.length === 0 ? t.pickerFilterSubmitNone : t.pickerFilterSubmit,
@@ -1561,6 +1586,7 @@ export const register: Register = (on, options) => {
           <Text {...muted(style)}>{argSpec.default === undefined ? t.argNoDefault : t.argDefault(argSpec.default)}</Text>
           <Input
             key={PICKER_ARG_KEY}
+            label={t.argFieldLabel}
             placeholder={argSpec.default ?? t.argPlaceholder(argSpec.type)}
             value={argState.value}
             submitLabel={t.argSubmit}
@@ -1595,6 +1621,7 @@ export const register: Register = (on, options) => {
           <Box flexDirection="row">
             <Input
               key={PICKER_FILTER_KEY}
+              label={filterRow.label}
               placeholder={filterRow.placeholder}
               value={filterRow.value}
               submitLabel={filterRow.submitLabel}
@@ -1686,7 +1713,12 @@ export const register: Register = (on, options) => {
       return t.quote(r.quote)
     }
     /** A button of the pane: in the palette's muted colour when it paints one, else the surface's own. */
-    const paneButton = (key: string, label: string, onPress: () => unknown) => mutedButton(paneElements, style, key, { label, onPress })
+    const paneButton = (key: string, label: string, onPress: () => unknown, name?: string) =>
+      mutedButton(paneElements, style, key, { label, onPress, ...(name !== undefined && { name }) })
+    /** What an entry's buttons name it by, as its heading does: the action's icon and label, else its id. */
+    const entryName = (r: Result, def: ActionDef | undefined) => (def === undefined ? r.action : `${emojiIcon(def.icon)} ${def.label}`)
+    /** The accessible name of an entry's button drawn `label`: that text and the entry's action, so that each entry's are told apart. */
+    const entryButton = (r: Result, def: ActionDef | undefined, label: string) => t.entryButtonName(label, entryName(r, def))
     /**
      * Whether the entry ran over time (a frame drawn, or only marked `timed`
      * before its first frame) and its run is gone: a reload ended it, so it
@@ -1700,7 +1732,7 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column">
           <Text color={style.body}>{r.text}</Text>
-          {paneButton(stopKey(r.id), t.stop, () => stopTicker($, l, r.id))}
+          {paneButton(stopKey(r.id), t.stop, () => stopTicker($, l, r.id), entryButton(r, def, t.stop))}
         </Box>
       )
     }
@@ -1749,8 +1781,8 @@ export const register: Register = (on, options) => {
       }
       return (
         <Box flexDirection="row">
-          {paneButton(againKey(r.id), t.again, () => again(r, def))}
-          {spec !== undefined && input && paneButton(setArgKey(r.id), t.setArg(spec.type), setArg)}
+          {paneButton(againKey(r.id), t.again, () => again(r, def), entryButton(r, def, t.again))}
+          {spec !== undefined && input && paneButton(setArgKey(r.id), t.setArg(spec.type), setArg, entryButton(r, def, t.setArg(spec.type)))}
         </Box>
       )
     }

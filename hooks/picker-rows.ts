@@ -54,6 +54,13 @@ export const SUBMIT_CLOSE = ')'
 /** The frame's cells all told (6): fieldLine is built from the same pieces. */
 export const FIELD_FRAME = textWidth(FIELD_LEAD) + textWidth(SUBMIT_OPEN) + textWidth(SUBMIT_CLOSE)
 
+/**
+ * Between the field's label (an Input's `label`, drawn before the field) and
+ * the field: counted as `: `, two cells. How the terminal parts them is not in
+ * the types either, so it is counted on the generous side, as FIELD_LEAD is.
+ */
+export const LABEL_GAP = ': '
+
 /** The fewest actions listed, however short the pane. */
 export const MIN_SHOWN = 3
 
@@ -127,6 +134,8 @@ export function buttonLines(label: string, columns: number): number {
 
 /** The filter row as drawn: the field (its text, else its placeholder, and its Enter label), and Clear beside it once it holds text. */
 export type FilterRow = {
+  /** The field's label, drawn before it, when it has one. */
+  label?: string
   placeholder: string
   value: string
   submitLabel: string
@@ -134,10 +143,15 @@ export type FilterRow = {
   clear?: string
 }
 
-/** The field counted as one line: the mark, the wider of its text and its placeholder, the Enter label in brackets. */
-export function fieldLine({ placeholder, value, submitLabel }: FilterRow): string {
+/**
+ * The field counted as one line: its label and the gap after it (when it has
+ * one), the mark, the wider of its text and its placeholder, the Enter label
+ * in brackets.
+ */
+export function fieldLine({ label, placeholder, value, submitLabel }: FilterRow): string {
   const text = textWidth(value) > textWidth(placeholder) ? value : placeholder
-  return `${FIELD_LEAD}${text}${SUBMIT_OPEN}${submitLabel}${SUBMIT_CLOSE}`
+  const before = label === undefined ? '' : `${label}${LABEL_GAP}`
+  return `${before}${FIELD_LEAD}${text}${SUBMIT_OPEN}${submitLabel}${SUBMIT_CLOSE}`
 }
 
 /**

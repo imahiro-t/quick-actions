@@ -284,7 +284,9 @@ test('the pane draws the time left and a stop button, not "Thinking…", and cou
   expect(texts).toContain('⏳ 25:00 left')
   expect(texts).not.toContain(MESSAGES.en.thinking)
   const stop = await pane.find({ key: STOP(1) })
-  expect(stop?.props.label).toBe(MESSAGES.en.stop)
+  // Drawn Stop; named by it and the entry's action (SELM-00086).
+  expect(stop?.text).toBe(MESSAGES.en.stop)
+  expect(stop?.props.label).toBe(MESSAGES.en.entryButtonName(MESSAGES.en.stop, '⏳ Timer'))
 
   // The mounted pane redraws as the time goes.
   await clock.advance(1000)

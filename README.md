@@ -63,6 +63,7 @@ How many actions the hint line shows follows its width; the rest are under the �
 - **Beside the permission mode**: Claude Code draws the permission mode at the line's left (the one shift+tab cycles: `⏵⏵ auto mode on ·`, `⏵⏵ accept edits on ·`, `⏸ plan mode on ·` and the like), with two columns clear at each side of the row. The plugin cannot tell which mode is up, so 30 cells are always kept for it, enough for the longest, `⏵⏵ bypass permissions on ·`
 - Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
 - Where the width is not known, 6 icons are shown
+- **Their names**: screen readers and the desktop app's native buttons read each action's icon with its name and kind, such as "[🌐] To Japanese (Actions on the selection)", so that the same icon on two kinds (`[🌐]` and `<🌐>`) is told apart; ✕ reads "Close the Quick Actions hint" and ⋯ "Open all actions". What the buttons draw is unchanged
 
 ### The right pane's two tabs
 
@@ -106,7 +107,7 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Tab or ↓ moves from the filter to the first action; ↑ / ↓ (or Tab / Shift+Tab) move between the actions, and Enter runs the one with the focus. ↓ on the last action goes on to the Close button, and Shift+Tab on the first back to the filter. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard: click your pick (or a kind button), or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
-**The filter**: above the list is a field, "Filter (ID, name, kind)", which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
+**The filter**: above the list is a field labelled "Filter", "Filter (ID, name, kind)" in it while empty, which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
 
 - **What it searches**: each action's ID, its label (in both English and Japanese, whatever the display language), and the names of its kind (`selection`, `context`, `standalone`, `none`, and the Japanese `選択`, `会話`, `コンテキスト`, `単独`, `コンテキストなし`)
 - **How it matches**: anywhere in the text. Words split by spaces (half- or full-width) must all match (AND). Full- and half-width characters, upper and lower case, and katakana and hiragana count as the same (`ＴＩＭＥＲ`, `ﾀｲﾏｰ` or `たいまー` find `timer`)
@@ -147,7 +148,7 @@ The button works inside Claude Code and sends nothing.
 
 Pick a standalone action that takes an argument in the ⋯ dialog (a built-in whose Argument column in [the list](#standalone-actions) is not "none", or one of your [`customActions`](#customactions) with `target` `none`), from the list or with Enter in the filter, and the dialog turns from the list to that action's argument screen. Pressing its icon on the hint line, or a timer result's Set duration (or the like) button, opens the pane on the "Select an action" tab on this screen too.
 
-- The screen shows the action's icon and label, how to write the argument with examples (e.g. `a duration from 1 second to 24 hours, e.g. 25m, 90s, 1h30m, 5:00; 25 minutes when left out`), what an empty Enter does (`Enter with it empty: run with the default (25m)`, or `Enter with it empty: run with no argument` when there is no default), the field, and Back and Close buttons. The field has the keyboard when it opens
+- The screen shows the action's icon and label, how to write the argument with examples (e.g. `a duration from 1 second to 24 hours, e.g. 25m, 90s, 1h30m, 5:00; 25 minutes when left out`), what an empty Enter does (`Enter with it empty: run with the default (25m)`, or `Enter with it empty: run with no argument` when there is no default), the field labelled "Argument", and Back and Close buttons. The field has the keyboard when it opens
 - **Enter with the field empty** (or "run") runs it on its default; **Enter after typing** runs it with that argument, written as for `/quick-actions <id> <argument>`
 - **An argument written wrong** (`99h` for `timer`, say) runs nothing (and counts no use): the screen shows the same error the command gives, `Invalid argument for timer: 99h (a duration from 1 second to 24 hours, …)`. What you typed stays in the field, so fix it and press Enter. The error stays until the next Enter
 - **Esc** (or Back) goes back to the list running nothing (the filter keeps its text and gets the keyboard back). Esc again on the list closes the whole pane, both tabs. The tab's close mark (×) also goes back to the list first on this screen; the Close button closes the whole pane there and then
@@ -162,6 +163,7 @@ Pick a standalone action that takes an argument in the ⋯ dialog (a built-in wh
 - Once a run has ended or stopped (failed at the limit of runs at once, or stopped by a reload of the plugin, too), these buttons take the Stop button's place
   - **Again** (all six): runs it once more with the same argument (with none, if it had none), as a new result at the top of the pane, under the same rules as any run (the limit of runs at once and the rest)
   - **A button to set the argument** (`timer`, `pomodoro`, `countdown-to` and `breathing`, which take one): opens the [argument screen](#the-argument-screen) with the last argument filled in. It is named for the argument: Set duration for `timer`, Set count for `pomodoro`, Set time for `countdown-to`, Choose type for `breathing`. Where there is no input field (in the mobile app, for one) it is not shown, only Again
+  - Screen readers and the desktop app's native buttons read these buttons, and Stop, with the action of their result, such as "Stop: ⏳ Timer", so that the buttons of different results are told apart
 - Closing the right pane (Esc, the close mark on either tab, or the Close button: each closes both tabs) stops every run (each shows "Stopped (after …)"). A run also stops when its result is pushed out of the pane's 20, and when the plugin reloads (after a change of settings, say)
 - Up to 5 can run at once. A sixth fails with `Up to 5 can run at once. Stop one, then run this again`
 - A run goes on for 24 hours at most, then stops (`stopwatch` never ends by itself, so it runs until you stop it or for 24 hours)

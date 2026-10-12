@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { ACTIONS, INPUT_IS_DATA, actionsFor, argSpecOf, isStandalone, takesArg } from '../hooks/actions'
+import { ACTIONS, INPUT_IS_DATA, actionsFor, argSpecOf, emojiIcon, isStandalone, takesArg } from '../hooks/actions'
 import { parseCustomActions } from '../hooks/custom'
 import { ARG_KEY, FILTER_KEY, toArgField, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
@@ -56,6 +56,13 @@ const hintOf = (id: string, lang: Lang) => {
 }
 
 const labelOf = (id: string, lang: Lang) => actionsFor(lang).find(a => a.id === id)?.label ?? id
+
+/** What a result entry of the built-in `id` is named by on its buttons, as its heading says it: its icon and label. */
+const entryOf = (id: string, lang: Lang) => {
+  const def = actionsFor(lang).find(a => a.id === id)
+  if (def === undefined) throw new Error(`no built-in ${id}`)
+  return `${emojiIcon(def.icon)} ${def.label}`
+}
 
 /** The texts the result pane draws now. */
 async function paneTexts($: Engine, surface: (typeof SURFACES)[number] | 'mobile' = 'terminal'): Promise<string[]> {
@@ -502,8 +509,11 @@ for (const [options, t] of LANGS) {
     await pressInPane($, STOP(1))
     expect(await paneButtons($)).toEqual([AGAIN(1), SET_ARG(1)])
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-    expect((await pane.find({ key: AGAIN(1) }))?.props.label).toBe(t.again)
-    expect((await pane.find({ key: SET_ARG(1) }))?.props.label).toBe(t.setArg('duration'))
+    // Drawn as before; named by the button and the entry's action (SELM-00086).
+    expect((await pane.find({ key: AGAIN(1) }))?.text).toBe(t.again)
+    expect((await pane.find({ key: SET_ARG(1) }))?.text).toBe(t.setArg('duration'))
+    expect((await pane.find({ key: AGAIN(1) }))?.props.label).toBe(t.entryButtonName(t.again, entryOf('timer', options.language)))
+    expect((await pane.find({ key: SET_ARG(1) }))?.props.label).toBe(t.entryButtonName(t.setArg('duration'), entryOf('timer', options.language)))
     await pane.unmount()
 
     await pressInPane($, AGAIN(1))
@@ -561,9 +571,13 @@ for (const [options, t] of LANGS) {
       await clock.advance(1000)
       await pressInPane($, STOP(1))
       const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-      const buttons = (await pane.findAll({ type: 'Button' })).map(b => [String(b.key), b.props.label])
+      const buttons = (await pane.findAll({ type: 'Button' })).map(b => [String(b.key), b.text, b.props.label])
       await pane.unmount()
-      expect(buttons).toEqual(type === null ? [[AGAIN(1), t.again]] : [[AGAIN(1), t.again], [SET_ARG(1), t.setArg(type as never)]])
+      // Drawn as before; named by the button and the entry's action (SELM-00086).
+      const entry = entryOf(id, options.language)
+      const again = [AGAIN(1), t.again, t.entryButtonName(t.again, entry)]
+      const set = type === null ? [] : [[SET_ARG(1), t.setArg(type as never), t.entryButtonName(t.setArg(type as never), entry)]]
+      expect(buttons).toEqual([again, ...set])
     })
   }
 }

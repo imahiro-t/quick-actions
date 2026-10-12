@@ -178,6 +178,22 @@ export type Messages = {
   again: string
   /** The result pane's button that opens the argument screen of a timer (or the like), named by its kind. */
   setArg: (type: ArgType) => string
+  /**
+   * The accessible name of an action button on the hint line (it draws only
+   * its marked icon): the mark, the action's label and its kind's name, so
+   * that `[🌐]` and `<🌐>` (one icon, two kinds) are told apart.
+   */
+  hintActionName: (mark: string, label: string, kindTip: string) => string
+  /** The accessible name of the hint line's ✕. */
+  hintCloseName: string
+  /** The accessible name of the hint line's ⋯. */
+  hintMoreName: string
+  /** The ⋯ dialog's filter field: drawn before it (an Input's label), its name. */
+  pickerFilterLabel: string
+  /** The argument screen's field: drawn before it (an Input's label), its name. */
+  argFieldLabel: string
+  /** The accessible name of a result entry's button (stop, again, set the argument): the button's text and the entry's action. */
+  entryButtonName: (button: string, entry: string) => string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -307,6 +323,12 @@ export const MESSAGES: Record<Lang, Messages> = {
     argPlaceholder: type => ARG_TYPE_NAMES.ja[type],
     again: 'もう一度',
     setArg: type => SET_ARG.ja[type],
+    hintActionName: (mark, label, kindTip) => `${mark} ${label}（${kindTip}）`,
+    hintCloseName: 'クイックアクションのヒントを閉じる',
+    hintMoreName: 'すべてのアクションを開く',
+    pickerFilterLabel: '絞り込み',
+    argFieldLabel: '引数',
+    entryButtonName: (button, entry) => `${button}: ${entry}`,
   },
   en: {
     thinking: 'Thinking…',
@@ -420,6 +442,12 @@ export const MESSAGES: Record<Lang, Messages> = {
     argPlaceholder: type => ARG_TYPE_NAMES.en[type],
     again: 'Again',
     setArg: type => SET_ARG.en[type],
+    hintActionName: (mark, label, kindTip) => `${mark} ${label} (${kindTip})`,
+    hintCloseName: 'Close the Quick Actions hint',
+    hintMoreName: 'Open all actions',
+    pickerFilterLabel: 'Filter',
+    argFieldLabel: 'Argument',
+    entryButtonName: (button, entry) => `${button}: ${entry}`,
   },
 }
 

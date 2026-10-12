@@ -257,6 +257,33 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
     expect(close?.props.dimColor).toBe(true)
     await picker.unmount()
   })
+
+  // Inline under auto, the default: nothing paints the background either, so
+  // the secondary texts keep the terminal's foreground rather than dimColor
+  // (SELM-00085), drawn here rather than only through paneStyle.
+  test(`[${name}] inline: the pane's secondary texts (thinking, inline hint, empty pane) in the terminal's foreground`, { options: { ...options, ...MIXED } }, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+    const inline = { ...PANE.props, placement: 'inline' } as const
+    const plain = (fs: { props: Record<string, unknown> }[]) => fs.map(f => [f.props.dimColor, f.props.color])
+
+    const empty = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
+    expect((await outer(empty))?.props.backgroundColor).toBeUndefined()
+    expect(plain(await texts(empty, t.emptyPane))).toEqual([[undefined, undefined]])
+    expect(plain(await texts(empty, t.inlineHint))).toEqual([[undefined, undefined]])
+    await empty.unmount()
+
+    const { settle } = await results($, s, clock, 'terminal')
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
+    expect((await outer(pane))?.props.backgroundColor).toBeUndefined()
+    expect(plain(await texts(pane, t.thinking))).toEqual([[undefined, undefined]])
+    await settle()
+    expect(plain(await texts(pane, t.inlineHint))).toEqual([[undefined, undefined]])
+    // No text is left to dimColor, the theme's `inactive`.
+    expect((await pane.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
+    await pane.unmount()
+  })
 }
 
 // ---------------------------------------------------------------------------

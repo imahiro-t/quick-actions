@@ -1,4 +1,5 @@
 import { expect, mock, test } from './kit'
+import { LINEAR_TIMEOUT_MS, expectLinear } from './timing'
 
 import {
   ACTIONS,
@@ -1738,23 +1739,49 @@ test('neutralizeSelectedTags: other tags and the word itself are left alone', ()
   }
 })
 
-test('neutralizeSelectedTags answers at once on long runs of white space or format characters: one way to match each character', () => {
-  const k = 200_000
-  for (const [text, out] of [
-    [`<${' '.repeat(k)}`, `<${' '.repeat(k)}`],
-    [`<${' '.repeat(k)}/`, `<${' '.repeat(k)}/`],
-    [`</${' '.repeat(k)}`, `</${' '.repeat(k)}`],
-    [`<${'\u{200b}'.repeat(k)}x`, `<${'\u{200b}'.repeat(k)}x`],
-    [`<s${'\u{200b}'.repeat(k)}x`, `<s${'\u{200b}'.repeat(k)}x`],
-    [`<${' '.repeat(2_000)}`.repeat(100), `<${' '.repeat(2_000)}`.repeat(100)],
-    [`<${' '.repeat(k)}/ selected>`, `&lt;${' '.repeat(k)}/ selected>`],
-    [`<${' \u{200b}'.repeat(k / 2)}selected>`, `&lt;${' \u{200b}'.repeat(k / 2)}selected>`],
-  ] as const satisfies readonly (readonly [string, string])[]) {
-    const start = Date.now()
-    const got = neutralizeSelectedTags(text)
-    expect(Date.now() - start).toBeLessThan(200)
-    expect(got === out).toBe(true)
+/**
+ * A case of a performance test: its label, the input and the expected answer
+ * at size `k` (a run's length, or how many times a piece repeats), and the
+ * size the answer is checked at and the large side is timed at.
+ */
+type ScaledCase = readonly [label: string, text: (k: number) => string, out: (k: number) => string, n: number]
+
+/**
+ * Each case answered as expected at its size n, once, then f timed in linear
+ * time over the size (expectLinear: a ratio, not a time limit, SELM-00093).
+ */
+const scalesLinearly = (f: (s: string) => string, cases: readonly ScaledCase[]) => {
+  for (const [label, text, out, n] of cases) {
+    expect({ label, ok: f(text(n)) === out(n) }).toEqual({ label, ok: true })
+    expectLinear(label, text, f, { n })
   }
+}
+
+const runOf = (piece: string) => (k: number) => piece.repeat(k)
+
+test('neutralizeSelectedTags scales linearly on long runs of white space or format characters: one way to match each character', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  const k = 200_000
+  const spaces = (k: number) => `<${' '.repeat(k)}`
+  const spacesSlash = (k: number) => `<${' '.repeat(k)}/`
+  const slashSpaces = (k: number) => `</${' '.repeat(k)}`
+  const zwsp = (k: number) => `<${'\u{200b}'.repeat(k)}x`
+  const sZwsp = (k: number) => `<s${'\u{200b}'.repeat(k)}x`
+  const many = (k: number) => `<${' '.repeat(2_000)}`.repeat(k)
+  scalesLinearly(neutralizeSelectedTags, [
+    ['spaces', spaces, spaces, k],
+    ['spaces, slash', spacesSlash, spacesSlash, k],
+    ['slash, spaces', slashSpaces, slashSpaces, k],
+    ['zero-width spaces', zwsp, zwsp, k],
+    ['s, zero-width spaces', sZwsp, sZwsp, k],
+    ['many candidates and spaces', many, many, 96],
+    ['spaces, then a tag', k => `<${' '.repeat(k)}/ selected>`, k => `&lt;${' '.repeat(k)}/ selected>`, k],
+    ['spaces and zero-width spaces, then a tag', k => `<${' \u{200b}'.repeat(k / 2)}selected>`, k => `&lt;${' \u{200b}'.repeat(k / 2)}selected>`, k],
+    // SELM-00093: the Braille blank, skipped like an invisible character, and `I` read as an `l`.
+    ['Braille blanks', k => `<${'⠀'.repeat(k)}x`, k => `<${'⠀'.repeat(k)}x`, k],
+    ['Braille blanks, then a tag', k => `<${'⠀'.repeat(k)}/seIected>`, k => `&lt;${'⠀'.repeat(k)}/seIected>`, k],
+    ['seIected tags', runOf('</seIected>'), runOf('&lt;/seIected>'), 160_000],
+    ['near seIected tags', runOf('<seIecte'), runOf('<seIecte'), 240_000],
+  ])
 })
 
 // SELM-00082: the same for fullwidth, look-alike and invisible-character
@@ -1949,43 +1976,41 @@ test('wrapInput: the data line, then the argument between the delimiters, every 
   }
 })
 
-/** Each case run once: the answer within 200ms, and as expected. */
-const fast = (f: (s: string) => string, cases: readonly (readonly [string, string])[]) => {
-  for (const [text, out] of cases) {
-    const start = Date.now()
-    const got = f(text)
-    expect(Date.now() - start).toBeLessThan(200)
-    expect(got === out).toBe(true)
+test('neutralizeSelectedTags scales linearly on large ASCII and non-ASCII texts', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  const plain = runOf('The quick brown fox jumps over the lazy dog. ')
+  const tags = runOf('<b>bold</b> and <i>it</i> ')
+  const ja = runOf('あいう＜えおかきくけ')
+  const cut = runOf('＜／ｓｅｌｅｃ')
+  const full = runOf('＜／ｓｅｌｅｃｔｅｄ＞')
+  const sizes = { plain: 45_000, tags: 80_000, ja: 200_000, cut: 290_000, full: 180_000 }
+  for (const [t, k] of [[plain, sizes.plain], [tags, sizes.tags], [ja, sizes.ja], [cut, sizes.cut], [full, sizes.full]] as const) {
+    expect(t(k).length).toBeGreaterThan(1_900_000)
   }
-}
-
-test('neutralizeSelectedTags answers at once on large ASCII and non-ASCII texts', () => {
-  const plain = 'The quick brown fox jumps over the lazy dog. '.repeat(45_000)
-  const tags = '<b>bold</b> and <i>it</i> '.repeat(80_000)
-  const ja = 'あいう＜えおかきくけ'.repeat(200_000)
-  const cut = '＜／ｓｅｌｅｃ'.repeat(290_000)
-  const full = '＜／ｓｅｌｅｃｔｅｄ＞'.repeat(180_000)
-  for (const t of [plain, tags, ja, cut, full]) expect(t.length).toBeGreaterThan(1_900_000)
-  fast(neutralizeSelectedTags, [
-    [plain, plain],
-    [tags, tags],
-    [ja, ja],
-    [cut, cut],
-    [full, '&lt;／ｓｅｌｅｃｔｅｄ＞'.repeat(180_000)],
+  scalesLinearly(neutralizeSelectedTags, [
+    ['plain', plain, plain, sizes.plain],
+    ['tags', tags, tags, sizes.tags],
+    ['ja', ja, ja, sizes.ja],
+    ['cut', cut, cut, sizes.cut],
+    ['full', full, runOf('&lt;／ｓｅｌｅｃｔｅｄ＞'), sizes.full],
   ])
 })
 
-test('neutralizeInputTags answers at once on long runs of white space or format characters', () => {
+test('neutralizeInputTags scales linearly on long runs of white space or format characters', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
   const k = 200_000
-  fast(neutralizeInputTags, [
-    [`<${' '.repeat(k)}`, `<${' '.repeat(k)}`],
-    [`<${' '.repeat(k)}/`, `<${' '.repeat(k)}/`],
-    [`<${'\u{200b}'.repeat(k)}x`, `<${'\u{200b}'.repeat(k)}x`],
-    [`<i${'\u{200b}'.repeat(k)}x`, `<i${'\u{200b}'.repeat(k)}x`],
-    [`<${' '.repeat(2_000)}`.repeat(100), `<${' '.repeat(2_000)}`.repeat(100)],
-    [`<${' '.repeat(k)}/ input>`, `&lt;${' '.repeat(k)}/ input>`],
-    [`<${' \u{034f}'.repeat(k / 2)}input>`, `&lt;${' \u{034f}'.repeat(k / 2)}input>`],
-    ['＜／ｉｎｐｕｔ＞'.repeat(250_000), '&lt;／ｉｎｐｕｔ＞'.repeat(250_000)],
+  const spaces = (k: number) => `<${' '.repeat(k)}`
+  const spacesSlash = (k: number) => `<${' '.repeat(k)}/`
+  const zwsp = (k: number) => `<${'\u{200b}'.repeat(k)}x`
+  const iZwsp = (k: number) => `<i${'\u{200b}'.repeat(k)}x`
+  const many = (k: number) => `<${' '.repeat(2_000)}`.repeat(k)
+  scalesLinearly(neutralizeInputTags, [
+    ['spaces', spaces, spaces, k],
+    ['spaces, slash', spacesSlash, spacesSlash, k],
+    ['zero-width spaces', zwsp, zwsp, k],
+    ['i, zero-width spaces', iZwsp, iZwsp, k],
+    ['many candidates and spaces', many, many, 96],
+    ['spaces, then a tag', k => `<${' '.repeat(k)}/ input>`, k => `&lt;${' '.repeat(k)}/ input>`, k],
+    ['spaces and grapheme joiners, then a tag', k => `<${' \u{034f}'.repeat(k / 2)}input>`, k => `&lt;${' \u{034f}'.repeat(k / 2)}input>`, k],
+    ['fullwidth tags', runOf('＜／ｉｎｐｕｔ＞'), runOf('&lt;／ｉｎｐｕｔ＞'), 250_000],
   ])
 })
 

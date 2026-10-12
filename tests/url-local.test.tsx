@@ -1,6 +1,7 @@
 import type { Engine } from 'claude-code/testing'
 
 import { expect, mock, test } from './kit'
+import { LINEAR_TIMEOUT_MS, expectLinear } from './timing'
 
 import { ACTIONS } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
@@ -130,47 +131,48 @@ test('extractUrls: URLs joined by a comma with no space are two; a comma inside 
   expect(extractUrls('https://a.example/x,y,z')).toEqual(['https://a.example/x,y,z'])
 })
 
-test('extractUrls: a long run of closing brackets (or of brackets and periods) is trimmed in linear time', () => {
-  for (const tail of [')'.repeat(200_000), ').'.repeat(100_000), ']'.repeat(200_000), '}.,;'.repeat(50_000)]) {
-    const started = performance.now()
-    expect(extractUrls(`https://a.example/${tail}`)).toEqual(['https://a.example/'])
-    expect(performance.now() - started).toBeLessThan(2_000)
+test('extractUrls: a long run of closing brackets (or of brackets and periods) is trimmed in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  for (const [label, piece, n] of [['closing parentheses', ')', 200_000], ['parentheses and periods', ').', 100_000], ['closing square brackets', ']', 200_000], ['braces and punctuation', '}.,;', 50_000]] as const) {
+    const text = (k: number) => `https://a.example/${piece.repeat(k)}`
+    expect({ label, urls: extractUrls(text(n)) }).toEqual({ label, urls: ['https://a.example/'] })
+    expectLinear(label, text, extractUrls, { n })
   }
   // At the selection limit of a local action, through the compute.
-  const started = performance.now()
-  const out = run(copyUrls, `https://a.example/${')'.repeat(999_000)}`)
-  expect(out).toEqual({ effect: { kind: 'copy', urls: ['https://a.example/'] } })
-  expect(performance.now() - started).toBeLessThan(5_000)
+  const atLimit = (k: number) => `https://a.example/${')'.repeat(k)}`
+  expect(run(copyUrls, atLimit(999_000))).toEqual({ effect: { kind: 'copy', urls: ['https://a.example/'] } })
+  expectLinear('closing parentheses, through copy-urls', atLimit, t => run(copyUrls, t), { n: 999_000 })
   // The pairing still holds after the change.
   expect(extractUrls('((https://en.wikipedia.org/wiki/Foo_(bar))))')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
 })
 
-test('extractUrls: a run of URLs each cut by Japanese or a hidden character, with no space, is read in linear time', () => {
-  const within = (text: string, limitMs: number, check: (urls: string[]) => void) => {
-    const started = performance.now()
-    check(extractUrls(text))
-    expect(performance.now() - started).toBeLessThan(limitMs)
+test('extractUrls: a run of URLs each cut by Japanese or a hidden character, with no space, is read in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  /** The text at its size n read as `check` expects, then extractUrls timed in linear time over the size. */
+  const linear = (label: string, text: (k: number) => string, n: number, check: (urls: string[]) => void) => {
+    check(extractUrls(text(n)))
+    expectLinear(label, text, extractUrls, { n })
   }
+  const repeat = (unit: string) => (k: number) => unit.repeat(k)
   // The same URL over and over: one URL, each cut found once.
-  within('https://aあ'.repeat(10_000), 2_000, urls => expect(urls).toEqual(['https://a']))
-  within('https://aあ'.repeat(20_000), 2_000, urls => expect(urls).toEqual(['https://a']))
-  within('https://a\u200b'.repeat(20_000), 2_000, urls => expect(urls).toEqual(['https://a']))
-  within('https://a\u200b'.repeat(40_000), 2_000, urls => expect(urls).toEqual(['https://a']))
-  within('(https://a.example)を'.repeat(10_000), 2_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('kana cuts', repeat('https://aあ'), 20_000, urls => expect(urls).toEqual(['https://a']))
+  linear('zero-width cuts', repeat('https://a\u200b'), 40_000, urls => expect(urls).toEqual(['https://a']))
+  linear('bracketed, kana cuts', repeat('(https://a.example)を'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
   // Every one a different URL.
-  within(Array.from({ length: 20_000 }, (_, i) => `https://a${i}.exampleを`).join(''), 2_000, urls => {
+  linear('different URLs', k => Array.from({ length: k }, (_, i) => `https://a${i}.exampleを`).join(''), 20_000, urls => {
     expect(urls.length).toBe(20_000)
     expect(urls[19_999]).toBe('https://a19999.example')
   })
   // One cut and a long run after it with no other URL, and a long run of hidden characters.
-  within(`https://a.exampleを${'あa'.repeat(400_000)}`, 2_000, urls => expect(urls).toEqual(['https://a.example']))
-  within(`https://a.example${'\u200b'.repeat(900_000)}`, 2_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('a long run after a cut', k => `https://a.exampleを${'あa'.repeat(k)}`, 400_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('a long run of zero-width spaces', k => `https://a.example${'\u200b'.repeat(k)}`, 900_000, urls => expect(urls).toEqual(['https://a.example']))
+})
+
+test('copy-urls: a run of URLs each cut by Japanese, a hidden character or a closing bracket, at the selection limit, is read in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
   // At the selection limit of a local action, through the compute: kana, zero-width and closing brackets.
   for (const unit of ['https://aあ', 'https://a\u200b', '(https://a)を']) {
-    const text = unit.repeat(Math.floor(999_000 / unit.length))
-    const started = performance.now()
-    expect(run(copyUrls, text)).toEqual({ effect: { kind: 'copy', urls: ['https://a'] } })
-    expect(performance.now() - started).toBeLessThan(5_000)
+    const n = Math.floor(999_000 / unit.length)
+    const text = (k: number) => unit.repeat(k)
+    expect({ unit, out: run(copyUrls, text(n)) }).toEqual({ unit, out: { effect: { kind: 'copy', urls: ['https://a'] } } })
+    expectLinear(`through copy-urls: ${unit}`, text, t => run(copyUrls, t), { n })
   }
 })
 

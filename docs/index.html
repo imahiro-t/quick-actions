@@ -436,12 +436,14 @@
     state.query = e.target.value
     if (data) apply(300)
   })
-  // With no data, hide what would stay empty: the filters and the folded run-method
-  // help (an empty summary and list would still be announced by screen readers).
-  // setLang never fills them without data.
+  // With no data, hide what would stay empty: the filters, the folded run-method
+  // help (an empty summary and list would still be announced by screen readers)
+  // and the footer (an empty contentinfo landmark; its text only describes the
+  // generated data). setLang never fills them without data.
   if (!data) {
     document.querySelector('.filters').hidden = true
     $('method-help').hidden = true
+    document.querySelector('footer').hidden = true
   }
   setLang(state.lang, false)
 })()

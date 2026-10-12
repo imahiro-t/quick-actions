@@ -131,6 +131,64 @@ test('extractUrls: URLs joined by a comma with no space are two; a comma inside 
   expect(extractUrls('https://a.example/x,y,z')).toEqual(['https://a.example/x,y,z'])
 })
 
+test('extractUrls: in the host, half-width ! , ; or . with Japanese straight after ends the URL; Japanese in the path, query or fragment and an IDN host stay', () => {
+  // SELM-00101: the Japanese is not read as part of an IDN host.
+  expect(extractUrls('https://example.com,を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com.を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com!を見て')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com;を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('詳細はhttps://example.com,を参照してください')).toEqual(['https://example.com'])
+  // With a port and user info.
+  expect(extractUrls('https://user@example.com:8080,を参照')).toEqual(['https://user@example.com:8080'])
+  expect(extractUrls('http://127.0.0.1.を参照')).toEqual(['http://127.0.0.1'])
+  // The URL that follows in the same run is still found.
+  expect(extractUrls('https://a.example,を見てhttps://b.example')).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls('https://a.example.をhttps://b.example;を')).toEqual(['https://a.example', 'https://b.example'])
+  // Kept as before: Japanese in the path, query or fragment, and an IDN host.
+  expect(extractUrls('https://ja.wikipedia.org/wiki/日本')).toEqual(['https://ja.wikipedia.org/wiki/日本'])
+  expect(extractUrls('https://example.com/?q=東京')).toEqual(['https://example.com/?q=東京'])
+  expect(extractUrls('https://example.com/#見出し')).toEqual(['https://example.com/#見出し'])
+  expect(extractUrls('https://example.com?q=東京')).toEqual(['https://example.com?q=東京'])
+  expect(extractUrls('https://例え.テスト/パス')).toEqual(['https://例え.テスト/パス'])
+  expect(extractUrls('https://例え.テスト')).toEqual(['https://例え.テスト'])
+  // Only in the host: punctuation and Japanese in the path are the URL's own.
+  expect(extractUrls('https://example.com/a,日本')).toEqual(['https://example.com/a,日本'])
+  expect(extractUrls('https://example.com/a.日本')).toEqual(['https://example.com/a.日本'])
+  expect(extractUrls('https://example.com/?q=a;日本')).toEqual(['https://example.com/?q=a;日本'])
+  // Punctuation followed by ASCII is as before.
+  expect(extractUrls('https://example.com,https://b.example')).toEqual(['https://example.com', 'https://b.example'])
+  expect(extractUrls('https://example.com.')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com,see')).toEqual(['https://example.com,see'])
+  // `!`, `,` and `;` end the URL right after an IDN host too.
+  expect(extractUrls('https://例え.テスト,を参照')).toEqual(['https://例え.テスト'])
+  expect(extractUrls('https://例え.テスト!を見て')).toEqual(['https://例え.テスト'])
+})
+
+test('extractUrls: the two known limits of the `.` rule in the host, as intended', () => {
+  // A `.` after Japanese cannot be told from the dot between the labels of an
+  // IDN host, so `.` and Japanese straight after an IDN host stay in it.
+  expect(extractUrls('https://例え.テスト.を参照')).toEqual(['https://例え.テスト.を参照'])
+  // A `.` after ASCII cannot be told from the one in `https://example.com.を参照`,
+  // so an ASCII label followed by a Japanese top-level label is cut at the `.`.
+  expect(extractUrls('https://example.みんな')).toEqual(['https://example'])
+  // White space or full-width punctuation still ends the URL after an IDN host.
+  expect(extractUrls('https://例え.テスト。を参照')).toEqual(['https://例え.テスト'])
+  expect(extractUrls('https://例え.テスト .を参照')).toEqual(['https://例え.テスト'])
+})
+
+test('extractUrls: URLs in brackets joined with no space are two; a bracket paired inside the URL stays', () => {
+  expect(extractUrls('(https://a.example)(https://b.example)')).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls('(http://a.example/x)(HTTPS://b.example/y)')).toEqual(['http://a.example/x', 'HTTPS://b.example/y'])
+  expect(extractUrls('{https://a.example}(https://b.example)')).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls('https://en.wikipedia.org/wiki/Foo_(bar)(https://b.example)')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)', 'https://b.example'])
+  expect(extractUrls('[a](https://a.example)(https://b.example)')).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls('(https://a.example)(https://b.example)(https://c.example)')).toEqual(['https://a.example', 'https://b.example', 'https://c.example'])
+  // As before.
+  expect(extractUrls('https://en.wikipedia.org/wiki/Foo_(bar)')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+  expect(extractUrls('(see https://a.example)')).toEqual(['https://a.example'])
+  expect(extractUrls('https://a.example/f(x)(y)')).toEqual(['https://a.example/f(x)(y)'])
+})
+
 test('extractUrls: a long run of closing brackets (or of brackets and periods) is trimmed in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
   for (const [label, piece, n] of [['closing parentheses', ')', 200_000], ['parentheses and periods', ').', 100_000], ['closing square brackets', ']', 200_000], ['braces and punctuation', '}.,;', 50_000]] as const) {
     const text = (k: number) => `https://a.example/${piece.repeat(k)}`
@@ -156,6 +214,17 @@ test('extractUrls: a run of URLs each cut by Japanese or a hidden character, wit
   linear('kana cuts', repeat('https://aあ'), 20_000, urls => expect(urls).toEqual(['https://a']))
   linear('zero-width cuts', repeat('https://a\u200b'), 40_000, urls => expect(urls).toEqual(['https://a']))
   linear('bracketed, kana cuts', repeat('(https://a.example)を'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  // Cut in the host by punctuation and Japanese (SELM-00101), and URLs in brackets joined with no space.
+  linear('host punctuation cuts', repeat('https://a.example,あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('host period cuts', repeat('https://a.example.あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('different URLs, host punctuation cuts', k => Array.from({ length: k }, (_, i) => `https://a${i}.example;を`).join(''), 20_000, urls => {
+    expect(urls.length).toBe(20_000)
+    expect(urls[19_999]).toBe('https://a19999.example')
+  })
+  linear('bracketed URLs joined', repeat('(https://a.example)'), 20_000, urls => expect(urls).toEqual(['https://a.example']))
+  // A long host with no path, then a cut, and a long path after one URL with no cut.
+  linear('a long host before a cut', k => `https://${'a.'.repeat(k)}example,を`, 400_000, urls => expect(urls).toEqual([`https://${'a.'.repeat(400_000)}example`]))
+  linear('a long run of hosts', k => `https://${'a,'.repeat(k)}`, 400_000, urls => expect(urls.length).toBe(1))
   // Every one a different URL.
   linear('different URLs', k => Array.from({ length: k }, (_, i) => `https://a${i}.exampleを`).join(''), 20_000, urls => {
     expect(urls.length).toBe(20_000)
@@ -204,7 +273,11 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
   const japanese = /[A-Za-z0-9)\]}'](?=[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆])/u
   const reference = (text: string) => {
     const candidate = /https?:\/\/[^\s<>"`、。，．！？「」『』（）【】＜＞［］｛｝…‥]+/giu
-    const split = text.replaceAll('](', '] (').replace(/,(?=https?:\/\/)/giu, ', ')
+    const split = text
+      .replaceAll('](', '] (')
+      .replace(/,(?=https?:\/\/)/giu, ', ')
+      .replace(/\)\(http(s?):\/\//giu, ') (http$1://')
+      .replace(/\}\(http(s?):\/\//giu, '} (http$1://')
     const urls: string[] = []
     for (let m = candidate.exec(split); m !== null; m = candidate.exec(split)) {
       let cut = ''
@@ -214,13 +287,26 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
       }
       const j = japanese.exec(cut)
       if (j !== null) cut = cut.slice(0, j.index + 1)
+      // In the host, the first half-width punctuation with Japanese after it,
+      // read off the whole candidate.
+      const scheme = m[0].slice(0, 8).toLowerCase() === 'https://' ? 8 : 7
+      const host = m[0].slice(scheme).split(/[/?#\\]/)[0]!
+      for (let i = 0; i < host.length; i++) {
+        const c = host[i]!
+        const after = host.slice(i + 1)
+        if (after === '' || !/^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆]/u.test(after)) continue
+        if ('!,;'.includes(c) || (c === '.' && i > 0 && /[A-Za-z0-9]/.test(host[i - 1]!))) {
+          cut = cut.slice(0, Math.min(cut.length, scheme + i + 1))
+          break
+        }
+      }
       candidate.lastIndex = m.index + cut.length
       const url = trim(cut)
       if (!urls.includes(url) && isHttpUrl(url)) urls.push(url)
     }
     return urls
   }
-  const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007']
+  const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007', '!', ';', '(https://']
   let seed = 12345
   const next = (n: number) => {
     seed = (seed * 1103515245 + 12345) % 2147483648

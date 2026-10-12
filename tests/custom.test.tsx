@@ -475,7 +475,7 @@ test('a value of U+XXXX names only is cut after a whole number of them', () => {
 
 test('a U+XXXX name and a surrogate pair together: neither is split', () => {
   for (const pad of [29, 30]) {
-    const value = shownId(`‮${'a'.repeat(pad)}\u{1F600}${'b'.repeat(10)}`)
+    const value = shownId(`\u202E${'a'.repeat(pad)}\u{1F600}${'b'.repeat(10)}`)
     expect(value).toBe(pad === 29 ? `U+202E${'a'.repeat(29)}\u{1F600}...` : `U+202E${'a'.repeat(30)}...`)
     expect(value).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
   }

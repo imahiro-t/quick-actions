@@ -108,7 +108,7 @@ Press the ⋯ at the end of the hint line, or run `/quick-actions` without an ID
 - Tab or ↓ moves from the filter to the first action; ↑ / ↓ (or Tab / Shift+Tab) move between the actions, and Enter runs the one with the focus. ↓ on the last action goes on to the Close button, and Shift+Tab on the first back to the filter. A click picks too. Esc and the Close button close the whole pane, both tabs, running nothing
 - While the prompt holds text you are typing, the dialog does not get the keyboard: click your pick (or a kind button), or clear the prompt and open it again (with ⋯, or with `/quick-actions`, which empties the prompt as it runs)
 
-**The filter**: above the list is a field labelled "Filter", "Filter (ID, name, kind)" in it while empty, which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
+**The filter**: above the list is a field labelled "Filter", "ID, name or kind" in it while empty, which has the keyboard when the dialog opens (empty each time it opens). The list narrows as you type.
 
 - **What it searches**: each action's ID, its label (in both English and Japanese, whatever the display language), and the names of its kind (`selection`, `context`, `standalone`, `none`, and the Japanese `選択`, `会話`, `コンテキスト`, `単独`, `コンテキストなし`)
 - **How it matches**: anywhere in the text. Words split by spaces (half- or full-width) must all match (AND). Full- and half-width characters, upper and lower case, and katakana and hiragana count as the same (`ＴＩＭＥＲ`, `ﾀｲﾏｰ` or `たいまー` find `timer`)

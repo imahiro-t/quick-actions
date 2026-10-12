@@ -264,23 +264,23 @@ test('the layout for each width, language and mode: named kinds while two action
     [160, 'en', 0, 'labeled', 11],
   ]
   for (const [columns, lang, lead, kinds, count] of table) {
-    expect({ columns, lang, lead, ...layoutAt(columns, lang, lead) }).toEqual({ columns, lang, lead, kinds, count })
+    expect({ columns, lang, lead, ...layoutAt(columns, lang, lead) }).toMatchObject({ columns, lang, lead, kinds, count })
   }
 })
 
 test('too narrow for the marks beside ✕ and ⋯: no kind buttons, ✕ and ⋯ alone', () => {
-  expect(hintLayout({ line: 30, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 1 })
-  expect(hintLayout({ line: 20, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toEqual({ kinds: 'none', count: 0 })
+  expect(hintLayout({ line: 30, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toMatchObject({ kinds: 'none', count: 1 })
+  expect(hintLayout({ line: 20, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] })).toMatchObject({ kinds: 'none', count: 0 })
 })
 
 test('fewer candidates than the bar: named kinds while those there are fit', () => {
-  expect(hintLayout({ line: 60, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10] })).toEqual({ kinds: 'labeled', count: 1 })
-  expect(hintLayout({ line: 50, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [] })).toEqual({ kinds: 'labeled', count: 0 })
+  expect(hintLayout({ line: 60, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10] })).toMatchObject({ kinds: 'labeled', count: 1 })
+  expect(hintLayout({ line: 50, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [] })).toMatchObject({ kinds: 'labeled', count: 0 })
 })
 
 test('not measured: named kinds and UNMEASURED_COUNT', () => {
-  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toEqual({ kinds: 'labeled', count: 6 })
-  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES, tip: TIP_RESERVE })).toEqual({ kinds: 'labeled', count: 6 })
+  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES })).toMatchObject({ kinds: 'labeled', count: 6 })
+  expect(hintLayout({ line: undefined, kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: CANDIDATES, tip: TIP_RESERVE })).toMatchObject({ kinds: 'labeled', count: 6 })
 })
 
 // The hover label was cut to a cell or none on a full line (`要…`): room is kept for it.
@@ -291,11 +291,11 @@ test('the hover label\'s room: TIP_RESERVE kept after ⋯, the kind buttons as t
   const widths = Array.from({ length: 20 }, () => 9)
   const at = (line: number, tip?: number) => hintLayout({ line, kindsLabeled: 30, kindsMarks: 21, ends: 10, widths, ...(tip === undefined ? {} : { tip }) })
   // Wide: the whole reserve kept, the actions it costs left out (130 cells: 90 for actions, 78 with the reserve).
-  expect(at(130)).toEqual({ kinds: 'labeled', count: 10 })
-  expect(at(130, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: 8 })
+  expect(at(130)).toMatchObject({ kinds: 'labeled', count: 10 })
+  expect(at(130, TIP_RESERVE)).toMatchObject({ kinds: 'labeled', count: 8 })
   // Narrower: as much of it as leaves two actions beside the named kinds (68 cells: 10 kept).
-  expect(at(68)).toEqual({ kinds: 'labeled', count: 3 })
-  expect(at(68, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: MIN_LABELED_ACTIONS })
+  expect(at(68)).toMatchObject({ kinds: 'labeled', count: 3 })
+  expect(at(68, TIP_RESERVE)).toMatchObject({ kinds: 'labeled', count: MIN_LABELED_ACTIONS })
   // Never the kind buttons drawn otherwise for it, nor fewer than two actions (50 cells: marks and two, as without).
   expect(at(50, TIP_RESERVE)).toEqual(at(50))
   // No reserve asked for: as before.
@@ -337,9 +337,9 @@ test('docked: the line the engine hands over holds at least one action, never mo
     }
   }
   // As the table: 103 columns as 100's, 123 and 143 between it and 160's.
-  expect(layoutAt(103, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 3 })
-  expect(layoutAt(123, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 5 })
-  expect(layoutAt(143, 'ja', LEAD_RESERVE)).toEqual({ kinds: 'labeled', count: 8 })
+  expect(layoutAt(103, 'ja', LEAD_RESERVE)).toMatchObject({ kinds: 'labeled', count: 3 })
+  expect(layoutAt(123, 'ja', LEAD_RESERVE)).toMatchObject({ kinds: 'labeled', count: 5 })
+  expect(layoutAt(143, 'ja', LEAD_RESERVE)).toMatchObject({ kinds: 'labeled', count: 8 })
   // The dock taken off twice, as before the fix: none at 160 and 180 columns.
   for (const [, viewport] of DOCKED.slice(0, 2)) expect(layoutAt(viewport - (56 + 3), 'ja', LEAD_RESERVE).count).toBe(0)
 })
@@ -348,14 +348,48 @@ test('the buttons laid out never take more than the line, whatever its width', (
   for (const lang of ['ja', 'en'] as const) {
     for (const lead of [0, 19, LEAD_RESERVE]) {
       for (let columns = 0; columns <= 200; columns++) {
-        const { kinds, count } = layoutAt(columns, lang, lead)
+        const { kinds, count, used } = layoutAt(columns, lang, lead)
         const kindCells = kinds === 'labeled' ? sum(KINDS[lang].labeled) : kinds === 'marks' ? sum(MARKS) : 0
         const line = hintLineColumns(columns, lead)
+        // `used` is the cells of those very buttons (SELM-00081).
+        expect(used).toBe(ENDS + kindCells + count * buttonWidth('[🔤]'))
         // ✕ and ⋯ stay however narrow: what is laid out beside them fits whenever they do.
         if (ENDS <= line) expect(ENDS + kindCells + count * buttonWidth('[🔤]')).toBeLessThanOrEqual(line)
         else expect({ kinds, count }).toEqual({ kinds: 'none', count: 0 })
       }
     }
+  }
+})
+
+// SELM-00081: hintLayout says the cells its buttons take (`used`), so the
+// hover label's width is the line less it, the buttons' widths not summed again.
+test('used: ✕ and ⋯, the kind buttons as drawn and the first count actions', () => {
+  const input = { kindsLabeled: 33, kindsMarks: 24, ends: 12, widths: [10, 10, 10] }
+  // Named kinds: 12 + 33 + two actions.
+  expect(hintLayout({ line: 70, ...input })).toEqual({ kinds: 'labeled', count: 2, used: 65 })
+  // Marks: 12 + 24 + two actions.
+  expect(hintLayout({ line: 60, ...input })).toEqual({ kinds: 'marks', count: 2, used: 56 })
+  // No kind buttons: 12 + one action.
+  expect(hintLayout({ line: 30, ...input })).toEqual({ kinds: 'none', count: 1, used: 22 })
+  // Not measured: named kinds and the first UNMEASURED_COUNT (here all three).
+  expect(hintLayout({ line: undefined, ...input })).toEqual({ kinds: 'labeled', count: 3, used: 12 + 33 + 30 })
+  // ✕ and ⋯ wider than the line: they stay, and `used` says so, never cut to the line.
+  expect(hintLayout({ line: 10, ...input })).toEqual({ kinds: 'none', count: 0, used: 12 })
+})
+
+test('used with the hover label\'s room: counted for the actions left after it, the room left clear', () => {
+  const widths = Array.from({ length: 20 }, () => 9)
+  const at = (line: number, tip?: number) => hintLayout({ line, kindsLabeled: 30, kindsMarks: 21, ends: 10, widths, ...(tip === undefined ? {} : { tip }) })
+  // 130 cells: 10 + 30 + 8 actions, 18 left for the label.
+  expect(at(130, TIP_RESERVE)).toEqual({ kinds: 'labeled', count: 8, used: 112 })
+  expect(130 - at(130, TIP_RESERVE).used).toBeGreaterThanOrEqual(TIP_RESERVE)
+  for (let line = 0; line <= 200; line++) {
+    const { kinds, count, used } = at(line, TIP_RESERVE)
+    const kindCells = kinds === 'labeled' ? 30 : kinds === 'marks' ? 21 : 0
+    expect(used).toBe(10 + kindCells + count * 9)
+    // Within the line whenever ✕ and ⋯ are; theirs alone where they are not.
+    if (10 <= line) expect(used).toBeLessThanOrEqual(line)
+    else expect(used).toBe(10)
   }
 })
 

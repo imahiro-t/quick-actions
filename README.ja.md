@@ -1009,6 +1009,12 @@ subagent（既定の読み取り専用ツールを明示した例。`tools` に 
 - そのうえでリポジトリのルートで `node scripts/gen-catalog.mjs` を実行してデータを再生成し、`docs/actions-data.js` をコミットします。スクリプトには Node 24 以上が必要です（TypeScript のソースをそのまま読み込むため）。asdf なら例えば `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - 再生成を忘れると、`tests/catalog.test.ts`（`claude plugin test .` で実行）が落ちます。カテゴリや説明のない組み込みアクションや、種類の違うカテゴリに入れたアクションがあっても落ちます
 
+### テストファイル
+
+- テストファイル（`tests/*.test.ts` / `*.test.tsx`）は、`test`・`expect`・`mock` を `claude-code/testing` からではなく `./kit`（`tests/kit.ts`）から取ります。`./kit` の `test` は `timeoutMs` を指定しないテストの既定タイムアウトをテストキットの 5 秒ではなく 30 秒にし、高負荷時に時間切れだけでテストが落ちないようにしています。`claude-code/testing` からの `import type` は構いません
+- テストファイルを追加したら、リポジトリのルートで `node scripts/check-test-imports.mjs` を実行します（Node 20 以上で動きます）。`claude-code/testing` から `test` を直接取っているテストファイル（名前付きの import や再エクスポート、`import * as`、`export *`、default import、動的 import）があると、ファイル名と該当の文を出して失敗します。`claude plugin test` のテストからは `tests/` のファイルを読めないため、テストではなくスクリプトにしています
+- 何を違反とするかは `scripts/test-imports.mjs` が決め、その判定は `tests/test-imports.test.ts`（`claude plugin test .` で実行）が確かめます
+
 ## リリース手順
 
 1. `.claude-plugin/plugin.json` の `version` を上げ、`main` にマージする

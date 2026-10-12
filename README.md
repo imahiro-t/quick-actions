@@ -1009,6 +1009,12 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 - Then regenerate the data with `node scripts/gen-catalog.mjs` at the root of the repository and commit `docs/actions-data.js`. The script needs Node 24 or later (it imports the TypeScript sources as they are); with asdf, for one: `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - `tests/catalog.test.ts` (run by `claude plugin test .`) fails when the data was not regenerated, and when a built-in has no category or summary, or one of another kind
 
+### Test files
+
+- A test file (`tests/*.test.ts` / `*.test.tsx`) takes `test`, `expect` and `mock` from `./kit` (`tests/kit.ts`), not from `claude-code/testing`: the `test` of `./kit` gives a test with no `timeoutMs` 30 seconds instead of the kit's 5, so that tests do not fail on time alone on a busy machine. `import type` from `claude-code/testing` is fine
+- After adding a test file, run `node scripts/check-test-imports.mjs` at the root of the repository (any Node 20 or later). It fails, naming the file and statement, when a test file takes `test` straight from `claude-code/testing` (a named import or re-export, `import * as`, `export *`, a default or dynamic import). It is a script, not a test, because `claude plugin test` gives a test no file system to read `tests/` with
+- What it counts is decided by `scripts/test-imports.mjs`, which `tests/test-imports.test.ts` (run by `claude plugin test .`) checks
+
 ## Releasing
 
 1. Raise `version` in `.claude-plugin/plugin.json` and merge the change into `main`

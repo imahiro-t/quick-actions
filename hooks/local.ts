@@ -81,7 +81,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typ
  * A throw, a promise or an answer of no known shape is a failure; so is a run
  * over time asked for by an action on the selection (`selection`), which may
  * only answer at once. A selection longer than LOCAL_SELECTION_LIMIT (code
- * units, of the trimmed text) is refused before the compute is called, saying
+ * units of `input.text`, as the caller passes it) is refused before the compute is called, saying
  * how long it is and the limit. Never throws.
  */
 export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, opts: { selection: boolean; lang: Lang }): LocalOutcome {

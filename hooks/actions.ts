@@ -372,7 +372,17 @@ const TAG_SPACE = /^\s$/u
 /** How a tag reads one code point: skipped as invisible (1), skipped as white space (2), or compared as its form (0). */
 type TagChar = { skip: 0 | 1 | 2; form: string }
 
+/**
+ * tagChar's memo of non-ASCII code points. Bounded: a selection can hold any
+ * number of distinct code points (text from a web page or a tool result), so
+ * once it holds TAG_CHARS_LIMIT entries it is emptied and fills again, rather
+ * than keeping every code point ever seen for the whole session.
+ */
 const TAG_CHARS = new Map<number, TagChar>()
+export const TAG_CHARS_LIMIT = 4096
+
+/** How many code points tagChar's memo holds now (for tests). */
+export const tagCharsSize = (): number => TAG_CHARS.size
 
 /** tagChar for ASCII, worked out once: lower case, white space told apart. */
 const ASCII_CHARS: readonly TagChar[] = Array.from({ length: 0x80 }, (_, cp) => {
@@ -385,7 +395,7 @@ const ASCII_CHARS: readonly TagChar[] = Array.from({ length: 0x80 }, (_, cp) => 
  * one in lower case; any other looked up in TAG_CONFUSABLES as it is, else
  * after NFKC, each character of that looked up as it is, then lower-cased and
  * looked up again. A form can be longer than one character (NFKC of `ﬁ` is
- * `fi`). Memoized: NFKC runs once per distinct code point.
+ * `fi`). Memoized in TAG_CHARS, up to TAG_CHARS_LIMIT code points at a time.
  */
 function tagChar(cp: number): TagChar {
   if (cp < 0x80) return ASCII_CHARS[cp]!
@@ -401,6 +411,7 @@ function tagChar(cp: number): TagChar {
     }
   }
   const info: TagChar = { skip: TAG_INVISIBLE.test(raw) ? 1 : TAG_SPACE.test(raw) ? 2 : 0, form }
+  if (TAG_CHARS.size >= TAG_CHARS_LIMIT) TAG_CHARS.clear()
   TAG_CHARS.set(cp, info)
   return info
 }

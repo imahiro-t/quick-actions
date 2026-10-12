@@ -4,6 +4,7 @@ import { ACTIONS, ANSWER_LANGUAGE, INPUT_IS_DATA, SELECTED_IS_DATA, STYLE, resol
 import {
   ALLOWED_SUBAGENT_TOOLS,
   DESCRIPTION_MAX,
+  DISPLAY_FORBIDDEN,
   FILE_CONTENT_TOOLS,
   ICON_MAX,
   ID_MAX,
@@ -407,6 +408,44 @@ test('a long ID is kept whole to match, and shortened only when shown', () => {
   expect(line).not.toContain(long)
   // The command trims and lowercases what it is given: the written ID is matched the same way.
   expect(problemFor(problems, 'spaced')).toBe(problems[1])
+})
+
+test('a value shown from a definition never brings a raw control or bidirectional character into the problem list or the toast', () => {
+  const osc8 = '\u001b]8;;http://x\u0007hi\u001b]8;;\u0007'
+  const { problems } = parseCustomActions(
+    json([{ ...LOOK, id: osc8 }, { ...MINE, kind: '\u001b[31mred' }, { ...MINE, id: 'rtl\u202Eexe', target: 'x\u2066y' }, { ...LOOK, id: 'tl', tools: ['Bash\u009b'] }]),
+    RESERVED,
+  )
+  expect(problems.length).toBe(4)
+  for (const lang of ['ja', 'en'] as const) {
+    const lines = problems.map(p => problemLine(p, lang))
+    for (const line of lines) expect(line).not.toMatch(DISPLAY_FORBIDDEN)
+    expect(lines[0]).toContain('U+001B]8;;http://x')
+    expect(lines[1]).toContain('U+001B[31mred')
+    expect(lines[2]).toContain('rtlU+202Eexe')
+    expect(lines[3]).toContain('BashU+009B')
+    expect(MESSAGES[lang].customIgnoredToast(problems.length, lines[0]!)).not.toMatch(DISPLAY_FORBIDDEN)
+    // Line by line: the result's own line breaks are \p{Cc} too.
+    for (const line of withNotices('result', { problems, warnings: [] }, lang).split('\n')) expect(line).not.toMatch(DISPLAY_FORBIDDEN)
+  }
+  // The data keeps the ID as written, to match it.
+  expect(problems[0]?.id).toBe(osc8)
+  expect(problemFor(problems, osc8)).toBe(problems[0])
+})
+
+test('a JSON error quoting the setting shows its control characters as U+XXXX', () => {
+  const { problems } = parseCustomActions('\u001b[31m\u202E', RESERVED)
+  expect(problems[0]).toMatchObject({ index: null, id: null, reason: { code: 'json' } })
+  for (const lang of ['ja', 'en'] as const) expect(problemLine(problems[0]!, lang)).not.toMatch(DISPLAY_FORBIDDEN)
+})
+
+test('a long value is never cut between the halves of a surrogate pair', () => {
+  for (const pad of [36, 35]) {
+    const id = `${'a'.repeat(pad)}\u{1F600}${'b'.repeat(10)}`
+    const line = problemLine(parseCustomActions(json([{ ...MINE, id }]), RESERVED).problems[0]!, 'en')
+    expect(line).toContain('...')
+    expect(line).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
+  }
 })
 
 test('the answer language: STYLE and ANSWER_LANGUAGE are filled in for each language, never twice', () => {

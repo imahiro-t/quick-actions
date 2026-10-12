@@ -53,6 +53,8 @@ export const DESCRIPTION_MAX = 500
  * of them.
  */
 export const DISPLAY_FORBIDDEN = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\u2028\u2029]/u
+/** DISPLAY_FORBIDDEN, matching every occurrence (for displaySafe). */
+const DISPLAY_FORBIDDEN_ALL = new RegExp(DISPLAY_FORBIDDEN.source, 'gu')
 
 /**
  * The tools that hand a subagent the contents of files: Read, and Grep, whose
@@ -110,7 +112,17 @@ const absent = (v: unknown) => v === undefined || v === null || (typeof v === 's
 
 const filled = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
-/** A value as the person wrote it, short enough for one line. */
+/** A code point as `U+XXXX` (four hex digits at least). */
+const codePointName = (ch: string) => `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
+
+/**
+ * `s` with every DISPLAY_FORBIDDEN character written as U+XXXX, so a value
+ * from a definition (an id, a kind, a JSON error quoting the file) never puts
+ * a raw control or bidirectional character into the problem list or a toast.
+ */
+const displaySafe = (s: string): string => s.replace(DISPLAY_FORBIDDEN_ALL, codePointName)
+
+/** A value as the person wrote it, with displaySafe applied, short enough for one line. */
 const shown = (v: unknown): string => {
   let s: string
   try {
@@ -118,7 +130,11 @@ const shown = (v: unknown): string => {
   } catch {
     s = String(v)
   }
-  return s.length > 40 ? `${s.slice(0, 37)}...` : s
+  s = displaySafe(s)
+  if (s.length <= 40) return s
+  // Cut at 37 code units, never between the halves of a surrogate pair.
+  const cut = /[\uD800-\uDBFF]/.test(s.charAt(36)) ? 36 : 37
+  return `${s.slice(0, cut)}...`
 }
 
 /** A text in both languages: one string for both, or `{ ja, en }` with both filled in. */
@@ -135,9 +151,6 @@ class Invalid {
 const fail = (reason: CustomReason): never => {
   throw new Invalid(reason)
 }
-
-/** A code point as `U+XXXX` (four hex digits at least). */
-const codePointName = (ch: string) => `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
 
 /**
  * Checks one text shown on screen: no DISPLAY_FORBIDDEN character first (so a
@@ -331,7 +344,7 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
   try {
     parsed = JSON.parse(setting)
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
+    const detail = displaySafe(err instanceof Error ? err.message : String(err))
     return { specs: [], problems: [{ index: null, id: null, reason: { code: 'json', detail } }], warnings: [] }
   }
   if (!Array.isArray(parsed)) {

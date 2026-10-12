@@ -35,6 +35,8 @@ import {
   neutralizeTags,
   resolveSpec,
   sys,
+  TAG_CHARS_LIMIT,
+  tagCharsSize,
   tagForm,
   timerCompute,
   translateInto,
@@ -1823,6 +1825,19 @@ test('neutralizeTags: multi-character NFKC forms are compared as consecutive let
   expect(neutralizeTags('</\uFB01 x>', 'fi')).toBe('&lt;/\uFB01 x>')
   expect(neutralizeTags('<\uFB01x>', 'fi')).toBe('<\uFB01x>')
   expect(neutralizeTags('<\uFB01>', 'f')).toBe('<\uFB01>')
+})
+
+test('neutralizeTags: the memo of code points read after a candidate never grows past TAG_CHARS_LIMIT', () => {
+  // A `<` before each of many distinct code points (CJK, then supplementary ideographs): every one is looked up once.
+  let text = ''
+  for (let cp = 0x4e00; cp < 0x4e00 + TAG_CHARS_LIMIT * 2; cp++) text += `<${String.fromCodePoint(cp)}`
+  for (let cp = 0x20000; cp < 0x20000 + TAG_CHARS_LIMIT; cp++) text += `<${String.fromCodePoint(cp)}`
+  expect(neutralizeTags(text, 'selected')).toBe(text)
+  expect(tagCharsSize()).toBeGreaterThan(0)
+  expect(tagCharsSize()).toBeLessThanOrEqual(TAG_CHARS_LIMIT)
+  // Still correct after the memo was emptied along the way.
+  expect(neutralizeSelectedTags('</\uFF33ELECTED>')).toBe('&lt;/\uFF33ELECTED>')
+  expect(tagCharsSize()).toBeLessThanOrEqual(TAG_CHARS_LIMIT)
 })
 
 test('wrapInput: the data line, then the argument between the delimiters, every input tag in it made harmless', () => {

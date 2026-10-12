@@ -34,6 +34,11 @@ async function texts(m: { findAll: (q: { text: string | RegExp }) => Promise<{ t
   return (await m.findAll({ text })).filter(f => f.type === 'Text')
 }
 
+/** Each Text's `[dimColor, color]`: `[undefined, undefined]` is drawn in the terminal's foreground. */
+function plain(fs: { props: Record<string, unknown> }[]) {
+  return fs.map(f => [f.props.dimColor, f.props.color])
+}
+
 type Found = { type: string; text: string; props: Record<string, unknown>; children: unknown[] }
 
 /**
@@ -219,7 +224,7 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
 
     const empty = await $.ui.mount({ ...PANE, surface: 'terminal' })
     expect((await outer(empty))?.props.backgroundColor).toBeUndefined()
-    expect((await texts(empty, t.emptyPane)).map(f => [f.props.dimColor, f.props.color])).toEqual([[true, undefined]])
+    expect(plain(await texts(empty, t.emptyPane))).toEqual([[true, undefined]])
     await empty.unmount()
 
     const { settle } = await results($, s, clock, 'terminal')
@@ -266,7 +271,6 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
     const s = stage(on)
     await start($)
     const inline = { ...PANE.props, placement: 'inline' } as const
-    const plain = (fs: { props: Record<string, unknown> }[]) => fs.map(f => [f.props.dimColor, f.props.color])
 
     const empty = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
     expect((await outer(empty))?.props.backgroundColor).toBeUndefined()
@@ -435,7 +439,6 @@ for (const theme of THEMES) {
     const s = stage(on)
     await start($)
     const inline = { ...PANE.props, placement: 'inline' } as const
-    const plain = (fs: { props: Record<string, unknown> }[]) => fs.map(f => [f.props.dimColor, f.props.color])
 
     const empty = await $.ui.mount({ ...PANE, surface: 'terminal', props: inline })
     expect(plain(await texts(empty, t.emptyPane))).toEqual([[undefined, undefined]])

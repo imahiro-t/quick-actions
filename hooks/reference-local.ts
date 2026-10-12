@@ -135,9 +135,8 @@ const HTTP_TEXT: Texts = {
 /** A status code's name and meaning, the codes whose name holds the text, or (with no argument) the common ones. */
 export const httpStatus = (input: LocalInput): LocalOutput => {
   const { lang } = input
-  const text = textOf(input.arg)
-  if (text === undefined) return invalid(lang, HTTP_TEXT)
-  const q = text
+  const q = textOf(input.arg)
+  if (q === undefined) return invalid(lang, HTTP_TEXT)
   if (q === '') {
     return {
       text: [lang === 'ja' ? 'よく使う HTTP ステータスコード:' : 'Common HTTP status codes:', ...HTTP_STATUSES.filter(s => s.common).map(s => statusLine(s, lang))].join('\n'),

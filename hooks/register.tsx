@@ -398,16 +398,28 @@ async function applyStep(
 /** Starts a run over time on entry `id`: its first frame now, then one every `intervalMs`. */
 async function startTicker($: EngineInterface, lang: Lang, id: number, label: string, now: number, run: { intervalMs: number; frame: Frame }) {
   const t = MESSAGES[lang]
-  // Marked first, before anything below can refuse or end it, so the pane
-  // offers it again however it ends (see Result's `timed`). Nothing awaited
-  // between the check and the set below, so the limit holds.
-  await update($, results, list => list.map(r => (r.id === id ? { ...r, timed: true as const } : r)))
+  // Nothing awaited between the check and the set, so the limit holds. Over
+  // it, the entry is marked `timed` and failed in one write, so the pane
+  // offers it again (see Result's `timed`) and never draws it running in
+  // between.
   if (tickers.size >= TICKER_LIMIT) {
-    await settle($, id, false, t.tickerLimit(TICKER_LIMIT))
+    const text = t.tickerLimit(TICKER_LIMIT)
+    await update($, results, list =>
+      list.map(r => (r.id === id ? { ...r, timed: true as const, status: 'failed' as const, text } : r)),
+    )
     return
   }
+  // In the map before the entry is marked `timed`: the pane draws an entry
+  // marked `timed` with no run in the map as one a reload stopped, so the
+  // mark must never be seen before the run is there.
   const ticker: Ticker = { cancel: () => {}, startedAt: now, lastText: undefined }
   tickers.set(id, ticker)
+  // Marked before anything below can end it, so the pane offers it again
+  // however it ends.
+  await update($, results, list => list.map(r => (r.id === id ? { ...r, timed: true as const } : r)))
+  // Stopped while it was being marked (the pane closed meanwhile): whoever
+  // stopped it settled the entry, and no period is set.
+  if (tickers.get(id) !== ticker) return
   try {
     const period = $.clock.every(run.intervalMs, () => {
       void tick($, lang, id, label, run.frame)
@@ -1663,10 +1675,16 @@ export const register: Register = (on, options) => {
     }
     /** A button of the pane: in the palette's muted colour when it paints one, else the surface's own. */
     const paneButton = (key: string, label: string, onPress: () => unknown) => mutedButton(paneElements, style, key, { label, onPress })
+    /**
+     * Whether the entry ran over time (a frame drawn, or only marked `timed`
+     * before its first frame) and its run is gone: a reload ended it, so it
+     * is drawn stopped and offered again.
+     */
+    const orphaned = (r: Result) => (r.ticker === true || r.timed === true) && !tickers.has(r.id)
     /** A running entry: its frame and stop button while it runs over time, stopped once its run is gone (a reload), else the running text. */
     const running = (r: Result, def: ActionDef | undefined) => {
+      if (orphaned(r)) return <Text {...muted(style)}>{t.tickerStopped()}</Text>
       if (r.ticker !== true) return <Text {...muted(style)}>{def?.runningText ?? t.thinking}</Text>
-      if (!tickers.has(r.id)) return <Text {...muted(style)}>{t.tickerStopped()}</Text>
       return (
         <Box flexDirection="column">
           <Text color={style.body}>{r.text}</Text>
@@ -1725,7 +1743,7 @@ export const register: Register = (on, options) => {
       )
     }
     /** Whether the entry is a timer's (or the like's) that no longer runs: what rerun is drawn for. */
-    const idle = (r: Result) => r.status !== 'running' || (r.ticker === true && !tickers.has(r.id))
+    const idle = (r: Result) => r.status !== 'running' || orphaned(r)
 
     return (
       <Box flexDirection="column" {...painted(style)}>

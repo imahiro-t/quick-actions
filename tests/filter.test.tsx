@@ -93,6 +93,26 @@ test('a custom action\'s single label is searched as it is', () => {
   expect(matchesFilter(mine, 'context')).toBe(false)
 })
 
+test('a word an object inherits (constructor, toString, __proto__) is text, never a kind mark', () => {
+  for (const word of ['constructor', 'toString', 'tostring', 'hasOwnProperty', '__proto__', 'valueOf']) {
+    const q = parseQuery(word)
+    expect(q).toEqual({ words: [word.toLowerCase()] })
+    expect('target' in q).toBe(false)
+    // No built-in holds the word: nothing matches.
+    expect(only(word)).toEqual([])
+  }
+  // A mark beside it still narrows.
+  expect(parseQuery('{ constructor')).toEqual({ words: ['constructor'], target: 'none' })
+})
+
+test('an action whose ID is `constructor` is found by it alone, first', () => {
+  const mine: Searchable = { id: 'constructor', label: 'Builder' }
+  const defs: Searchable[] = [...ACTIONS, mine]
+  expect(ids(filterActions(defs, 'constructor'))).toEqual(['constructor'])
+  expect(ids(filterActions(defs, '__proto__'))).toEqual([])
+  expect(matchesFilter(mine, 'toString')).toBe(false)
+})
+
 test('no word matches across two parts of the key', () => {
   // The ID `tldr` then the label `一行で要約`: never one word `tldr一行`.
   expect(only('tldr一行')).toEqual([])

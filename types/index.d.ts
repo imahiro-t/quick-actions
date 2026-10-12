@@ -22,9 +22,12 @@ export type Result = {
   /** Set on a run over time (a timer): its text is the frame now, and it stops when the pane closes. */
   ticker?: true
   /**
-   * Set as a run over time starts, before anything can refuse or end it: the
-   * entry is of a timer (or the like), so once it is no longer running the pane
-   * offers to run it again. Unlike `ticker`, it says nothing of a frame drawn.
+   * Set as a run over time starts, before anything can end it (with the
+   * failure itself when the limit refuses it): the entry is of a timer (or the
+   * like), so once it is no longer running the pane offers to run it again.
+   * Unlike `ticker`, it says nothing of a frame drawn. An entry still running
+   * with it but no run behind it (a reload before its first frame) is drawn
+   * stopped, and offered again.
    */
   timed?: true
   status: 'running' | 'done' | 'failed'

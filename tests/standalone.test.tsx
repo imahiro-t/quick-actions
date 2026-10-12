@@ -402,6 +402,43 @@ test('a running timer entry with no timer behind it (after a reload) is drawn as
   expect(await paneButtons($)).toEqual([])
 })
 
+// A reload between the start of a run (the entry marked `timed`) and its first
+// frame (`ticker`) leaves an entry running with neither a frame nor a run
+// behind it. It is drawn stopped, never left at "Thinking…", with "again" and
+// the argument screen's button, so the person can run it once more.
+test('a timer entry reloaded before its first frame is drawn as stopped, with again and set', { options: EN }, async ($, on) => {
+  const RELOADED = [
+    { id: 8, action: 'timer', target: 'none', quote: '', timed: true, status: 'running', text: '' },
+    { id: 6, action: 'explain', target: 'selection', quote: 'x', status: 'running', text: '' },
+  ]
+  on('state.get', (_$, e, next) => (e.key === 'results' ? { value: { value: RELOADED, version: 1 } } : next(e)))
+  mock.clock(on)
+  stage(on)
+  await start($)
+  const texts = await paneTexts($)
+  expect(texts).toContain(MESSAGES.en.tickerStopped())
+  // Thinking… is the model call's alone, not the timer's.
+  expect(texts.filter(t => t === MESSAGES.en.thinking)).toHaveLength(1)
+  expect(await paneButtons($)).toEqual(['_again-8', '_set-arg-8'])
+})
+
+test('again on a timer entry reloaded before its first frame runs it anew with its argument', { options: EN }, async ($, on) => {
+  const RELOADED = [{ id: 8, action: 'timer', target: 'none', quote: '', arg: '5m', input: '5m', timed: true, status: 'running', text: '' }]
+  let preloaded = true
+  on('state.get', (_$, e, next) => (preloaded && e.key === 'results' ? { value: { value: RELOADED, version: 1 } } : next(e)))
+  const clock = mock.clock(on)
+  stage(on)
+  await start($)
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  preloaded = false
+  await pane.press({ key: '_again-8' })
+  await pane.unmount()
+  await clock.advance(1000)
+  const texts = await paneTexts($)
+  expect(texts).toContain(MESSAGES.en.timerLeft('04:59'))
+  expect((await paneButtons($)).filter(k => k.startsWith('_stop-'))).toHaveLength(1)
+})
+
 // The person's close of the result pane (its close mark) stops every timer,
 // through the same stop as the button. The test kit cannot raise a person's
 // close (its $ has no ui.close), so that hook is checked in a session; the

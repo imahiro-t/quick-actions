@@ -25,14 +25,16 @@ const KIND_WORDS: Record<Target, readonly string[]> = {
 
 // The marks of the kinds, as the dialog's kind buttons show them: a word that is
 // one of these narrows to that kind rather than matching text.
-const KIND_MARKS: Readonly<Record<string, Target>> = {
-  '[': 'selection',
-  '[]': 'selection',
-  '<': 'context',
-  '<>': 'context',
-  '{': 'none',
-  '{}': 'none',
-}
+// A Map, so a word such as `constructor` or `__proto__` finds no mark it
+// would inherit from an object.
+const KIND_MARKS: ReadonlyMap<string, Target> = new Map([
+  ['[', 'selection'],
+  ['[]', 'selection'],
+  ['<', 'context'],
+  ['<>', 'context'],
+  ['{', 'none'],
+  ['{}', 'none'],
+])
 
 // Between the parts of a search key: no query word can hold it, so no word
 // matches across two parts.
@@ -101,7 +103,7 @@ export function parseQuery(query: string): { words: string[]; target?: Target | 
   let target: Target | 'conflict' | undefined
   for (const word of normalizeForSearch(query).split(/[\s　]+/)) {
     if (word === '') continue
-    const mark = KIND_MARKS[word]
+    const mark = KIND_MARKS.get(word)
     if (mark === undefined) words.push(word)
     else target = target === undefined || target === mark ? mark : 'conflict'
   }

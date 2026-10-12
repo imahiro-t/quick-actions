@@ -1,4 +1,5 @@
 import { expect, mock, test } from './kit'
+import { LINEAR_TIMEOUT_MS, expectLinear } from './timing'
 
 import { ACTIONS, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
@@ -1024,12 +1025,12 @@ test('variation selectors: a hidden text with one selector after each visible ch
   expect(escapeHidden(lines).match(/\\udb40\\ud[c-f][0-9a-f]{2}/g)).toHaveLength(HIDDEN_TEXT.length)
 })
 
-test('many flag emoji: each tag is found in its flag by halving, so a long text of flags is escaped at once', () => {
-  const many = `${ENGLAND.repeat(20_000)}\u{e0041}`
-  const began = performance.now()
+test('many flag emoji: each tag is found in its flag by halving, so a long text of flags is escaped in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  const flags = (k: number) => `${ENGLAND.repeat(k)}\u{e0041}`
+  const many = flags(20_000)
   expect(hasHidden(many)).toBe(true)
   expect(escapeHidden(many)).toBe(`${ENGLAND.repeat(20_000)}\\udb40\\udc41`)
-  expect(performance.now() - began).toBeLessThan(2_000)
+  expectLinear('flags', flags, s => hasHidden(s) && escapeHidden(s), { n: 20_000 })
 })
 
 test('tag characters: a flag emoji is kept whole, with no note', () => {
@@ -1116,15 +1117,14 @@ test('tag characters: each decoder shows them escaped (with the note where it is
   }
 })
 
-test('color-convert answers at once on long runs of white space: a length cap and a separator with one way to match', () => {
-  for (const text of [
-    `rgb(1${' '.repeat(50_000)}2${' '.repeat(50_000)}x`,
-    `hsl(1${' '.repeat(50_000)}2%${' '.repeat(50_000)}x`,
-    `rgb(1${' '.repeat(5_000)}x`,
-  ]) {
-    const start = Date.now()
-    expect(errorOf(run(colorConvert, text))).toContain('Not a readable colour')
-    expect(Date.now() - start).toBeLessThan(200)
+test('color-convert scales linearly on long runs of white space: a length cap and a separator with one way to match', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  for (const [label, text, n] of [
+    ['rgb, two runs', (k: number) => `rgb(1${' '.repeat(k)}2${' '.repeat(k)}x`, 50_000],
+    ['hsl, two runs', (k: number) => `hsl(1${' '.repeat(k)}2%${' '.repeat(k)}x`, 50_000],
+    ['rgb, one run', (k: number) => `rgb(1${' '.repeat(k)}x`, 5_000],
+  ] as const) {
+    expect({ label, error: errorOf(run(colorConvert, text(n))) }).toEqual({ label, error: expect.stringContaining('Not a readable colour') })
+    expectLinear(label, text, t => run(colorConvert, t), { n })
   }
   // Within the cap, white space and commas are still read either way.
   const spaced = `rgb(1${' '.repeat(55)}2 3)`
@@ -1134,15 +1134,16 @@ test('color-convert answers at once on long runs of white space: a length cap an
   expect(textOf(run(colorConvert, 'hsl(0 , 0% ,100%)'))).toContain('HEX: #ffffff')
   // One past it: not tried.
   expect(errorOf(run(colorConvert, `rgb(1${' '.repeat(56)}2 3)`))).toContain('Not a readable colour')
-  // Matching a pattern that fails on a run of white space does not backtrack: a 60-character run stays cheap.
-  const start = Date.now()
-  for (let k = 0; k < 2000; k++) run(colorConvert, `rgb(1${' '.repeat(25)}2${' '.repeat(25)}x)`)
-  expect(Date.now() - start).toBeLessThan(1000)
+  // Matching a pattern that fails on a run of white space does not backtrack: runs within the cap stay linear.
+  const within = (k: number) => `rgb(1${' '.repeat(k)}2${' '.repeat(k)}x)`
+  expect(within(24).length).toBeLessThanOrEqual(64)
+  expect(errorOf(run(colorConvert, within(24)))).toContain('Not a readable colour')
+  expectLinear('rgb, two runs within the cap', within, t => run(colorConvert, t), { n: 24 })
 })
 
-test('deep nesting lays out only as far as the pane shows: no output of length times depth, errors still found', () => {
-  const deep = `${'['.repeat(50_000)}${']'.repeat(50_000)}`
-  const start = Date.now()
+test('deep nesting lays out only as far as the pane shows: no output of length times depth, errors still found', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  const nested = (k: number) => `${'['.repeat(k)}${']'.repeat(k)}`
+  const deep = nested(50_000)
   const laid = layoutJson(deep, 2, JSON_LAYOUT_LIMIT)
   if (!('text' in laid)) throw new Error('expected a layout')
   expect(laid.cut).toBe(true)
@@ -1158,7 +1159,11 @@ test('deep nesting lays out only as far as the pane shows: no output of length t
   // The rest of the text is still checked: an error past the cut is found.
   expect(errorOf(run(formatJson, `${deep}x`))).toBe('Not valid JSON: line 1, column 100001: unexpected character "x".')
   expect(errorOf(run(formatJson, deep.slice(0, -1)))).toContain('unexpected end of the text')
-  expect(Date.now() - start).toBeLessThan(5000)
+  // Each in linear time in the depth (a ratio, SELM-00093).
+  expectLinear('layoutJson', nested, t => layoutJson(t, 2, JSON_LAYOUT_LIMIT), { n: 50_000 })
+  expectLinear('format-json', nested, t => run(formatJson, t), { n: 50_000 })
+  expectLinear('decode-jwt', k => `${enc('{"alg":"none"}')}.${enc(nested(k))}.`, t => run(decodeJwt, t), { n: 50_000 })
+  expectLinear('format-json, an error past the cut', k => `${nested(k)}x`, t => run(formatJson, t), { n: 50_000 })
   // The pane's limit is within it: what the pane shows is never cut short by the layout.
   expect(JSON_LAYOUT_LIMIT).toBeGreaterThan(2 * LOCAL_TEXT_LIMIT)
   // Short of the cap, the layout is whole and not cut.

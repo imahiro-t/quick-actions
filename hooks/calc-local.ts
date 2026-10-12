@@ -105,6 +105,14 @@ const VARIADIC_FUNCTIONS: Readonly<Record<string, (xs: number[]) => number>> = {
   max: xs => Math.max(...xs),
 }
 
+/**
+ * The entry `table` holds for `name` as its own key; undefined for none. A
+ * name such as `constructor` or `__proto__` never reads what the object
+ * inherits, so it is an unknown name like any other.
+ */
+const ownOf = <T>(table: Readonly<Record<string, T>>, name: string): T | undefined =>
+  Object.prototype.hasOwnProperty.call(table, name) ? table[name] : undefined
+
 /** The value of an expression, or the reason it has none (thrown as CalcError, caught by calc). */
 export function evaluate(src: string): number {
   const tokens = tokenize(src)
@@ -171,8 +179,8 @@ export function evaluate(src: string): number {
     }
     if (t.kind === 'id') {
       pos++
-      const unaryFn = UNARY_FUNCTIONS[t.name]
-      const variadicFn = VARIADIC_FUNCTIONS[t.name]
+      const unaryFn = ownOf(UNARY_FUNCTIONS, t.name)
+      const variadicFn = ownOf(VARIADIC_FUNCTIONS, t.name)
       if (unaryFn !== undefined || variadicFn !== undefined) {
         if (!isOp('(')) fail(`関数 ${t.name} の後に ( がありません`, `"(" is missing after the function ${t.name}`)
         pos++
@@ -189,7 +197,7 @@ export function evaluate(src: string): number {
         }
         return variadicFn!(args)
       }
-      const constant = CALC_CONSTANTS[t.name]
+      const constant = ownOf(CALC_CONSTANTS, t.name)
       if (constant !== undefined) return constant
       return fail(`知らない名前「${t.text}」があります（${t.at + 1} 文字目）`, `unknown name "${t.text}" at position ${t.at + 1}`)
     }

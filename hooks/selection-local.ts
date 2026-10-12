@@ -299,31 +299,62 @@ export function showHiddenNoted(text: string, lang: Lang): string {
   return withHiddenShown(text.replace(/\r\n?/g, '\n'), lang).join('\n\n')
 }
 
-// What `quoteLine` cuts between once the text is escaped: a doubled
-// backslash, an escaped surrogate pair (one character past U+FFFF), one
-// escape, or one code point. Never inside one, so the cut leaves no half
-// escape, no lone backslash and no lone surrogate.
-const QUOTE_UNIT_SHOWN = /\\\\|\\ud[89ab][0-9a-f]{2}\\ud[c-f][0-9a-f]{2}|\\u[0-9a-f]{4}|[^]/gu
-const QUOTE_UNIT = /[^]/gu
+// The escapes `quoteLine` never cuts inside once the text is escaped: a
+// doubled backslash, an escaped surrogate pair (one character past U+FFFF) or
+// one escape.
+const QUOTE_ESCAPE = /\\\\|\\ud[89ab][0-9a-f]{2}\\ud[c-f][0-9a-f]{2}|\\u[0-9a-f]{4}/gu
+
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/**
+ * The units `quoteLine` cuts between: each escape (QUOTE_ESCAPE, when the
+ * text is escaped) and, between them, each grapheme cluster. A cluster keeps
+ * a flag emoji with its tags, emoji joined by ZWJ, and a character with the
+ * selector kept on it together, so a cut leaves none of them halved: no half
+ * escape, no lone backslash, no lone surrogate.
+ */
+function quoteUnits(line: string, escaped: boolean): string[] {
+  const units: string[] = []
+  const plain = (from: number, to: number) => {
+    for (const { segment } of GRAPHEMES.segment(line.slice(from, to))) units.push(segment)
+  }
+  let at = 0
+  if (escaped) {
+    for (const m of line.matchAll(QUOTE_ESCAPE)) {
+      plain(at, m.index!)
+      units.push(m[0])
+      at = m.index! + m[0].length
+    }
+  }
+  plain(at, line.length)
+  return units
+}
 
 /**
  * A text as the result's heading quotes it: its hidden characters shown as
  * `showHidden` shows them (first, so a hidden U+FEFF or U+2028 is escaped
  * rather than taken for white space), its white space then made one space and
  * trimmed; past `max` UTF-16 units, cut to at most `max - 3` and `...` added,
- * between two units of QUOTE_UNIT_SHOWN (QUOTE_UNIT when nothing is hidden).
- * No note: the heading is one line.
+ * between two units of `quoteUnits`. Should a cut still part what was kept
+ * only for what came next (a Mongolian vowel separator before its letter,
+ * which is a cluster of its own), it is moved back a unit at a time until
+ * nothing the pane must not show raw is left before it. No note: the heading
+ * is one line.
  */
 export function quoteLine(text: string, max = 60): string {
   const { shown, escaped } = showHidden(text)
   const line = shown.replace(/\s+/g, ' ').trim()
   if (line.length <= max) return line
-  let end = 0
-  for (const m of line.matchAll(escaped ? QUOTE_UNIT_SHOWN : QUOTE_UNIT)) {
-    if (end + m[0].length > max - 3) break
-    end += m[0].length
+  const units = quoteUnits(line, escaped)
+  const ends = [0]
+  for (const unit of units) {
+    const end = ends[ends.length - 1]! + unit.length
+    if (end > max - 3) break
+    ends.push(end)
   }
-  return `${line.slice(0, end)}...`
+  let n = ends.length - 1
+  while (n > 0 && hasHidden(line.slice(0, ends[n]))) n--
+  return `${line.slice(0, ends[n])}...`
 }
 
 // ---------------------------------------------------------------------------

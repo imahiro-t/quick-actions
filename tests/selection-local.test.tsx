@@ -1275,3 +1275,39 @@ test('quoteLine: hidden characters shown first, then white space folded, never c
     }
   }
 })
+
+// SELM-00090 round 2: a sequence `showHidden` keeps for its context (a flag's
+// tags, a ZWJ between emoji, a selector on its base, a Mongolian vowel
+// separator between letters) must not be cut so that what is left of it would
+// be escaped: nothing raw the pane must not show may reach the heading.
+test('quoteLine: a kept sequence across the cut is left whole or left out, never halved into raw hidden characters', () => {
+  const KEPT: readonly (readonly [string, boolean])[] = [
+    // [sequence, whether it is one grapheme cluster: then kept whole or left out whole]
+    [ENGLAND, true],
+    [SCOTLAND, true],
+    [FAMILY, true],
+    [FLAG, true],
+    ['\u{1f469}\u{1f3fd}\u{200d}\u{1f4bb}', true],
+    ['\u{2600}\u{fe0f}', true],
+    ['\u{845b}\u{e0100}', true],
+    ['\u{1828}\u{180e}\u{1820}', false],
+    ['\u{1828}\u{180b}\u{180e}\u{1820}', false],
+  ]
+  for (const [seq, cluster] of KEPT) {
+    // With nothing else hidden (cut by clusters alone) and with an escape after it (cut by escapes and clusters).
+    for (const [tail, tailShown] of [['', ''], [RLO, '\\u202e']] as const) {
+      for (let pad = 57 - seq.length - 2; pad <= 57; pad++) {
+        const input = `${'a'.repeat(pad)}${seq}${'z'.repeat(20)}${tail}`
+        const q = quoteLine(input)
+        expect(q.endsWith('...')).toBe(true)
+        const body = q.slice(0, -3)
+        expect(body.length).toBeLessThanOrEqual(57)
+        expect(`${'a'.repeat(pad)}${seq}${'z'.repeat(20)}${tailShown}`.startsWith(body)).toBe(true)
+        expect(hasHidden(q)).toBe(false)
+        if (cluster) expect(body.length <= pad || body.length >= pad + seq.length).toBe(true)
+        // The cut moves back no further than the sequence's start.
+        expect(body.length).toBeGreaterThanOrEqual(Math.min(pad, 57))
+      }
+    }
+  }
+})

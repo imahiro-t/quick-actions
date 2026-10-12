@@ -8,24 +8,12 @@
 
 import type { LocalInput, LocalOutput } from './actions'
 import type { Lang } from './i18n'
-
-type Texts = Record<Lang, string>
+import { invalid, textOf } from './local-args'
+import type { Texts } from './local-args'
 
 const pick = (lang: Lang, t: Texts) => t[lang]
 
 const hex2 = (n: number) => n.toString(16).toUpperCase().padStart(2, '0')
-
-/** The argument as text to look up: undefined for none, `''` when blank; a non-string is no argument this takes. */
-function textArgOf(input: LocalInput): { ok: true; text: string } | { ok: false } {
-  const { arg } = input
-  if (arg === undefined) return { ok: true, text: '' }
-  if (typeof arg !== 'string') return { ok: false }
-  return { ok: true, text: arg.trim() }
-}
-
-const invalid = (lang: Lang, expected: Texts): LocalOutput => ({
-  error: lang === 'ja' ? `引数が正しくありません: ${expected.ja}` : `Invalid argument: ${expected.en}`,
-})
 
 // ---------------------------------------------------------------------------
 // ASCII.
@@ -147,9 +135,8 @@ const HTTP_TEXT: Texts = {
 /** A status code's name and meaning, the codes whose name holds the text, or (with no argument) the common ones. */
 export const httpStatus = (input: LocalInput): LocalOutput => {
   const { lang } = input
-  const got = textArgOf(input)
-  if (!got.ok) return invalid(lang, HTTP_TEXT)
-  const q = got.text
+  const q = textOf(input.arg)
+  if (q === undefined) return invalid(lang, HTTP_TEXT)
   if (q === '') {
     return {
       text: [lang === 'ja' ? 'よく使う HTTP ステータスコード:' : 'Common HTTP status codes:', ...HTTP_STATUSES.filter(s => s.common).map(s => statusLine(s, lang))].join('\n'),
@@ -209,9 +196,9 @@ const mimeLine = ([ext, type]: readonly [string, string]) => `.${ext}  ${type}`
 /** The MIME type of an extension (or a file name's last one), the extensions of a MIME type, or (with no argument) the table. */
 export const mimeTypes = (input: LocalInput): LocalOutput => {
   const { lang } = input
-  const got = textArgOf(input)
-  if (!got.ok) return invalid(lang, MIME_TEXT)
-  const q = got.text.toLowerCase()
+  const text = textOf(input.arg)
+  if (text === undefined) return invalid(lang, MIME_TEXT)
+  const q = text.toLowerCase()
   if (q === '') {
     return { text: [lang === 'ja' ? 'よく使う拡張子と MIME タイプ:' : 'Common extensions and MIME types:', ...MIME_TYPES.map(mimeLine)].join('\n') }
   }
@@ -220,7 +207,7 @@ export const mimeTypes = (input: LocalInput): LocalOutput => {
     const type = q.split(';')[0]!.trim()
     const exts = MIME_TYPES.filter(([, t]) => t === type).map(([e]) => `.${e}`)
     if (exts.length === 0) {
-      return { error: lang === 'ja' ? `この表にない MIME タイプです: ${got.text}` : `Not a MIME type in this table: ${got.text}` }
+      return { error: lang === 'ja' ? `この表にない MIME タイプです: ${text}` : `Not a MIME type in this table: ${text}` }
     }
     return { text: lang === 'ja' ? `${type} の拡張子: ${exts.join(', ')}` : `Extensions of ${type}: ${exts.join(', ')}` }
   }
@@ -307,15 +294,15 @@ const portRange = (n: number, lang: Lang) =>
 /** The service on a port, the port of a service, or (with no argument) the table. */
 export const portNumbers = (input: LocalInput): LocalOutput => {
   const { lang } = input
-  const got = textArgOf(input)
-  if (!got.ok) return invalid(lang, PORT_TEXT)
-  const q = got.text.toLowerCase()
+  const text = textOf(input.arg)
+  if (text === undefined) return invalid(lang, PORT_TEXT)
+  const q = text.toLowerCase()
   if (q === '') {
     return { text: [lang === 'ja' ? '主なポート番号:' : 'Common ports:', ...PORTS.map(p => portLine(p, lang))].join('\n') }
   }
   if (/^\d+$/.test(q)) {
     const n = Number(q)
-    if (n > 65535) return { error: lang === 'ja' ? `ポート番号は 0〜65535 です: ${got.text}` : `Port numbers run from 0 to 65535: ${got.text}` }
+    if (n > 65535) return { error: lang === 'ja' ? `ポート番号は 0〜65535 です: ${text}` : `Port numbers run from 0 to 65535: ${text}` }
     const found = PORTS.filter(p => p.port === n)
     const range = portRange(n, lang)
     if (found.length === 0) {
@@ -325,7 +312,7 @@ export const portNumbers = (input: LocalInput): LocalOutput => {
   }
   const found = PORTS.filter(p => p.name === q || p.aliases.includes(q))
   if (found.length === 0) {
-    return { error: lang === 'ja' ? `この表にないサービス名です: ${got.text}（${PORT_TEXT.ja}）` : `Not a service in this table: ${got.text} (give ${PORT_TEXT.en}).` }
+    return { error: lang === 'ja' ? `この表にないサービス名です: ${text}（${PORT_TEXT.ja}）` : `Not a service in this table: ${text} (give ${PORT_TEXT.en}).` }
   }
   return { text: found.map(p => portLine(p, lang)).join('\n') }
 }

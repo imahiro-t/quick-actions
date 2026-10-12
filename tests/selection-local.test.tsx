@@ -487,6 +487,21 @@ test('decode-jwt: header and payload laid out, the times in UTC and local time, 
   )
 })
 
+test('decode-jwt: a leading Bearer (any case, then white space) is skipped; with no white space it is no prefix', () => {
+  for (const lang of ['en', 'ja'] as const) {
+    const bare = run(decodeJwt, JWT, lang)
+    for (const prefixed of [`Bearer ${JWT}`, `bearer ${JWT}`, `BEARER ${JWT}`, `Bearer\t${JWT}`, `Bearer   ${JWT}`, `Bearer\n${JWT}`]) {
+      expect(run(decodeJwt, prefixed, lang)).toEqual(bare)
+    }
+  }
+  // No white space after it: not a prefix, so the text is no JWT.
+  expect(errorOf(run(decodeJwt, `Bearer${JWT}`))).toContain('Not a readable JWT')
+  // Bearer alone (the selection is trimmed, so no white space follows): the error of a text that is no JWT.
+  expect(errorOf(run(decodeJwt, 'Bearer'))).toBe('Not a readable JWT: it is not three parts separated by "." (1).')
+  // Only at the start.
+  expect(errorOf(run(decodeJwt, `x Bearer ${JWT}`))).toContain('Not a readable JWT')
+})
+
 test('epoch-to-date: seconds or milliseconds by the digits, in UTC and local time; errors out of range', () => {
   expect(textOf(run(epochToDate, '1700000000'))).toBe(
     ['Unit: seconds (from its 10 digits)', 'UTC: 2023-11-14T22:13:20Z', 'Local: 2023-11-15T07:13:20+09:00 (Asia/Tokyo)'].join('\n'),
@@ -507,6 +522,62 @@ test('epoch-to-date: seconds or milliseconds by the digits, in UTC and local tim
   // Milliseconds take no fraction: it is not dropped without a word.
   expect(errorOf(run(epochToDate, '1700000000000.9'))).toBe('Not a UNIX time: milliseconds (a whole part of 12 to 14 digits) take no fraction.')
   expect(errorOf(run(epochToDate, '1700000000000.9', 'ja'))).toContain('ミリ秒（整数部 12〜14 桁）に小数部は付けられません')
+})
+
+test('epoch-to-date: milliseconds with a fraction of zeros alone read as the whole number; any other fraction is still an error', () => {
+  for (const lang of ['en', 'ja'] as const) {
+    for (const [withZeros, whole] of [
+      ['1700000000123.0', '1700000000123'],
+      ['1700000000123.000', '1700000000123'],
+      ['-1700000000000.0', '-1700000000000'],
+      ['+1700000000000.00', '+1700000000000'],
+    ]) {
+      const out = run(epochToDate, withZeros!, lang)
+      expect(textOf(out)).toContain(lang === 'ja' ? 'ミリ秒' : 'milliseconds')
+      expect(out).toEqual(run(epochToDate, whole!, lang))
+    }
+  }
+  for (const text of ['1700000000000.9', '1700000000000.05', '1700000000000.10', '1700000000000.0001']) {
+    expect(errorOf(run(epochToDate, text))).toBe('Not a UNIX time: milliseconds (a whole part of 12 to 14 digits) take no fraction.')
+    expect(errorOf(run(epochToDate, text, 'ja'))).toBe('UNIX 時刻として読めません: ミリ秒（整数部 12〜14 桁）に小数部は付けられません。')
+  }
+  // Seconds are as before: a fraction of zeros or not.
+  expect(textOf(run(epochToDate, '1700000000.0'))).toBe(textOf(run(epochToDate, '1700000000')))
+  expect(textOf(run(epochToDate, '1700000000.25'))).toContain('UTC: 2023-11-14T22:13:20.250Z')
+})
+
+test('the selection reaches a built-in local action through run(): trimmed into LocalInput.text, Bearer skipped, .0 milliseconds read', { options: { language: 'en', pinActions: 'decode-jwt,epoch-to-date' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+
+  // decode-jwt on `Bearer <JWT>` with white space around it, as it is often copied from a header.
+  s.selected = `  Bearer ${JWT}\n`
+  await clock.advance(400)
+  await runCommand($, 'decode-jwt')
+  let pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  let texts = await pane.findAll({ type: 'Text' })
+  const jwt = texts.filter(t => typeof t.text === 'string' && t.text.startsWith('Note: the signature is not verified'))
+  expect(jwt.length).toBe(1)
+  expect(jwt[0]!.text).toContain('Header:\n{\n  "alg": "HS256",\n  "typ": "JWT"\n}')
+  expect(jwt[0]!.text).toContain('"name": "太郎"')
+  expect(jwt[0]!.props.color).not.toBe('error')
+  expect(texts.some(t => typeof t.text === 'string' && t.text.includes('Not a readable JWT'))).toBe(false)
+  await pane.unmount()
+
+  // epoch-to-date on milliseconds with `.0`.
+  s.selected = null
+  await clock.advance(400)
+  s.selected = ' 1700000000123.0 '
+  await clock.advance(400)
+  await runCommand($, 'epoch-to-date')
+  pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  texts = await pane.findAll({ type: 'Text' })
+  const epoch = texts.filter(t => typeof t.text === 'string' && t.text.startsWith('Unit: milliseconds'))
+  expect(epoch.length).toBe(1)
+  expect(epoch[0]!.text).toContain('Unit: milliseconds (from its 13 digits)\nUTC: 2023-11-14T22:13:20.123Z\n')
+  expect(epoch[0]!.props.color).not.toBe('error')
+  await pane.unmount()
 })
 
 test('color-convert: #RGB, #RRGGBB, rgb() and hsl() to all three; errors on others and out of range', () => {

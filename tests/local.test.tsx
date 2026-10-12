@@ -7,8 +7,9 @@ import { clampInterval, localInputFor, runLocal, tickerStep, truncate } from '..
 import type { LocalSource } from '../hooks/local'
 
 // What a local action's run decides, checked directly: register.tsx only does
-// what these say. No built-in runs locally on the selection yet, so these
-// definitions are the tests' own and never join ACTIONS.
+// what these say. These definitions are the tests' own and never join ACTIONS;
+// the built-in local actions on the selection are run through register.tsx's
+// run() in the stage tests of tests/selection-local.test.tsx.
 
 const SOURCE: LocalSource = {
   text: 'SELECTED TEXT',

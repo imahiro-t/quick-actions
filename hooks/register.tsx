@@ -26,7 +26,7 @@ import {
 import type { ActionDef, ActionSpec, LocalAction, ResolvedSubagentAction } from './actions'
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgSpec, ArgValue } from './args'
-import { parseCustomActions, problemFor, problemLine, reasonText, withProblems } from './custom'
+import { parseCustomActions, problemFor, problemLine, reasonText, warningLine, withNotices } from './custom'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
@@ -956,6 +956,7 @@ export const register: Register = (on, options) => {
   // invalid is left out, with its reason kept in `problems` to show the person.
   const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close', HINT_ARG])
   const problems = custom.problems
+  const warnings = custom.warnings
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
 
   // The pins alone are read here: they do not depend on the language.
@@ -1076,10 +1077,17 @@ export const register: Register = (on, options) => {
     // Told once per session, with the first reason; the command's result has
     // them all. Not awaited, like the noSelection toast: a toast that is slow
     // or cannot show must hold up neither the icons nor the next handler.
-    if (problems.length > 0) {
-      const text = MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l))
+    // Warnings alone (a definition kept, allowing something risky) get a toast of their own;
+    // with problems as well, the problems' toast stands for both.
+    const notice =
+      problems.length > 0
+        ? MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l))
+        : warnings.length > 0
+          ? MESSAGES[l].customWarningToast(warnings.length, warningLine(warnings[0]!, l))
+          : undefined
+    if (notice !== undefined) {
       void Promise.resolve()
-        .then(() => $.ui.toast(text))
+        .then(() => $.ui.toast(notice))
         .catch(() => {
           // The command's result still lists them.
         })
@@ -1117,10 +1125,10 @@ export const register: Register = (on, options) => {
     // Without an ID: the ⋯ dialog, on the text selected now (with none, the context and standalone actions).
     if (wanted === '') {
       await openPanes($, l, 'picker', await pickedNow($), true)
-      return { text: withProblems(t.pickerOpened, problems, l) }
+      return { text: withNotices(t.pickerOpened, custom, l) }
     }
     // An argument nothing takes: told, and nothing runs (no pane, no use counted).
-    const refuse = (id: string, given: string) => ({ text: withProblems(t.argsNotAccepted(id, given), problems, l) })
+    const refuse = (id: string, given: string) => ({ text: withNotices(t.argsNotAccepted(id, given), custom, l) })
     // `hint`: the hint line, on the text selected now, held here while the
     // engine still answers it (see the poll in session.start).
     if (wanted === HINT_ARG) {
@@ -1129,7 +1137,7 @@ export const register: Register = (on, options) => {
       await update($, hint, () => ({ text: held?.text ?? null, ...(held?.requestId === undefined ? {} : { requestId: held.requestId }), armed: false }))
       await update($, hintKind, () => null)
       await update($, dismissed, () => null)
-      return { text: withProblems(t.hintOpened, problems, l) }
+      return { text: withNotices(t.hintOpened, custom, l) }
     }
     const def = findAction(defs, wanted)
     // Whatever the result, the custom definitions left out follow it, so this
@@ -1139,11 +1147,11 @@ export const register: Register = (on, options) => {
       // or else up to CANDIDATES actions the ID matches as the ⋯ dialog's
       // filter would (in its order, every kind), never the whole list.
       const ignored = problemFor(problems, wanted)
-      if (ignored !== undefined) return { text: withProblems(t.customIgnoredId(wanted, reasonText(ignored.reason, l)), problems, l) }
+      if (ignored !== undefined) return { text: withNotices(t.customIgnoredId(wanted, reasonText(ignored.reason, l)), custom, l) }
       const specs = (await ensureOrder($, orderLoad)).flatMap(id => specById.get(id) ?? [])
       const laidOut = arrange(specs, pins, true, orderLoad.defaults)
       const candidates = filterActions(laidOut, wanted).slice(0, CANDIDATES).map(a => a.id)
-      return { text: withProblems(t.unknownId(wanted, candidates), problems, l) }
+      return { text: withNotices(t.unknownId(wanted, candidates), custom, l) }
     }
     if (isStandalone(def)) {
       // The argument is parsed once, here: invalid, it is refused before
@@ -1153,7 +1161,7 @@ export const register: Register = (on, options) => {
         const spec = argSpecOf(def)
         if (spec === undefined) return refuse(def.id, arg)
         const parsed = await parseInputArg($, l, def.id, spec, arg)
-        if (!parsed.ok) return { text: withProblems(parsed.error, problems, l) }
+        if (!parsed.ok) return { text: withNotices(parsed.error, custom, l) }
         given = parsed.given
       }
       // A selection there now is not used: its icons go, as after a press.
@@ -1163,9 +1171,9 @@ export const register: Register = (on, options) => {
     } else if (arg !== undefined) {
       return refuse(def.id, arg)
     } else if (isContext(def)) await runOnConversation($, def, l)
-    else if (!(await runOnSelection($, def, l))) return { text: withProblems(t.noSelection, problems, l) }
+    else if (!(await runOnSelection($, def, l))) return { text: withNotices(t.noSelection, custom, l) }
 
-    return { text: withProblems(t.showing(PANE_TITLE, def.label), problems, l) }
+    return { text: withNotices(t.showing(PANE_TITLE, def.label), custom, l) }
   })
 
   // The icons take the hint line under the prompt, a row that is always there:
@@ -1756,6 +1764,14 @@ export const register: Register = (on, options) => {
             <Text bold color={style.failed}>{t.customProblemsHeading}</Text>
             {problems.map((p, i) => (
               <Text key={String(i)} color={style.failed}>- {problemLine(p, l)}</Text>
+            ))}
+          </Box>
+        )}
+        {warnings.length > 0 && (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text bold {...muted(style)}>{t.customWarningsHeading}</Text>
+            {warnings.map((w, i) => (
+              <Text key={String(i)} {...muted(style)}>- {warningLine(w, l)}</Text>
             ))}
           </Box>
         )}

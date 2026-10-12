@@ -27,6 +27,42 @@ export const TARGETS: readonly string[] = ['selection', 'context', 'none']
 /** The ID format, the same as the built-ins': lowercase letters and digits, joined by single hyphens. */
 export const ID_FORMAT = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
+/**
+ * The longest ID, in characters: the ID is the name a custom subagent is
+ * registered under (`$.agent.register({ name })`), and a subagent's name is
+ * limited to 64 characters.
+ */
+export const ID_MAX = 64
+
+/** The longest icon, in code points: room for a ZWJ sequence (a family) or a flag's tag sequence. */
+export const ICON_MAX = 16
+/** The longest label, in code points (each language's, for `{ ja, en }`). */
+export const LABEL_MAX = 64
+/** The longest runningText, in code points (each language's). */
+export const RUNNING_TEXT_MAX = 64
+/** The longest description, in code points (each language's). */
+export const DESCRIPTION_MAX = 500
+
+/**
+ * Characters the texts shown on screen (icon, label, runningText, description)
+ * may not have: control characters (\p{Cc}: NUL, ESC, tab, newline, DEL and
+ * the C1 ones; with ESC and U+009D refused, no escape sequence such as an OSC 8
+ * hyperlink gets in), the bidirectional controls (U+061C, U+200E, U+200F,
+ * U+202A to U+202E, U+2066 to U+2069) and the line and paragraph separators.
+ * ZWJ (U+200D) and the variation selectors are not among them: emoji are made
+ * of them.
+ */
+export const DISPLAY_FORBIDDEN = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069\u2028\u2029]/u
+/** DISPLAY_FORBIDDEN, matching every occurrence (for displaySafe). */
+const DISPLAY_FORBIDDEN_ALL = new RegExp(DISPLAY_FORBIDDEN.source, 'gu')
+
+/**
+ * The tools that hand a subagent the contents of files: Read, and Grep, whose
+ * matches are the lines themselves. A subset of READ_ONLY_TOOLS; Glob is not
+ * one, as it gives the paths alone.
+ */
+export const FILE_CONTENT_TOOLS: readonly string[] = ['Read', 'Grep']
+
 /** The longest answer a custom complete action may ask for. */
 export const MAX_TOKENS_LIMIT = 32_000
 
@@ -39,6 +75,9 @@ export type CustomReason =
   | { code: 'idFormat' }
   | { code: 'idReserved' }
   | { code: 'idDuplicate' }
+  | { code: 'tooLong'; field: string; max: number }
+  /** `char` is written `U+001B`, so no raw control character reaches a list or a toast. */
+  | { code: 'forbiddenChar'; field: string; char: string }
   | { code: 'missing'; field: string }
   | { code: 'invalid'; field: string }
   | { code: 'kind'; value: string; allowed: readonly string[] }
@@ -57,9 +96,15 @@ export type CustomReason =
  */
 export type CustomProblem = { index: number | null; id: string | null; reason: CustomReason }
 
-export type CustomActions = { specs: ActionSpec[]; problems: CustomProblem[] }
+/** What a kept definition allows that is worth knowing: a file-reading tool beside a web one (the tools as written). */
+export type CustomWarningReason = { code: 'fileReadWithWeb'; read: string[]; web: string[] }
 
-const NONE: CustomActions = { specs: [], problems: [] }
+/** A definition kept as it is, with something to tell about it: its place in the array (from 0) and its ID. */
+export type CustomWarning = { index: number; id: string; reason: CustomWarningReason }
+
+export type CustomActions = { specs: ActionSpec[]; problems: CustomProblem[]; warnings: CustomWarning[] }
+
+const NONE: CustomActions = { specs: [], problems: [], warnings: [] }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
 
@@ -67,7 +112,17 @@ const absent = (v: unknown) => v === undefined || v === null || (typeof v === 's
 
 const filled = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
-/** A value as the person wrote it, short enough for one line. */
+/** A code point as `U+XXXX` (four hex digits at least). */
+const codePointName = (ch: string) => `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
+
+/**
+ * `s` with every DISPLAY_FORBIDDEN character written as U+XXXX, so a value
+ * from a definition (an id, a kind, a JSON error quoting the file) never puts
+ * a raw control or bidirectional character into the problem list or a toast.
+ */
+const displaySafe = (s: string): string => s.replace(DISPLAY_FORBIDDEN_ALL, codePointName)
+
+/** A value as the person wrote it, with displaySafe applied, short enough for one line. */
 const shown = (v: unknown): string => {
   let s: string
   try {
@@ -75,7 +130,11 @@ const shown = (v: unknown): string => {
   } catch {
     s = String(v)
   }
-  return s.length > 40 ? `${s.slice(0, 37)}...` : s
+  s = displaySafe(s)
+  if (s.length <= 40) return s
+  // Cut at 37 code units, never between the halves of a surrogate pair.
+  const cut = /[\uD800-\uDBFF]/.test(s.charAt(36)) ? 36 : 37
+  return `${s.slice(0, cut)}...`
 }
 
 /** A text in both languages: one string for both, or `{ ja, en }` with both filled in. */
@@ -91,6 +150,24 @@ class Invalid {
 }
 const fail = (reason: CustomReason): never => {
   throw new Invalid(reason)
+}
+
+/**
+ * Checks one text shown on screen: no DISPLAY_FORBIDDEN character first (so a
+ * long value with an escape in it is told for the escape), then no more than
+ * `max` code points.
+ */
+const displayText = (field: string, value: string, max: number): void => {
+  const bad = DISPLAY_FORBIDDEN.exec(value)
+  if (bad !== null) fail({ code: 'forbiddenChar', field, char: codePointName(bad[0]) })
+  // No more code points than code units: a value this short is within it.
+  if (value.length > max && [...value].length > max) fail({ code: 'tooLong', field, max })
+}
+
+/** displayText on both languages of a text. */
+const displayLocalized = (field: string, value: Localized, max: number): void => {
+  displayText(field, value.ja, max)
+  if (value.en !== value.ja) displayText(field, value.en, max)
 }
 
 const required = (d: Record<string, unknown>, field: string): string => {
@@ -162,13 +239,18 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     if (!isRecord(d)) return fail({ code: 'notObject' })
     if (absent(d['id'])) fail({ code: 'missing', field: 'id' })
     const id = d['id']
+    // Before the format, so a huge ID is told for its length without a match run over it.
+    if (typeof id === 'string' && id.length > ID_MAX) fail({ code: 'tooLong', field: 'id', max: ID_MAX })
     if (typeof id !== 'string' || !ID_FORMAT.test(id)) fail({ code: 'idFormat' })
     if (reserved.has(id as string)) fail({ code: 'idReserved' })
     if (taken.has(id as string)) fail({ code: 'idDuplicate' })
 
     const icon = required(d, 'icon')
+    displayText('icon', icon, ICON_MAX)
     const label = requiredText(d, 'label')
+    displayLocalized('label', label, LABEL_MAX)
     const runningText = optionalText(d, 'runningText')
+    if (runningText !== undefined) displayLocalized('runningText', runningText, RUNNING_TEXT_MAX)
     if (absent(d['kind'])) fail({ code: 'missing', field: 'kind' })
     const kind = d['kind']
     if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
@@ -211,6 +293,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
 
     const task = required(d, 'task')
     const description = optionalText(d, 'description')
+    if (description !== undefined) displayLocalized('description', description, DESCRIPTION_MAX)
     const allowed = tools(d)
     return {
       ...base,
@@ -230,7 +313,21 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
 }
 
 /**
- * The custom actions in the setting, and what was wrong with it. `reservedIds`
+ * The warning a kept definition earns, if any: a subagent allowed one of
+ * FILE_CONTENT_TOOLS and one of WEB_TOOLS could send what it reads out. Not
+ * refused (its author may mean it), only told. With no `tools`, a subagent
+ * has the read-only three alone, so it earns none; nor does Glob with the web.
+ */
+function warningOf(spec: ActionSpec): CustomWarningReason | undefined {
+  if (spec.kind !== 'subagent' || spec.tools === undefined) return undefined
+  const read = spec.tools.filter(t => FILE_CONTENT_TOOLS.includes(t))
+  const web = spec.tools.filter(t => WEB_TOOLS.includes(t))
+  return read.length > 0 && web.length > 0 ? { code: 'fileReadWithWeb', read, web } : undefined
+}
+
+/**
+ * The custom actions in the setting, what was wrong with it, and what is
+ * worth knowing about the definitions kept (`warnings`). `reservedIds`
  * are the IDs a custom one may not take (the built-ins', `close` and `hint`). An unset
  * or blank setting gives nothing and no problem; any other value that is not a
  * string (an array written in settings.json without quoting it, say) leaves
@@ -239,7 +336,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
 export function parseCustomActions(setting: unknown, reservedIds: readonly string[]): CustomActions {
   if (setting === undefined || setting === null) return NONE
   if (typeof setting !== 'string') {
-    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notString' } }] }
+    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notString' } }], warnings: [] }
   }
   if (setting.trim() === '') return NONE
 
@@ -247,17 +344,18 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
   try {
     parsed = JSON.parse(setting)
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
-    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'json', detail } }] }
+    const detail = displaySafe(err instanceof Error ? err.message : String(err))
+    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'json', detail } }], warnings: [] }
   }
   if (!Array.isArray(parsed)) {
-    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notArray' } }] }
+    return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notArray' } }], warnings: [] }
   }
 
   const reserved = new Set(reservedIds)
   const taken = new Set<string>()
   const specs: ActionSpec[] = []
   const problems: CustomProblem[] = []
+  const warnings: CustomWarning[] = []
   parsed.forEach((d: unknown, index) => {
     const r = parseOne(d, taken, reserved)
     if ('code' in r) {
@@ -267,9 +365,11 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
       // First come, first served, as with an ID written twice in `pinActions`.
       taken.add(r.id)
       specs.push(r)
+      const warning = warningOf(r)
+      if (warning !== undefined) warnings.push({ index, id: r.id, reason: warning })
     }
   })
-  return { specs, problems }
+  return { specs, problems, warnings }
 }
 
 /** Why a definition was left out, in the language. */
@@ -290,9 +390,24 @@ export function problemLine(p: CustomProblem, lang: Lang): string {
 export const problemFor = (problems: readonly CustomProblem[], id: string): CustomProblem | undefined =>
   id === '' ? undefined : problems.find(p => p.id !== null && p.id.trim().toLowerCase() === id)
 
-/** A command's result with the list of problems after it, or as it is when there are none. */
-export function withProblems(text: string, problems: readonly CustomProblem[], lang: Lang): string {
-  if (problems.length === 0) return text
+/** One warning on one line: the definition's place (from 1) and ID, then what it allows. */
+export const warningLine = (w: CustomWarning, lang: Lang): string =>
+  `#${w.index + 1} (${shown(w.id)}): ${MESSAGES[lang].customWarning(w.reason)}`
+
+/**
+ * A command's result with the list of problems after it, then the list of
+ * warnings, each under its own heading; as it is when there are neither.
+ */
+export function withNotices(
+  text: string,
+  notices: { problems: readonly CustomProblem[]; warnings: readonly CustomWarning[] },
+  lang: Lang,
+): string {
+  const { problems, warnings } = notices
+  if (problems.length === 0 && warnings.length === 0) return text
   const t = MESSAGES[lang]
-  return [text, '', t.customProblemsHeading, ...problems.map(p => `- ${problemLine(p, lang)}`)].join('\n')
+  const lines = [text]
+  if (problems.length > 0) lines.push('', t.customProblemsHeading, ...problems.map(p => `- ${problemLine(p, lang)}`))
+  if (warnings.length > 0) lines.push('', t.customWarningsHeading, ...warnings.map(w => `- ${warningLine(w, lang)}`))
+  return lines.join('\n')
 }

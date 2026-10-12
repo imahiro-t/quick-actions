@@ -2,7 +2,7 @@
 // and every string the person reads, in both. Nothing here throws.
 
 import type { ArgType } from './args'
-import type { CustomReason } from './custom'
+import type { CustomReason, CustomWarningReason } from './custom'
 
 export type Lang = 'ja' | 'en'
 
@@ -113,6 +113,12 @@ export type Messages = {
   customProblemsHeading: string
   /** The toast at session start when the setting has problems: how many, and the first one. */
   customIgnoredToast: (count: number, first: string) => string
+  /** A custom definition that was kept, but allows something worth knowing about. */
+  customWarning: (reason: CustomWarningReason) => string
+  /** Heads the list of warnings after a command's result and at the top of the pane, below the problems. */
+  customWarningsHeading: string
+  /** The toast at session start when the setting has warnings but no problems: how many, and the first one. */
+  customWarningToast: (count: number, first: string) => string
   /** The command's result for an ID whose custom definition was left out. */
   customIgnoredId: (id: string, reason: string) => string
   /** The command's argument hint: an ID with its argument, or `hint`. */
@@ -134,6 +140,8 @@ export type Messages = {
   truncated: string
   /** A local action that answered with a promise rather than at once. */
   localAsync: string
+  /** A local action on the selection refused for a selection past the limit: its length and the limit (UTF-16 code units). */
+  selectionTooLong: (length: number, limit: number) => string
   /** A local action on the selection that asked to run over time, which only a standalone one may. */
   localTickerOnSelection: string
   /** A local action that needed random numbers where crypto could give none: nothing was made. */
@@ -171,6 +179,9 @@ export type Messages = {
   /** The result pane's button that opens the argument screen of a timer (or the like), named by its kind. */
   setArg: (type: ArgType) => string
 }
+
+/** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
+export const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+$)/g, ',')
 
 /** The kinds of argument by name, as an empty argument field with no default says what it takes. */
 const ARG_TYPE_NAMES: Record<Lang, Record<ArgType, string>> = {
@@ -228,6 +239,10 @@ export const MESSAGES: Record<Lang, Messages> = {
           return '定義がオブジェクトではありません'
         case 'idFormat':
           return 'id は小文字の英数字とハイフンで書いてください（例: review-pr）'
+        case 'tooLong':
+          return `${r.field} が長すぎます（${r.max} 文字まで）`
+        case 'forbiddenChar':
+          return `${r.field} に使えない文字 ${r.char} が含まれています（制御文字・双方向制御文字・行区切りは使えません）`
         case 'idReserved':
           return 'id が標準アクション・close・hint のいずれかと重なっています'
         case 'idDuplicate':
@@ -255,6 +270,10 @@ export const MESSAGES: Record<Lang, Messages> = {
     customProblemsHeading: 'customActions で無視した定義:',
     customIgnoredToast: (count, first) =>
       `Quick Actions: customActions に問題が ${count} 件あり、該当する定義を無視しました（${first}）。全件は /quick-actions を実行すると結果に表示されます`,
+    customWarning: r => `${r.read.join('・')} と ${r.web.join('・')} を同時に許しているため、読んだファイルの内容を外部へ送り得ます`,
+    customWarningsHeading: 'customActions の注意:',
+    customWarningToast: (count, first) =>
+      `Quick Actions: customActions に注意が ${count} 件あります（${first}）。全件は /quick-actions を実行すると結果に表示されます`,
     customIgnoredId: (id, reason) => `${id} は customActions の定義が無効なため使えません: ${reason}`,
     argumentHint: '[action-id [引数] | hint]',
     standalone: '単独',
@@ -268,6 +287,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     askingUnavailable: '質問ダイアログの表示中は Quick Actions を使えません。',
     truncated: '（以下省略）',
     localAsync: '結果をすぐに返しませんでした',
+    selectionTooLong: (length, limit) =>
+      `選択テキストが長すぎます（${grouped(length)} 文字。ローカル実行の上限は ${grouped(limit)} 文字）`,
     localTickerOnSelection: '選択テキストへのアクションは時間経過のある実行をできません',
     randomUnavailable: '安全な乱数（crypto.getRandomValues）が使えないため、生成しませんでした',
     stop: '停止',
@@ -330,6 +351,10 @@ export const MESSAGES: Record<Lang, Messages> = {
           return 'the definition is not an object'
         case 'idFormat':
           return 'write the id in lowercase letters, digits and hyphens (e.g. review-pr)'
+        case 'tooLong':
+          return `${r.field} is too long (up to ${r.max} characters)`
+        case 'forbiddenChar':
+          return `${r.field} contains a character it cannot have: ${r.char} (no control, bidirectional control or line separator characters)`
         case 'idReserved':
           return 'the id is taken by a built-in action, close or hint'
         case 'idDuplicate':
@@ -357,6 +382,11 @@ export const MESSAGES: Record<Lang, Messages> = {
     customProblemsHeading: 'Ignored in customActions:',
     customIgnoredToast: (count, first) =>
       `Quick Actions: ${count} problem(s) in customActions; the definitions concerned are ignored (${first}). Run /quick-actions to see them all in its result`,
+    customWarning: r =>
+      `it allows ${r.read.join(', ')} together with ${r.web.join(', ')}, so it could send the contents of files it reads out to the web`,
+    customWarningsHeading: 'Warnings in customActions:',
+    customWarningToast: (count, first) =>
+      `Quick Actions: ${count} warning(s) in customActions (${first}). Run /quick-actions to see them all in its result`,
     customIgnoredId: (id, reason) => `${id} cannot be used: its definition in customActions is invalid: ${reason}`,
     argumentHint: '[action-id [argument] | hint]',
     standalone: 'standalone',
@@ -370,6 +400,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     askingUnavailable: 'Quick Actions cannot be used while a question dialog is up.',
     truncated: '(truncated)',
     localAsync: 'the result did not come at once',
+    selectionTooLong: (length, limit) =>
+      `the selection is too long (${grouped(length)} characters; a local action takes up to ${grouped(limit)})`,
     localTickerOnSelection: 'an action on the selection cannot run over time',
     randomUnavailable: 'no secure random numbers are available (crypto.getRandomValues), so nothing was generated',
     stop: 'Stop',

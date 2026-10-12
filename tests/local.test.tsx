@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, textOf } from '../hooks/actions'
+import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, textOf } from '../hooks/actions'
 import type { LocalAction, LocalInput, LocalOutput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { clampInterval, localInputFor, runLocal, tickerStep, truncate } from '../hooks/local'
@@ -241,4 +241,35 @@ test('tickerStep: never throws on a frame of no known shape, and cuts a frame pa
   expect(tickerStep(() => ({ text: long, done: true }), { ...at, lang: 'ja' })).toEqual({ kind: 'done', text: cut })
   // The cut text is what is compared with the last one shown.
   expect(tickerStep(() => ({ text: long, done: false }), { ...at, lang: 'ja', lastText: cut })).toEqual({ kind: 'same' })
+})
+
+// SELM-00082: a local action on the selection refuses a selection past
+// LOCAL_SELECTION_LIMIT (UTF-16 code units) before its compute is called.
+
+test('runLocal: a selection of up to 1,000,000 code units runs; one more is refused with its length and the limit', () => {
+  expect(LOCAL_SELECTION_LIMIT).toBe(1_000_000)
+  let calls = 0
+  const counted = on(input => {
+    calls++
+    return { text: String(input.text?.length) }
+  })
+  const at = 'a'.repeat(LOCAL_SELECTION_LIMIT)
+  expect(runLocal(counted, localInputFor(counted, { ...SOURCE, text: at }), { selection: true, lang: 'en' })).toEqual({ kind: 'settle', ok: true, text: '1000000' })
+  expect(calls).toBe(1)
+  const over = `${at}b`
+  const ja = runLocal(counted, localInputFor(counted, { ...SOURCE, text: over }), { selection: true, lang: 'ja' })
+  expect(ja).toEqual({ kind: 'settle', ok: false, text: '失敗しました: 選択テキストが長すぎます（1,000,001 文字。ローカル実行の上限は 1,000,000 文字）' })
+  const en = runLocal(counted, localInputFor(counted, { ...SOURCE, text: over }), { selection: true, lang: 'en' })
+  expect(en).toEqual({ kind: 'settle', ok: false, text: 'Failed: the selection is too long (1,000,001 characters; a local action takes up to 1,000,000)' })
+  expect(calls).toBe(1)
+  // Counted in code units: an emoji outside the BMP is two.
+  const emoji = '😀'.repeat(LOCAL_SELECTION_LIMIT / 2 + 1)
+  expect(runLocal(counted, localInputFor(counted, { ...SOURCE, text: emoji }), { selection: true, lang: 'en' })).toMatchObject({ ok: false })
+  expect(calls).toBe(1)
+})
+
+test('runLocal: the selection limit is not applied to a standalone action', () => {
+  const big = on(() => ({ text: 'ran' }), 'none')
+  const input = { ...localInputFor(big, SOURCE), text: 'a'.repeat(LOCAL_SELECTION_LIMIT + 1) }
+  expect(runLocal(big, input, { selection: false, lang: 'en' })).toEqual({ kind: 'settle', ok: true, text: 'ran' })
 })

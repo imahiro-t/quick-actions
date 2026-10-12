@@ -5,7 +5,7 @@
 // nothing here reaches `$`, so a test checks every case directly, the ones no
 // built-in has yet (a local action on the selection) included.
 
-import { LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection, textOf } from './actions'
+import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection, textOf } from './actions'
 import type { LocalAction, LocalInput, TickerFrame } from './actions'
 import type { ArgValue } from './args'
 import { MESSAGES } from './i18n'
@@ -80,10 +80,16 @@ const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typ
  * Runs `def`'s compute on `input`, synchronously, and says what comes of it.
  * A throw, a promise or an answer of no known shape is a failure; so is a run
  * over time asked for by an action on the selection (`selection`), which may
- * only answer at once. Never throws.
+ * only answer at once. A selection longer than LOCAL_SELECTION_LIMIT (code
+ * units of `input.text`, as the caller passes it) is refused before the compute is called, saying
+ * how long it is and the limit. Never throws.
  */
 export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, opts: { selection: boolean; lang: Lang }): LocalOutcome {
   const t = MESSAGES[opts.lang]
+  const length = typeof input.text === 'string' ? input.text.length : 0
+  if (opts.selection && length > LOCAL_SELECTION_LIMIT) {
+    return { kind: 'settle', ok: false, text: t.failed(t.selectionTooLong(length, LOCAL_SELECTION_LIMIT)) }
+  }
   // The compute's run and the reading of its answer alike: a getter on that
   // answer may throw too.
   try {

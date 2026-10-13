@@ -312,14 +312,14 @@ export function execOutputText(stdout: string, cutBefore: boolean, lang: Lang): 
  * its standard error (cut at EXEC_STDERR_MAX) and its standard output (cut at
  * EXEC_OUTPUT_MAX), each under its heading when there is any, escaped as
  * above, and said to be cut when it was (by this, or by $.process.run:
- * `stderrCut` / `stdoutCut`).
+ * `processCut.stderrCut` / `processCut.stdoutCut`).
  */
 export function execFailureText(
   exitCode: number,
   stdout: string,
   stderr: string,
   lang: Lang,
-  cutBefore: { stdoutCut?: boolean; stderrCut?: boolean } = {},
+  processCut: { stdoutCut?: boolean; stderrCut?: boolean } = {},
 ): string {
   const t = MESSAGES[lang]
   const parts = [t.failed(t.execExit(exitCode))]
@@ -328,8 +328,8 @@ export function execFailureText(
     const body = [part.text === '' ? undefined : showHiddenNoted(part.text, lang), part.cut ? t.execTruncated : undefined]
     parts.push([heading, ...body.filter(line => line !== undefined)].join('\n'))
   }
-  section(t.execStderr, tidied(stderr, EXEC_STDERR_MAX, cutBefore.stderrCut))
-  section(t.execStdout, tidied(stdout, EXEC_OUTPUT_MAX, cutBefore.stdoutCut))
+  section(t.execStderr, tidied(stderr, EXEC_STDERR_MAX, processCut.stderrCut))
+  section(t.execStdout, tidied(stdout, EXEC_OUTPUT_MAX, processCut.stdoutCut))
   return parts.join('\n\n')
 }
 

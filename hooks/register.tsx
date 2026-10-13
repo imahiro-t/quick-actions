@@ -160,8 +160,12 @@ const muted = (style: PaneStyle) =>
 
 /**
  * A button of the result pane or the ⋯ dialog (stop, again, back, close, ...):
- * as it always was, dimColor when `dim`; with a palette, its label a child
- * Text in the palette's muted colour (a Button's own label takes no colour).
+ * as it always was, in the surface's own colour; with a palette, its label a
+ * child Text in the palette's muted colour (a Button's own label takes no
+ * colour). One asked `dim` (the ⋯ dialog's close) is dimColor where core
+ * paints the theme's background behind it (auto, docked: `dimMuted`), and in
+ * the terminal's foreground inline, where nothing does and the theme's
+ * `inactive` falls to about 2.9:1 (see ./palette).
  *
  * With a `name`, the button still draws its `label` (as a child, a string or
  * the muted Text) and is named `name` instead: the Button's label is then its
@@ -175,13 +179,14 @@ const mutedButton = (
   { name, ...props }: ButtonProps & { label: string; name?: string },
   dim = false,
 ) => {
+  const dimmed = dim && style.dimMuted
   if (name === undefined) {
     return style.background !== undefined ? (
       <Button key={key} {...props}>
         <Text color={style.muted}>{props.label}</Text>
       </Button>
     ) : (
-      <Button key={key} {...props} {...(dim && { dimColor: true })} />
+      <Button key={key} {...props} {...(dimmed && { dimColor: true })} />
     )
   }
   return style.background !== undefined ? (
@@ -189,7 +194,7 @@ const mutedButton = (
       <Text color={style.muted}>{props.label}</Text>
     </Button>
   ) : (
-    <Button key={key} {...props} label={name} {...(dim && { dimColor: true })}>
+    <Button key={key} {...props} label={name} {...(dimmed && { dimColor: true })}>
       {props.label}
     </Button>
   )
@@ -1474,7 +1479,7 @@ export const register: Register = (on, options) => {
                 <Text bold color={HINT_ACCENT}>{kindLabel(k)}</Text>
               </Button>
             ) : (
-              <Button key={kindKey(k)} label={kindName(k)} dimColor onPress={() => update($, hintKind, () => k)}>
+              <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
                 {kindLabel(k)}
               </Button>
             )}
@@ -1497,7 +1502,6 @@ export const register: Register = (on, options) => {
           <Button
             key="close"
             label={t.hintCloseName}
-            dimColor
             role="dismiss"
             onPress={close}
           >
@@ -1621,8 +1625,10 @@ export const register: Register = (on, options) => {
     const listed = shown.slice(starts[page], starts[page + 1] ?? shown.length)
     // Back or on a page, round from either end.
     const turn = (by: number) => update($, picking, p => (p === null ? p : { ...p, page: (page + by + pages) % pages }))
-    // The close button's props; it is drawn dimColor as before, or in the
-    // palette's muted colour. It closes the whole pane, both tabs.
+    // The close button's props; it is drawn dimColor as before where core
+    // paints the theme's background (auto, docked), in the terminal's
+    // foreground inline, or in the palette's muted colour. It closes the
+    // whole pane, both tabs.
     const close = { label: t.pickerClose, role: 'dismiss' as const, onPress: () => closeAll($) }
     const closeButton = mutedButton(elements, style, PICKER_CLOSE_KEY, close, true)
 
@@ -1643,7 +1649,13 @@ export const register: Register = (on, options) => {
     // line's are (which actions it shows, and, for the one listed now, that it
     // is: bold and dim reach no name). The one listing now (all, as the dialog
     // opens) is drawn bold, in the palette's heading colour where one is
-    // painted; the others dim (in the palette's muted colour, as its buttons are).
+    // painted; the others in the palette's muted colour, as its buttons are.
+    // Under auto, docked (core paints the theme's background), the others are
+    // dimColor as before. Inline nothing paints the background, so the others
+    // keep the terminal's foreground (the theme's `inactive` falls to about
+    // 2.9:1 where the theme and the terminal disagree), and the one listing
+    // is bold in HINT_ACCENT, as the hint line's kind shown is, so that it
+    // stands apart by more than bold.
     const switchKind = (k: HintKind | 'all') =>
       update($, picking, p => {
         if (p === null) return p
@@ -1658,7 +1670,7 @@ export const register: Register = (on, options) => {
       if (listing) {
         return (
           <Button {...props}>
-            <Text bold {...(fixed && { color: style.heading })}>{drawn}</Text>
+            <Text bold {...(fixed ? { color: style.heading } : !style.dimMuted && { color: HINT_ACCENT })}>{drawn}</Text>
           </Button>
         )
       }
@@ -1670,7 +1682,7 @@ export const register: Register = (on, options) => {
         )
       }
       return (
-        <Button {...props} dimColor>
+        <Button {...props} {...(style.dimMuted && { dimColor: true })}>
           {drawn}
         </Button>
       )
@@ -1878,11 +1890,17 @@ export const register: Register = (on, options) => {
      * to that row (scrolled to as the answer to the press itself, which is
      * when the engine moves the transcript). The row is left as the engine
      * draws it: nothing marks the selection in it (see ./entries). A refused
-     * scroll (the row no longer kept) does nothing.
+     * scroll (the row no longer kept) does nothing. Named, as the entry's
+     * other buttons are, with the entry's action (entryButton).
      */
-    const marks = (r: Result, origin: ResultOrigin) => (
+    const marks = (r: Result, def: ActionDef | undefined, origin: ResultOrigin) => (
       <Box flexDirection="row">
-        {paneButton(gotoKey(r.id), t.gotoSelection, () => settleQuietly($.ui.scroll(toRow(origin.requestId))))}
+        {paneButton(
+          gotoKey(r.id),
+          t.gotoSelection,
+          () => settleQuietly($.ui.scroll(toRow(origin.requestId))),
+          entryButton(r, def, t.gotoSelection),
+        )}
       </Box>
     )
 
@@ -1966,7 +1984,7 @@ export const register: Register = (on, options) => {
                 <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
               {r.timed === true && def !== undefined && isStandalone(def) && idle(r) && rerun(r, def)}
-              {r.origin !== undefined && marks(r, r.origin)}
+              {r.origin !== undefined && marks(r, def, r.origin)}
             </Box>
           )
         })}

@@ -2066,7 +2066,8 @@ test('neutralizeSelectedTags: a decomposed İ (I and U+0307) for the l makes a s
   for (const tag of tags) {
     expect({ tag, got: neutralizeSelectedTags(`a ${tag} b`) }).toEqual({ tag, got: `a &lt;${tag.slice(1)} b` })
   }
-  // In another word too, at its l: `file`, and both l's of `sells`.
+  // In another word too, at its l: `file`, and both l's of `sells` (at `sell`, the dot after the last
+  // l is not passed over but ends the word, SELM-00116: a tag either way).
   for (const [text, word] of [['<fiI\u0307e>', 'file'], ['</seI\u0307I\u0307s>', 'sells'], ['<seI\u0307I\u0307>', 'sell']] as const) {
     expect({ text, word, got: neutralizeTags(text, word) }).toEqual({ text, word, got: `&lt;${text.slice(1)}` })
   }
@@ -2130,7 +2131,7 @@ test('neutralizeInputTags: a decomposed İ (or i, ı with U+0307) for the i make
   for (const tag of tags) {
     expect({ tag, got: neutralizeInputTags(`a ${tag} b`) }).toEqual({ tag, got: `a &lt;${tag.slice(1)} b` })
   }
-  // In another word too, at its i.
+  // In another word too, at its i (at `sii`, the dot after the last i ends the word, SELM-00116).
   for (const [text, word] of [['<fI\u0307le>', 'file'], ['</fi\u0307le>', 'file'], ['<sI\u0307I\u0307>', 'sii']] as const) {
     expect({ text, word, got: neutralizeTags(text, word) }).toEqual({ text, word, got: `&lt;${text.slice(1)}` })
   }
@@ -2173,6 +2174,20 @@ test('neutralizeInputTags scales linearly on decomposed İ tags and near ones (S
     ['decomposed İnput tags', runOf('</I\u0307nput>'), runOf('&lt;/I\u0307nput>'), 160_000],
     ['near decomposed İnput tags', runOf('<I\u0307np'), runOf('<I\u0307np'), 300_000],
   ])
+})
+
+// SELM-00116: a dot above after the word's last letter ends the word, even when that letter is an i or an l.
+
+test('neutralizeTags: U+0307 after a last i of the word ends it, and is not passed over (SELM-00116)', () => {
+  for (const s of ['<sii\u0307x>', '<siI\u0307x>', '<si\u0131\u0307x>', '</sii\u0307x>', '<sii\u200B\u0307x>']) {
+    expect({ s, got: neutralizeTags(s, 'sii') }).toEqual({ s, got: `&lt;${s.slice(1)}` })
+  }
+})
+
+test('neutralizeTags: U+0307 after a last l of the word ends it, and is not passed over (SELM-00116)', () => {
+  for (const [text, word] of [['<selI\u0307x>', 'sell'], ['<fil1\u0307x>', 'fill']] as const) {
+    expect({ text, word, got: neutralizeTags(text, word) }).toEqual({ text, word, got: `&lt;${text.slice(1)}` })
+  }
 })
 
 test('neutralizeTags: multi-character NFKC forms are compared as consecutive letters', () => {

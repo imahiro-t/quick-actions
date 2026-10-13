@@ -40,6 +40,7 @@ import {
   EXEC_ORIGIN_TERMINAL,
   HOME_SOURCES,
   NO_GATE,
+  addsExecDefinition,
   allowlistOf,
   allowlistPath,
   allowlistPlace,
@@ -47,13 +48,16 @@ import {
   approvalQuestion,
   approvalsListText,
   buildInvocation,
+  configSetFailureDenial,
   conversationInput,
+  execBaseline,
   execFailureText,
   execOutputText,
   fromName,
   gateAll,
   hashOf,
   historyEntry,
+  isOwnCustomActionsChange,
   isTimeout,
   liveSlots,
   locate,
@@ -70,7 +74,7 @@ import {
   utf8Length,
   weakensExecOrigin,
 } from './exec'
-import type { Allowlist, ExecApproval, ExecGateResult, ExecHistoryEntry, ExecHostEnv, Located, StatSeen } from './exec'
+import type { Allowlist, ConfigChange, ExecApproval, ExecGateResult, ExecHistoryEntry, ExecHostEnv, Located, StatSeen } from './exec'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
@@ -879,8 +883,26 @@ async function revokeApprovals($: EngineInterface, id: string | null): Promise<n
   })
 }
 
+/** The IDs a custom definition may not take (the built-ins', `close`, `hint`, `exec-approvals`): one list for the load and the config.set guard, so both read the same definitions as valid. */
+const reservedIds = (): readonly string[] => [...ACTIONS.map(a => a.id), 'close', HINT_ARG, EXEC_ADMIN_ARG]
+
+/**
+ * A config.set to customActions from other than the person that would add or
+ * alter an exec definition (./exec isOwnCustomActionsChange,
+ * addsExecDefinition), judged against the person's own text in the user
+ * settings read now (./exec execBaseline; not readable: any exec definition
+ * is refused): its refusal; else undefined.
+ */
+async function customActionsGuard($: EngineInterface, e: ConfigChange): Promise<{ deny: string } | undefined> {
+  if (!isOwnCustomActionsChange(e, PLUGIN)) return undefined
+  const baseline = execBaseline(await settingsOf($, 'user'), PLUGIN)
+  const base = baseline === undefined ? undefined : parseCustomActions(baseline, reservedIds()).specs
+  if (!addsExecDefinition(parseCustomActions(e.value, reservedIds()).specs, base)) return undefined
+  return { deny: MESSAGES[await ensureLanguage($)].customActionsConfigDenied }
+}
+
 /** A config.set that would take execOrigin off `terminal` from other than the person (./exec weakensExecOrigin): its refusal; else undefined. */
-async function execOriginGuard($: EngineInterface, e: { key: string; value: unknown; origin: { kind: string } }): Promise<{ deny: string } | undefined> {
+async function execOriginGuard($: EngineInterface, e: ConfigChange): Promise<{ deny: string } | undefined> {
   if (!weakensExecOrigin(e, PLUGIN)) return undefined
   return { deny: MESSAGES[await ensureLanguage($)].execOriginConfigDenied }
 }
@@ -1602,7 +1624,7 @@ export const register: Register = (on, options) => {
   // Options change reloads the module, so reading the settings once here is
   // enough. The custom definitions join the built-ins after them; one that is
   // invalid is left out, with its reason kept in `problems` to show the person.
-  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close', HINT_ARG, EXEC_ADMIN_ARG])
+  const custom = parseCustomActions(options.customActions, reservedIds())
   const problems = custom.problems
   const warnings = custom.warnings
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
@@ -1791,15 +1813,23 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // execOrigin taken off `terminal` by other than the person in /config (a
-  // plugin's $.config.set, the bridge): refused. A layer of defence alone,
-  // which neither a hook of another plugin running first nor a settings file
-  // written directly passes through: what holds is that each run reads the
-  // user settings (./exec originRestricted).
-  // Failed before passing it on (the language not read, say): refused all the same, in English.
-  on('config.set', async ($, e, next) => (await execOriginGuard($, e)) ?? next(e)).catch(($, e, next) =>
-    next.called ? next(e) : weakensExecOrigin(e, PLUGIN) ? { deny: MESSAGES.en.execOriginConfigDenied } : next(e),
-  )
+  // From other than the person in /config (a plugin's $.config.set, the
+  // bridge): execOrigin taken off `terminal`, or an exec definition added to
+  // or altered in customActions (which would land in the user settings and so
+  // pass ./exec scopeVerdict), is refused. Taking exec definitions out and
+  // changing the other kinds go through. A layer of defence alone, which the
+  // hooks of other plugins (before or after this one) and a settings file
+  // written directly go around: what holds is that each run reads the user
+  // settings (./exec scopeVerdict, originRestricted) and asks the person's
+  // approval of the path, the arguments and the SHA-256.
+  // Failed before passing it on (the language or the settings not read, say):
+  // refused all the same, in English, a customActions change whatever it holds
+  // (./exec configSetFailureDenial).
+  on('config.set', async ($, e, next) => (await execOriginGuard($, e)) ?? (await customActionsGuard($, e)) ?? next(e)).catch(($, e, next) => {
+    if (next.called) return next(e)
+    const denial = configSetFailureDenial(e, PLUGIN)
+    return denial === undefined ? next(e) : { deny: MESSAGES.en[denial] }
+  })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const l = await ensureLanguage($)

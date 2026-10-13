@@ -8,7 +8,7 @@
 // the catalog and its test alone.
 
 import { ACTIONS, argSpecOf, emojiIcon, isContext, isStandalone } from './actions'
-import type { ActionSpec, Target } from './actions'
+import type { BuiltinSpec, Target } from './actions'
 import { MESSAGES } from './i18n'
 import type { Localized } from './i18n'
 
@@ -109,7 +109,7 @@ const both = (pick: (lang: keyof Localized) => Record<CatalogKind, string>, kind
 })
 
 /** One built-in as the catalog shows it. Its `category` and `summary` must be set (see tests/catalog.test.ts). */
-export function catalogAction(spec: ActionSpec): CatalogAction {
+export function catalogAction(spec: BuiltinSpec): CatalogAction {
   const arg = argSpecOf(spec)
   return {
     id: spec.id,
@@ -130,7 +130,7 @@ export function catalogAction(spec: ActionSpec): CatalogAction {
  * with the IDs of theirs, and the kinds' names from MESSAGES. Plain data alone,
  * so it can be written out as JSON.
  */
-export function buildCatalog(specs: readonly ActionSpec[] = ACTIONS): Catalog {
+export function buildCatalog(specs: readonly BuiltinSpec[] = ACTIONS): Catalog {
   const actions = specs.map(catalogAction)
   return {
     total: actions.length,

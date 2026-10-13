@@ -15,7 +15,7 @@
     "customActions": {
       "type": "string",
       "title": "Custom actions",
-      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete or subagent, taking an optional text argument). Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in pinActions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
+      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete, subagent or exec, taking an optional text argument). kind exec runs a local executable with no shell, what it works on given on its standard input: only when written in your user settings, listed in ~/.claude/quick-actions/allowed-executables.json and approved by you once at the terminal. Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in pinActions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
       "default": ""
     },
     "language": {

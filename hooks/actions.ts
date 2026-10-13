@@ -233,14 +233,42 @@ export type LocalAction<T = string> = ActionBase<T> & {
   compute: (input: LocalInput) => LocalOutput
 }
 
+/**
+ * A local executable of the person's own, run with no shell (a custom action's
+ * only: no built-in is one). `command` is its absolute path as written,
+ * `args` its fixed arguments, put into its argument vector as they are (never
+ * expanded); what it works on (the selection, the conversation as JSON, or a
+ * standalone action's argument) goes to its standard input alone. It runs only
+ * when it is in the allowlist of the person's home and approved by them once
+ * at the terminal (./exec, register.tsx).
+ */
+export type ExecAction<T = string> = ActionBase<T> & {
+  kind: 'exec'
+  target?: Target
+  command: string
+  args: readonly string[]
+  /** How long it may run, in milliseconds. */
+  timeoutMs: number
+  /** A standalone one's argument (always an optional free text), written to its standard input. */
+  arg?: ArgSpec<T>
+}
+
 /** A subagent definition resolved for one language: its description is always filled in (see resolveSpec). */
 export type ResolvedSubagentAction = SubagentAction & { description: string }
 
 /** A definition with its texts resolved for one language: what the hint line, the pane and the runner use. */
-export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction | LocalAction
+export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction | LocalAction | ExecAction
 
 /** A definition as written in ACTIONS, its texts in both languages. */
-export type ActionSpec = CompleteAction<Localized> | ForkAction<Localized> | SubagentAction<Localized> | LocalAction<Localized>
+export type ActionSpec =
+  | CompleteAction<Localized>
+  | ForkAction<Localized>
+  | SubagentAction<Localized>
+  | LocalAction<Localized>
+  | ExecAction<Localized>
+
+/** A built-in's definition: any kind but exec, which is the person's own alone. */
+export type BuiltinSpec = Exclude<ActionSpec, ExecAction<Localized>>
 
 export const PLUGIN = 'quick-actions'
 
@@ -879,8 +907,8 @@ export const localizePrompt = (prompt: string, lang: Lang) =>
 export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   const label = spec.label[lang]
   const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
-  if (spec.kind === 'local') {
-    // No prompt: `compute` is handed on as it is.
+  if (spec.kind === 'local' || spec.kind === 'exec') {
+    // No prompt: `compute` (or the command and its arguments) is handed on as it is.
     const { label: _l, runningText: _r, category: _c, summary: _s, arg, ...rest } = spec
     return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }) }
   }
@@ -970,7 +998,7 @@ export const translateInto = (
 // of their purpose (translation, meaning, summary, writing, code, evidence,
 // research, data, learning, then checks), then the context actions on the
 // conversation, then the standalone ones.
-export const ACTIONS: readonly ActionSpec[] = [
+export const ACTIONS: readonly BuiltinSpec[] = [
   {
     id: 'translate-ja',
     icon: '🌐',

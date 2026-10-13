@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { ButtonProps, ElementConstructor, EngineInterface, PaneCloseOrigin, Register, RenderSurface, TextProps } from 'claude-code'
+import type { ButtonProps, ElementConstructor, EngineInterface, PaneCloseOrigin, PromptOrigin, Register, RenderSurface, TextProps } from 'claude-code'
 
 import type { ArgInput, Result, ResultOrigin } from '../types'
 import {
@@ -23,11 +23,38 @@ import {
   wrap,
   wrapInput,
 } from './actions'
-import type { ActionDef, ActionSpec, LocalAction, LocalEffect, ResolvedSubagentAction } from './actions'
+import type { ActionDef, ActionSpec, ExecAction, LocalAction, LocalEffect, ResolvedSubagentAction } from './actions'
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgSpec, ArgValue } from './args'
 import { kindOfTarget } from './catalog'
-import { parseCustomActions, problemFor, problemLine, reasonText, warningLine, withNotices } from './custom'
+import { definitionIndex, displaySafe, parseCustomActions, problemFor, problemLine, reasonText, warningLine, withNotices } from './custom'
+import type { CustomProblem, CustomReason } from './custom'
+import {
+  APPROVALS_KEY,
+  EXEC_FILE_MAX,
+  EXEC_STDIN_MAX,
+  HOME_SOURCES,
+  NO_GATE,
+  allowlistOf,
+  allowlistPath,
+  allowlistPlace,
+  approvalQuestion,
+  buildInvocation,
+  conversationInput,
+  execFailureText,
+  execOutputText,
+  gateAll,
+  hashOf,
+  isTimeout,
+  locate,
+  parseApprovals,
+  sameApproval,
+  scopeVerdict,
+  unexpected,
+  usableHome,
+  utf8Length,
+} from './exec'
+import type { Allowlist, ExecApproval, ExecGateResult, ExecHostEnv, Located, StatSeen } from './exec'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
@@ -656,6 +683,271 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
   }
 }
 
+/**
+ * Where a run was asked from: the surface its button was pressed on, or the
+ * command's origin. Only the person at their own terminal can approve an exec
+ * action (canApprove); one asked from anywhere else runs only once approved.
+ */
+type RunFrom = { surface?: RenderSurface; origin?: PromptOrigin['kind'] }
+
+const fromSurface = (surface: RenderSurface | undefined): RunFrom => (surface === undefined ? {} : { surface })
+
+/** Whether the person can approve an exec action here: a press at the terminal, or the command typed at its prompt. */
+const canApprove = (from: RunFrom) => from.surface === 'terminal' || from.origin === 'composer'
+
+/** What the exec gate refused, by action ID, and the problems it tells (the refused definitions, then the allowlist's entries left out). */
+type ExecGateView = { rejected: ReadonlyMap<string, CustomReason>; problems: readonly CustomProblem[] }
+
+/** What one load's exec gate checks (its exec definitions, the setting as merged) and where its answer is kept. */
+type ExecLoad = { specs: readonly ExecAction<unknown>[]; setting: unknown; pending?: Promise<ExecGateView> }
+
+const NO_GATE_VIEW: ExecGateView = { rejected: NO_GATE.rejected, problems: [] }
+
+// The exec gate of the load running now, set by register, as usageRecorded
+// is: a run checks it again. Before any load, nothing is exec.
+let currentExecLoad: ExecLoad = { specs: [], setting: undefined }
+
+/** Whether the host is Windows, for the exec gate. Never rejects. */
+async function isWindows($: EngineInterface): Promise<boolean> {
+  return (await platformOf($)) === 'win32'
+}
+
+/** One settings source as loaded; undefined when it cannot be read. */
+async function settingsOf($: EngineInterface, source: 'user' | (typeof HOME_SOURCES)[number]) {
+  return readQuietly($.settings.read({ source }))
+}
+
+/** Where `path` lands (a $.fs.stat with `resolve`); undefined when it cannot be told. */
+async function statOf($: EngineInterface, path: string): Promise<StatSeen> {
+  return readQuietly($.fs.stat(path, { resolve: true }))
+}
+
+/** HOME as it may be used (./exec usableHome). */
+async function homeOf($: EngineInterface): Promise<string | undefined> {
+  return usableHome(await readQuietly($.env.get('HOME')))
+}
+
+/**
+ * The allowlist of the home directory (./exec ALLOWLIST_RELATIVE), read now,
+ * or why there is none to use (./exec allowlistPlace, allowlistOf).
+ */
+async function loadAllowlist($: EngineInterface): Promise<Allowlist | CustomReason> {
+  const home = await homeOf($)
+  if (home === undefined) return { code: 'execAllowlist', why: 'noHome' }
+  const file = await statOf($, allowlistPath(home))
+  const realHome = (await statOf($, home))?.realPath ?? home
+  const roots: (string | undefined)[] = []
+  for (const root of [await readQuietly($.session.root()), await readQuietly($.session.cwd())]) {
+    roots.push(root === undefined ? undefined : ((await statOf($, root))?.realPath ?? root))
+  }
+  const place = allowlistPlace(file, realHome, roots)
+  if ('code' in place) return place
+  return allowlistOf(await readQuietly($.fs.read(place.path)))
+}
+
+/** Where `command` lands and its allowlist entry, or why it may not run (./exec locate). */
+async function locateExec($: EngineInterface, command: string, entries: Allowlist['entries']): Promise<Located | CustomReason> {
+  return locate(command, await statOf($, command), entries)
+}
+
+/** The SHA-256 of the executable at `realPath`, of `size` bytes as last seen, or why it cannot be had (./exec hashOf). */
+async function hashExec($: EngineInterface, realPath: string, size: number): Promise<string | CustomReason> {
+  if (size > EXEC_FILE_MAX) return { code: 'execTooLarge', max: EXEC_FILE_MAX }
+  const bytes = await readQuietly($.fs.read(realPath, { as: 'bytes' }))
+  return hashOf(realPath, bytes?.base64)
+}
+
+/**
+ * The exec gate (see ./exec): checked once per load, before an exec action
+ * is shown or run. Every exec definition is refused, each with the same
+ * reason, on Windows, when the settings say it is not the person's own
+ * (scopeVerdict) or when the allowlist cannot be used; else each whose
+ * command is not in the allowlist. Never rejects: what throws refuses them all.
+ */
+async function checkExecGate($: EngineInterface, load: ExecLoad): Promise<ExecGateResult> {
+  const ids = load.specs.map(spec => spec.id)
+  try {
+    if (await isWindows($)) return gateAll(ids, { code: 'execUnsupported' })
+    const user = await settingsOf($, 'user')
+    const others = []
+    for (const source of HOME_SOURCES) others.push(await settingsOf($, source))
+    const scope = scopeVerdict(user, others, load.setting, PLUGIN)
+    if (scope !== undefined) return gateAll(ids, scope)
+    const list = await loadAllowlist($)
+    if ('code' in list) return gateAll(ids, list)
+    const rejected = new Map<string, CustomReason>()
+    for (const spec of load.specs) {
+      const located = await locateExec($, spec.command, list.entries)
+      if ('code' in located) rejected.set(spec.id, located)
+    }
+    return { rejected, ignoredEntries: list.ignored }
+  } catch (err) {
+    return gateAll(ids, unexpected(err))
+  }
+}
+
+/**
+ * The exec gate of `load` (./exec checkExecGate), checked the first time it
+ * is asked for and shared by every later or concurrent ask, as the order is.
+ * With no exec definition it reads nothing and is settled at once. Never rejects.
+ */
+async function ensureExecGate($: EngineInterface, load: ExecLoad): Promise<ExecGateView> {
+  if (load.specs.length === 0) return NO_GATE_VIEW
+  load.pending ??= gateOf($, load)
+  return load.pending
+}
+
+async function gateOf($: EngineInterface, load: ExecLoad): Promise<ExecGateView> {
+  const gate = await checkExecGate($, load)
+  return {
+    rejected: gate.rejected,
+    problems: [
+      ...[...gate.rejected].map(([id, reason]) => ({ index: definitionIndex(load.setting, id), id, reason })),
+      ...gate.ignoredEntries.map(entry => ({ index: null, id: null, reason: { code: 'execAllowlistEntry' as const, entry } })),
+    ],
+  }
+}
+
+// The approvals are read, added to and written back one at a time, as the
+// usage scores are, so two approved close together never lose one.
+let approvalWrite: Promise<void> = Promise.resolve()
+
+/** Keeps `approval` for the action `id` in $.store. Never rejects: unsaved, it is asked again next time. */
+function saveApproval($: EngineInterface, id: string, approval: ExecApproval): Promise<void> {
+  approvalWrite = approvalWrite.then(async () => {
+    try {
+      const kept = parseApprovals(await $.store.get(APPROVALS_KEY))
+      await $.store.set(APPROVALS_KEY, { ...kept, [id]: { path: approval.path, args: [...approval.args], sha256: approval.sha256 } })
+    } catch {
+      // Not kept: the next run asks again.
+    }
+  })
+  return approvalWrite
+}
+
+/** What an exec action works on: the selected text, the conversation (read as it starts) or a standalone one's argument. */
+type ExecInput = { target: 'selection'; text: string } | { target: 'context' } | { target: 'none'; arg: string }
+
+/** What an exec action may run as, its checks through: where its command lands, that file's size and its SHA-256. */
+type ExecReady = { realPath: string; size: number; sha256: string }
+
+/**
+ * Every check before an exec action runs, in order, the first that fails its
+ * reason: not Windows; not refused by this load's gate; the allowlist read
+ * again and the command's landing path in it; that file's SHA-256 the
+ * entry's, when it has one; and approved for that path, those arguments and
+ * that SHA-256 (asked now, at the person's terminal alone, when it is not).
+ */
+async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from: RunFrom): Promise<ExecReady | CustomReason> {
+  if ((await platformOf($)) === 'win32') return { code: 'execUnsupported' }
+  const gated = (await ensureExecGate($, currentExecLoad)).rejected.get(def.id)
+  if (gated !== undefined) return gated
+  const list = await loadAllowlist($)
+  if ('code' in list) return list
+  const located = await locateExec($, def.command, list.entries)
+  if ('code' in located) return located
+  const hash = await hashExec($, located.realPath, located.size)
+  if (typeof hash !== 'string') return hash
+  if (located.entry.sha256 !== undefined && located.entry.sha256 !== hash) return { code: 'execHashMismatch', path: located.realPath }
+  const wanted: ExecApproval = { path: located.realPath, args: [...def.args], sha256: hash }
+  const kept = parseApprovals(await readQuietly($.store.get(APPROVALS_KEY)))[def.id]
+  if (!sameApproval(kept, wanted)) {
+    if (!canApprove(from)) return { code: 'execRemote' }
+    const t = MESSAGES[lang]
+    // A cancel, a dismissal, an answer typed under "Other" or a run with no
+    // one to ask: all but the approve label itself is no.
+    const answer = await readQuietly(
+      $.ui.ask(approvalQuestion(lang, def.label, def.id, wanted), { header: t.execApproveHeader, options: [t.execApprove, t.execCancel] }),
+    )
+    if (answer !== t.execApprove) return { code: 'execDeclined' }
+    await saveApproval($, def.id, wanted)
+  }
+  return { realPath: located.realPath, size: located.size, sha256: hash }
+}
+
+/** The host's variables an exec action is given (./exec buildInvocation); undefined with no usable HOME. */
+async function hostEnv($: EngineInterface): Promise<ExecHostEnv | undefined> {
+  const home = await homeOf($)
+  if (home === undefined) return undefined
+  const [LANG, LC_ALL, TMPDIR] = await Promise.all([
+    readQuietly($.env.get('LANG')),
+    readQuietly($.env.get('LC_ALL')),
+    readQuietly($.env.get('TMPDIR')),
+  ])
+  return {
+    HOME: home,
+    ...(LANG === undefined ? {} : { LANG }),
+    ...(LC_ALL === undefined ? {} : { LC_ALL }),
+    ...(TMPDIR === undefined ? {} : { TMPDIR }),
+  }
+}
+
+/** What an exec action's standard input gets, or why it gets nothing: past EXEC_STDIN_MAX (the conversation is cut to fit instead). */
+async function execStdin($: EngineInterface, input: ExecInput): Promise<string | CustomReason> {
+  if (input.target === 'context') return conversationInput(await $.session.messages())
+  const text = input.target === 'selection' ? input.text : input.arg
+  return utf8Length(text) > EXEC_STDIN_MAX ? { code: 'execInputTooLarge', max: EXEC_STDIN_MAX } : text
+}
+
+/**
+ * An exec action (./exec), from any of the three kinds. Its checks and its
+ * approval come first, before its entry opens, as the approval's dialog puts
+ * the pane away (see the tool.call hook): refused, the entry opens failed,
+ * saying why, and a toast says so too. Then, right before it starts, its
+ * SHA-256 is read again (a change meanwhile is not run), and it runs with no
+ * shell, what it works on given on its standard input alone. Exit 0: its
+ * output; any other, the code and its standard error; the timeout or a start
+ * that failed, said so. Never leaves the entry running.
+ */
+async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: EntryHead, picked: Picked | undefined, input: ExecInput, from: RunFrom) {
+  const t = MESSAGES[lang]
+  const refuse = async (reason: CustomReason, entry?: number) => {
+    const why = reasonText(reason, lang)
+    const id = entry ?? (await begin($, def, lang, head, picked))
+    await settle($, id, false, t.failed(why))
+    finishedToast($, t.execRefusedToast(def.label, why))
+  }
+  let ready: ExecReady | CustomReason
+  try {
+    ready = await prepareExec($, def, lang, from)
+  } catch (err) {
+    ready = { code: 'unexpected', detail: displaySafe(messageOf(err)) }
+  }
+  if ('code' in ready) {
+    await refuse(ready)
+    return
+  }
+  const id = await begin($, def, lang, head, picked)
+  try {
+    const hash = await hashExec($, ready.realPath, ready.size)
+    if (typeof hash !== 'string') return await refuse(hash, id)
+    if (hash !== ready.sha256) return await refuse({ code: 'execChanged' }, id)
+    const stdin = await execStdin($, input)
+    if (typeof stdin !== 'string') return await refuse(stdin, id)
+    const env = await hostEnv($)
+    if (env === undefined) return await refuse({ code: 'execAllowlist', why: 'noHome' }, id)
+    const invocation = buildInvocation({ realPath: ready.realPath, args: def.args, env, target: input.target, lang, stdin })
+    if (invocation === undefined) return await refuse({ code: 'execPath', field: 'realPath', path: displaySafe(ready.realPath) }, id)
+    const startedAt = await readQuietly($.clock.now())
+    let r: Awaited<ReturnType<EngineInterface['process']['run']>>
+    try {
+      r = await $.process.run(invocation.argv, { cwd: invocation.cwd, stdin: invocation.stdin, timeoutMs: def.timeoutMs })
+    } catch (err) {
+      const endedAt = await readQuietly($.clock.now())
+      const elapsed = startedAt === undefined || endedAt === undefined ? 0 : endedAt - startedAt
+      const message = messageOf(err)
+      const why = isTimeout(message, elapsed, def.timeoutMs) ? t.execTimeout(Math.round(def.timeoutMs / 1000)) : t.execNotStarted(displaySafe(message))
+      await settle($, id, false, t.failed(why))
+      return
+    }
+    const ok = r.exitCode === 0
+    await settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang))
+  } catch (err) {
+    // A thrown call must not leave the entry "running" for good.
+    await settle($, id, false, t.failed(displaySafe(messageOf(err))))
+  }
+}
+
 // Every way an action on the selection or the conversation runs (an icon, the
 // ⋯ dialog, the command) comes here. `text` is the selected text a selection
 // action runs on; a context action runs on the conversation and reads none.
@@ -663,19 +955,22 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
 // standalone action runs through runStandalone instead, which takes no text.
 // `requestId` is the transcript row the selection lies in, when the engine
 // named one: the entry then keeps it (its origin), to go back to.
-async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string, surface?: RenderSurface) {
+async function run($: EngineInterface, def: ActionDef, lang: Lang, text: string, requestId?: string, from: RunFrom = {}) {
   const context = isContext(def)
   const origin: ResultOrigin | undefined = context || requestId === undefined ? undefined : { requestId }
-  const id = await begin(
-    $,
-    def,
-    lang,
-    context ? { target: 'context', quote: '' } : { target: 'selection', quote: quoteLine(text), ...(origin === undefined ? {} : { origin }) },
-    context ? undefined : pickedOf(text, requestId),
-  )
+  const head: EntryHead = context
+    ? { target: 'context', quote: '' }
+    : { target: 'selection', quote: quoteLine(text), ...(origin === undefined ? {} : { origin }) }
+  const picked = context ? undefined : pickedOf(text, requestId)
+  // An exec action opens its entry itself, once its checks and its approval are through.
+  if (def.kind === 'exec') {
+    await runExec($, def, lang, head, picked, context ? { target: 'context' } : { target: 'selection', text }, from)
+    return
+  }
+  const id = await begin($, def, lang, head, picked)
 
   if (def.kind === 'local') {
-    await runLocalAction($, def, lang, id, { text }, surface)
+    await runLocalAction($, def, lang, id, { text }, from.surface)
     return
   }
   if (def.kind === 'subagent') {
@@ -736,9 +1031,15 @@ const invalidArgText = (lang: Lang, id: string, typed: string, spec: ArgSpec): s
  * action's default is parsed here. The entry keeps the argument as typed, for
  * "again".
  */
-async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: GivenArg) {
+async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, given?: GivenArg, from: RunFrom = {}) {
   const t = MESSAGES[lang]
-  const id = await begin($, def, lang, { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteLine(given.raw), input: given.raw }) })
+  const head: EntryHead = { target: 'none', quote: '', ...(given === undefined ? {} : { arg: quoteLine(given.raw), input: given.raw }) }
+  // Its argument as typed is what its standard input gets (none: nothing).
+  if (def.kind === 'exec') {
+    await runExec($, def, lang, head, undefined, { target: 'none', arg: given?.value === undefined ? '' : String(given.value) }, from)
+    return
+  }
+  const id = await begin($, def, lang, head)
 
   let value: ArgValue | undefined = given?.value
   if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
@@ -788,24 +1089,24 @@ async function selectedText($: EngineInterface, lang: Lang): Promise<Picked | un
   return picked
 }
 
-async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, picked: Picked, surface?: RenderSurface) {
+async function runOnText($: EngineInterface, def: ActionDef, lang: Lang, picked: Picked, from: RunFrom = {}) {
   // Done with this selection: its icons go until another one is made. The
   // engine keeps answering it after a click elsewhere, so this is what hides them.
   await update($, dismissed, () => picked.text)
-  await run($, def, lang, picked.text, picked.requestId, surface)
+  await run($, def, lang, picked.text, picked.requestId, from)
 }
 
 /** Runs `def` on the text selected now; false (and a toast saying so) when there is none. */
-async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang, surface?: RenderSurface): Promise<boolean> {
+async function runOnSelection($: EngineInterface, def: ActionDef, lang: Lang, from: RunFrom = {}): Promise<boolean> {
   const picked = await selectedText($, lang)
   if (picked === undefined) return false
-  await runOnText($, def, lang, picked, surface)
+  await runOnText($, def, lang, picked, from)
   return true
 }
 
 /** A context action: on the conversation, with no selection to read. */
-async function runOnConversation($: EngineInterface, def: ActionDef, lang: Lang) {
-  await run($, def, lang, '')
+async function runOnConversation($: EngineInterface, def: ActionDef, lang: Lang, from: RunFrom = {}) {
+  await run($, def, lang, '', undefined, from)
 }
 
 /** The selection now, its text trimmed, with its row; null when there is none. No toast. */
@@ -1072,22 +1373,23 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, 
   const text = held?.text ?? null
   await update($, picking, p => (p === null ? p : { ...withoutPage(p), filter: '' }))
   if (def === undefined) return
+  const from = fromSurface(surface)
   // Standalone: run with no argument, the held text neither sent nor needed.
   if (isStandalone(def)) {
     if (text !== null) await update($, dismissed, () => text)
-    await runStandalone($, def, lang)
+    await runStandalone($, def, lang, undefined, from)
     return
   }
   if (isContext(def)) {
     if (text !== null) await update($, dismissed, () => text)
-    await runOnConversation($, def, lang)
+    await runOnConversation($, def, lang, from)
     return
   }
   if (text === null) {
     $.ui.toast(MESSAGES[lang].noSelection)
     return
   }
-  await runOnText($, def, lang, pickedOf(text, held?.requestId), surface)
+  await runOnText($, def, lang, pickedOf(text, held?.requestId), from)
 }
 
 export const register: Register = (on, options) => {
@@ -1133,6 +1435,21 @@ export const register: Register = (on, options) => {
   usageRecorded = () => {
     orderLoad.slot = {}
   }
+
+  // The exec gate (./exec checkExecGate): whether this load's exec
+  // definitions are the person's own and in their allowlist, checked once,
+  // by whichever hook needs it first (session.start starts it), and shared
+  // by every hook after, as the order is. With no exec definition it reads
+  // nothing and is settled at once, so the others draw as they always have.
+  // What it refuses is left off the hint line and the ⋯ dialog, and told
+  // with the problems of the setting (noticesOf); the run checks it again.
+  const execLoad: ExecLoad = { specs: custom.specs.flatMap(spec => (spec.kind === 'exec' ? [spec] : [])), setting: options.customActions }
+  currentExecLoad = execLoad
+  /** The problems and warnings to tell: the setting's, then the gate's. */
+  const noticesOf = (gate: ExecGateView) => (gate.problems.length === 0 ? custom : { problems: [...problems, ...gate.problems], warnings })
+  /** `list` without what the gate refused. */
+  const allowed = <D extends { id: string }>(gate: ExecGateView, list: readonly D[]): D[] =>
+    gate.rejected.size === 0 ? [...list] : list.filter(d => !gate.rejected.has(d.id))
 
   // Kept here, with this load's settings, rather than in a module-level cache
   // like actionsFor's: the custom definitions change with the setting, and
@@ -1218,20 +1535,22 @@ export const register: Register = (on, options) => {
     // them all. Not awaited, like the noSelection toast: a toast that is slow
     // or cannot show must hold up neither the icons nor the next handler.
     // Warnings alone (a definition kept, allowing something risky) get a toast of their own;
-    // with problems as well, the problems' toast stands for both.
-    const notice =
-      problems.length > 0
-        ? MESSAGES[l].customIgnoredToast(problems.length, problemLine(problems[0]!, l))
-        : warnings.length > 0
-          ? MESSAGES[l].customWarningToast(warnings.length, warningLine(warnings[0]!, l))
-          : undefined
-    if (notice !== undefined) {
-      void Promise.resolve()
-        .then(() => $.ui.toast(notice))
-        .catch(() => {
-          // The command's result still lists them.
-        })
-    }
+    // with problems as well, the problems' toast stands for both. The exec
+    // gate's problems count with the setting's, so the toast waits for it.
+    void ensureExecGate($, execLoad)
+      .then(gate => {
+        const notices = noticesOf(gate)
+        const notice =
+          notices.problems.length > 0
+            ? MESSAGES[l].customIgnoredToast(notices.problems.length, problemLine(notices.problems[0]!, l))
+            : notices.warnings.length > 0
+              ? MESSAGES[l].customWarningToast(notices.warnings.length, warningLine(notices.warnings[0]!, l))
+              : undefined
+        if (notice !== undefined) $.ui.toast(notice)
+      })
+      .catch(() => {
+        // The command's result still lists them.
+      })
 
     return next(e)
   })
@@ -1259,16 +1578,19 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     // Not while an AskUserQuestion dialog is up (see the tool.call hook).
     if ((await read($, asking)) > 0) return { text: t.askingUnavailable }
+    const gate = await ensureExecGate($, execLoad)
+    const notices = noticesOf(gate)
+    const from: RunFrom = { origin: e.origin.kind }
     const defs = defsFor(l)
     // The ID (lowercased) and, after the first space, its argument (as written).
     const { id: wanted, arg } = splitCommandArgs(e.args)
     // Without an ID: the ⋯ dialog, on the text selected now (with none, the context and standalone actions).
     if (wanted === '') {
       await openPanes($, l, 'picker', await pickedNow($), true)
-      return { text: withNotices(t.pickerOpened, custom, l) }
+      return { text: withNotices(t.pickerOpened, notices, l) }
     }
     // An argument nothing takes: told, and nothing runs (no pane, no use counted).
-    const refuse = (id: string, given: string) => ({ text: withNotices(t.argsNotAccepted(id, given), custom, l) })
+    const refuse = (id: string, given: string) => ({ text: withNotices(t.argsNotAccepted(id, given), notices, l) })
     // `hint`: the hint line, on the text selected now, held here while the
     // engine still answers it (see the poll in session.start).
     if (wanted === HINT_ARG) {
@@ -1277,21 +1599,23 @@ export const register: Register = (on, options) => {
       await update($, hint, () => ({ text: held?.text ?? null, ...(held?.requestId === undefined ? {} : { requestId: held.requestId }), armed: false }))
       await update($, hintKind, () => null)
       await update($, dismissed, () => null)
-      return { text: withNotices(t.hintOpened, custom, l) }
+      return { text: withNotices(t.hintOpened, notices, l) }
     }
-    const def = findAction(defs, wanted)
+    // An exec action the gate refused is defined, but cannot be run: told as one left out.
+    const found = findAction(defs, wanted)
+    const def = found === undefined || gate.rejected.has(found.id) ? undefined : found
     // Whatever the result, the custom definitions left out follow it, so this
     // command is where the person can always read why.
     if (def === undefined) {
       // Told once, as the command's result: why its definition was left out,
       // or else up to CANDIDATES actions the ID matches as the ⋯ dialog's
       // filter would (in its order, every kind), never the whole list.
-      const ignored = problemFor(problems, wanted)
-      if (ignored !== undefined) return { text: withNotices(t.customIgnoredId(wanted, reasonText(ignored.reason, l)), custom, l) }
-      const specs = (await ensureOrder($, orderLoad)).flatMap(id => specById.get(id) ?? [])
+      const ignored = problemFor(notices.problems, wanted)
+      if (ignored !== undefined) return { text: withNotices(t.customIgnoredId(wanted, reasonText(ignored.reason, l)), notices, l) }
+      const specs = allowed(gate, (await ensureOrder($, orderLoad)).flatMap(id => specById.get(id) ?? []))
       const laidOut = arrange(specs, pins, true, orderLoad.defaults)
       const candidates = filterActions(laidOut, wanted).slice(0, CANDIDATES).map(a => a.id)
-      return { text: withNotices(t.unknownId(wanted, candidates), custom, l) }
+      return { text: withNotices(t.unknownId(wanted, candidates), notices, l) }
     }
     if (isStandalone(def)) {
       // The argument is parsed once, here: invalid, it is refused before
@@ -1301,19 +1625,19 @@ export const register: Register = (on, options) => {
         const spec = argSpecOf(def)
         if (spec === undefined) return refuse(def.id, arg)
         const parsed = await parseInputArg($, l, def.id, spec, arg)
-        if (!parsed.ok) return { text: withNotices(parsed.error, custom, l) }
+        if (!parsed.ok) return { text: withNotices(parsed.error, notices, l) }
         given = parsed.given
       }
       // A selection there now is not used: its icons go, as after a press.
       const current = await selectionNow($)
       if (current !== null) await update($, dismissed, () => current)
-      await runStandalone($, def, l, given)
+      await runStandalone($, def, l, given, from)
     } else if (arg !== undefined) {
       return refuse(def.id, arg)
-    } else if (isContext(def)) await runOnConversation($, def, l)
-    else if (!(await runOnSelection($, def, l))) return { text: withNotices(t.noSelection, custom, l) }
+    } else if (isContext(def)) await runOnConversation($, def, l, from)
+    else if (!(await runOnSelection($, def, l, from))) return { text: withNotices(t.noSelection, notices, l) }
 
-    return { text: withNotices(t.showing(PANE_TITLE, def.label), custom, l) }
+    return { text: withNotices(t.showing(PANE_TITLE, def.label), notices, l) }
   })
 
   // The icons take the hint line under the prompt, a row that is always there:
@@ -1358,7 +1682,8 @@ export const register: Register = (on, options) => {
     const kind = hintKindFor(await read($, hintKind), text !== null)
     const kinds = HINT_KINDS.filter(k => k !== 'selection' || text !== null)
     // The order of the kinds that apply, pins first, of the kind shown.
-    const ordered = inOrder(await ensureOrder($, orderLoad), l)
+    // Less what the exec gate refused.
+    const ordered = allowed(await ensureExecGate($, execLoad), inOrder(await ensureOrder($, orderLoad), l))
     const candidates = ofKind(arrange(ordered, pins, text !== null, orderLoad.defaults), kind)
 
     // The line's width: the viewport's columns, which on the terminal are the
@@ -1426,16 +1751,17 @@ export const register: Register = (on, options) => {
         return
       }
       // Standalone: run with no argument; the selection (or held text) is not sent.
+      const from = fromSurface(e.surface)
       if (isStandalone(a)) {
         if (current !== null) await update($, dismissed, () => current)
-        await runStandalone($, a, l)
+        await runStandalone($, a, l, undefined, from)
       } else if (isContext(a)) {
         if (current !== null) await update($, dismissed, () => current)
-        await runOnConversation($, a, l)
+        await runOnConversation($, a, l, from)
       } else if (current !== null) {
-        await runOnSelection($, a, l, e.surface)
+        await runOnSelection($, a, l, from)
       } else if (text !== null) {
-        await run($, a, l, text, opened?.requestId, e.surface)
+        await run($, a, l, text, opened?.requestId, from)
       }
     }
     // What the ⋯ dialog opens on: the selection now with its row (as read
@@ -1580,12 +1906,14 @@ export const register: Register = (on, options) => {
     const t = MESSAGES[l]
     const state = await read($, picking)
     noteDock($, e, true, state !== null)
-    const all = inOrder(await ensureOrder($, orderLoad), l)
+    // Less what the exec gate refused.
+    const gate = await ensureExecGate($, execLoad)
+    const all = allowed(gate, inOrder(await ensureOrder($, orderLoad), l))
     const hasSelection = state !== null && state.text !== null
     // The kind listed (undefined: every kind), and what is listed of it in the
     // dialog's order; the filter searches that alone.
     const kind = pickerKindFor(state?.kind, hasSelection)
-    const ordered = pickerList(pickerOrder(all, defsFor(l), orderLoad.defaults.length > 0), hasSelection, kind)
+    const ordered = pickerList(pickerOrder(all, allowed(gate, defsFor(l)), orderLoad.defaults.length > 0), hasSelection, kind)
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     const style = paneStyle(paneTheme, e.props.placement)
@@ -1730,7 +2058,7 @@ export const register: Register = (on, options) => {
         })
         // As any pick of a standalone action: the held text is neither sent nor needed, its icons go.
         if (heldText !== null) await update($, dismissed, () => heldText)
-        await runStandalone($, argDef, l, parsed.given)
+        await runStandalone($, argDef, l, parsed.given, fromSurface(e.surface))
       }
       const back = { label: t.argBack, onPress: () => backToList($) }
       return (
@@ -1859,6 +2187,8 @@ export const register: Register = (on, options) => {
     const { Box, Text } = paneElements
     const input = canInput(e.surface, paneElements)
     noteDock($, e, true, (await read($, picking)) !== null)
+    // The setting's problems with the exec gate's (noticesOf).
+    const { problems: shownProblems } = noticesOf(await ensureExecGate($, execLoad))
     const list = await read($, results)
     const style = paneStyle(paneTheme, e.props.placement)
     /** What the entry's heading says it ran on. */
@@ -1915,12 +2245,12 @@ export const register: Register = (on, options) => {
     const again = async (r: Result, def: ActionDef) => {
       const spec = argSpecOf(def)
       if (spec === undefined || r.input === undefined) {
-        await runStandalone($, def, l)
+        await runStandalone($, def, l, undefined, fromSurface(e.surface))
         return
       }
       const parsed = await parseInputArg($, l, def.id, spec, r.input)
       if (parsed.ok) {
-        await runStandalone($, def, l, parsed.given)
+        await runStandalone($, def, l, parsed.given, fromSurface(e.surface))
         return
       }
       // Not expected (it parsed once): the new entry fails, saying why.
@@ -1953,10 +2283,10 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" {...painted(style)}>
-        {problems.length > 0 && (
+        {shownProblems.length > 0 && (
           <Box flexDirection="column" marginBottom={1}>
             <Text bold color={style.failed}>{t.customProblemsHeading}</Text>
-            {problems.map((p, i) => (
+            {shownProblems.map((p, i) => (
               <Text key={String(i)} color={style.failed}>- {problemLine(p, l)}</Text>
             ))}
           </Box>

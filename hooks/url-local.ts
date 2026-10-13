@@ -297,9 +297,9 @@ export function extractUrls(text: string): string[] {
   // bracket right before `(` and the next URL's scheme: `(https://a.example)(https://b.example)`
   // is two, each then trimmed of its unpaired `)`, and so does a closing quote
   // right before it: `'https://a.example'(https://b.example)` is two, the first
-  // trimmed of its unpaired `'` (one in a path, `it's(https://b.example)`, splits
-  // the same way). Only white space is put in, so each URL is still taken as
-  // written.
+  // trimmed of its unpaired `'` (one in a path right before `(` and the scheme,
+  // as in `https://a.example/x'(https://b.example)`, splits the same way). Only
+  // white space is put in, so each URL is still taken as written.
   const split = text
     .replaceAll('](', '] (')
     .replace(/,(?=https?:\/\/)/giu, ', ')
@@ -376,24 +376,28 @@ export function shownUrl(url: string): string {
 
 /**
  * A URL's authority (user info, host and port) as written, and where it
- * starts: from right after the first `//` up to the first of `/ ? # \`, the
- * characters URL reads as starting the path, query or fragment of an http(s)
- * URL. Undefined when there is no `//`.
+ * starts: from right after the first `//` up to the first of `/ ? #`. This is
+ * the authority as RFC 3986 reads it, and as macOS `open` (NSURL) does: unlike
+ * URL (WHATWG), which also ends an http(s) URL's authority at `\`, it reads
+ * `https://good.com\@evil.com/x` as user info `good.com\` and host `evil.com`.
+ * Taking the longer of the two readings, an `@` either of them sees as ending
+ * user info is one. Undefined when there is no `//`.
  */
 function authorityOf(url: string): { start: number; authority: string } | undefined {
   const slashes = url.indexOf('//')
   if (slashes < 0) return undefined
   const start = slashes + 2
   const rest = url.slice(start)
-  const authorityEnd = rest.search(/[/?#\\]/u)
+  const authorityEnd = rest.search(/[/?#]/u)
   return { start, authority: authorityEnd < 0 ? rest : rest.slice(0, authorityEnd) }
 }
 
 /**
  * The host (and port) `url` would actually open when it carries user info
- * (anything before an `@` in its authority, empty included), as written after
- * the authority's last `@`, as URL reads it: `https://good.com@evil.com` and
- * `https://good.com]@evil.com` give `evil.com`. Undefined when there is no
+ * (anything before an `@` in its authority, empty included; see authorityOf),
+ * as written after the authority's last `@`, up to a `\` if any:
+ * `https://good.com@evil.com`, `https://good.com]@evil.com` and
+ * `https://good.com\@evil.com/x` give `evil.com`. Undefined when there is no
  * user info (an `@` in the path, query or fragment is not one). User info is
  * how a URL shows one host and opens another, so open-urls never opens such a
  * URL, and both actions name the host it would open.
@@ -402,7 +406,25 @@ export function userInfoHost(url: string): string | undefined {
   const a = authorityOf(url)
   if (a === undefined) return undefined
   const at = a.authority.lastIndexOf('@')
-  return at < 0 ? undefined : a.authority.slice(at + 1)
+  if (at < 0) return undefined
+  const host = a.authority.slice(at + 1)
+  const backslash = host.indexOf('\\')
+  return backslash < 0 ? host : host.slice(0, backslash)
+}
+
+/**
+ * The host URL (WHATWG, as browsers read a URL) gives `url`, normalized
+ * (lowercased, an IPv4 address in dotted decimal, ...), when it is not the
+ * one userInfoHost names as written: `0x7f.1` for `https://good.com@0x7f.1` is
+ * `127.0.0.1`, and `https://good.com\@evil.com` is `good.com` to URL.
+ */
+function urlStandardHost(url: string, written: string): string | undefined {
+  try {
+    const host = new URL(url).host
+    return host === written.toLowerCase() ? undefined : host
+  } catch {
+    return undefined
+  }
 }
 
 const items = (lines: readonly string[]) => lines.map(l => `- ${l}`).join('\n')
@@ -411,7 +433,9 @@ const list = (urls: readonly string[]) => items(urls.map(shownUrl))
 /** One URL with user info as a result lists it: shown (password hidden), with the host it would actually open. */
 function userInfoItem(lang: Lang, url: string): string {
   const host = userInfoHost(url) ?? ''
-  return `${shownUrl(url)} — ${lang === 'ja' ? `実際に開かれるホスト: ${host}` : `the host it would actually open: ${host}`}`
+  const other = urlStandardHost(url, host)
+  const note = other === undefined ? '' : lang === 'ja' ? `（URL 標準での解釈: ${other}）` : ` (as the URL standard reads it: ${other})`
+  return `${shownUrl(url)} — ${lang === 'ja' ? `実際に開かれるホスト: ${host}` : `the host it would actually open: ${host}`}${note}`
 }
 
 const userInfoList = (lang: Lang, urls: readonly string[]) => items(urls.map(u => userInfoItem(lang, u)))

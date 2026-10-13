@@ -490,6 +490,15 @@ test('userInfoHost: the host after the authority\'s last `@` when there is user 
   for (const url of ['https://example.com/a@b', 'https://example.com/?u=a@b', 'https://example.com#a@b', 'https://example.com', 'https://example.com:8080/a@b', 'https://例え.テスト']) {
     expect(userInfoHost(url)).toBeUndefined()
   }
+  // A `\` before the `@`: URL (WHATWG) ends the authority there, but macOS
+  // `open` (NSURL, RFC 3986) does not, and opens the host after the `@`.
+  expect(userInfoHost('https://good.com\\@evil.com')).toBe('evil.com')
+  expect(userInfoHost('https://good.com\\@evil.com/x')).toBe('evil.com')
+  expect(userInfoHost('https://good.com\\x@evil.com:8080/p?q#f')).toBe('evil.com:8080')
+  expect(userInfoHost('https://a@good.com\\@evil.com')).toBe('evil.com')
+  for (const url of ['https://good.com\\evil.com', 'https://good.com\\?@evil.com', 'https://good.com\\/@evil.com', 'https://good.com\\#@evil.com']) {
+    expect(userInfoHost(url)).toBeUndefined()
+  }
   // As URL reads it: the host after the last `@`.
   for (const url of ['https://good.com@evil.com', 'https://good.com]@evil.com', 'https://a@b@evil.com:8080/p', 'https://user:pass@host.example/x']) {
     expect(userInfoHost(url)).toBe(new URL(url).host)
@@ -599,6 +608,32 @@ test('open-urls: a URL with user info is never opened, but withheld with the hos
     const out = run(openUrls, text)
     expect(out).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['https://good.com]@evil.com'] } })
   }
+  // `\` before `@`: what macOS `open` reads as user info is withheld too, with or without a path.
+  for (const held of ['https://good.com\\@evil.com', 'https://good.com\\@evil.com/x']) {
+    expect(extractUrls(`${held} https://a.example`)).toEqual([held, 'https://a.example'])
+    expect(run(openUrls, `${held} https://a.example`)).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: [held] } })
+  }
+})
+
+test('open-urls / copy-urls: `\\` before `@` names the host after `@`, and the host the URL standard reads too', () => {
+  expect(run(openUrls, 'https://good.com\\@evil.com/x', 'ja')).toEqual({
+    error: 'ユーザー情報（@ より前の部分）付きのため開かなかった URL（1 件）:\n- https://good.com\\@evil.com/x — 実際に開かれるホスト: evil.com（URL 標準での解釈: good.com）',
+  })
+  expect(run(openUrls, 'https://good.com\\@evil.com', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com\\@evil.com — the host it would actually open: evil.com (as the URL standard reads it: good.com)',
+  })
+  const urls = ['https://a.example', 'https://good.com\\@evil.com/x']
+  expect(run(copyUrls, urls.join(' '))).toEqual({ effect: { kind: 'copy', urls } })
+  expect(copyResultText('en', urls)).toBe(
+    'Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (1):\n- https://good.com\\@evil.com/x — the host it would actually open: evil.com (as the URL standard reads it: good.com)\n\nCopied 2 URLs to the clipboard, one per line:\n- https://a.example\n- https://good.com\\@evil.com/x',
+  )
+  // A host written otherwise than URL normalizes it: the normalized one is named too; none when they match.
+  expect(run(openUrls, 'https://good.com@0x7f.1', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com@0x7f.1 — the host it would actually open: 0x7f.1 (as the URL standard reads it: 127.0.0.1)',
+  })
+  expect(run(openUrls, 'https://good.com@EVIL.COM', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com@EVIL.COM — the host it would actually open: EVIL.COM',
+  })
 })
 
 test('open-urls: a selection whose URLs all carry user info opens nothing, and says why with the host each would open, in both languages', () => {
@@ -634,7 +669,7 @@ test('openResultText: the URLs withheld for their user info, after the outcomes 
 })
 
 test('open-urls: no URL with user info is ever among those opened or skipped, on random text', () => {
-  const pieces = ['https://', 'http://', 'a.b', 'good.com', 'evil.com', '@', ']', '[', ':', 'pw', '/', '?', '#', '\\', ' ', 'あ', "'", '(', ')', '-', '.']
+  const pieces = ['https://', 'http://', 'a.b', 'good.com', 'evil.com', '@', ']', '[', ':', 'pw', '/', '?', '#', '\\', '\\@', ' ', 'あ', "'", '(', ')', '-', '.']
   let seed = 98765
   const next = (n: number) => {
     seed = (seed * 1103515245 + 12345) % 2147483648
@@ -651,9 +686,18 @@ test('open-urls: no URL with user info is ever among those opened or skipped, on
     if ('effect' in out && out.effect.kind === 'open') {
       for (const u of [...out.effect.urls, ...out.effect.skipped]) expect({ text, u, host: userInfoHost(u) }).toEqual({ text, u, host: undefined })
       expect(out.effect.withheld).toEqual(withUserInfo)
-      // Each withheld URL names the host URL would actually connect to (as
-      // written: read back by URL, it is the URL's host).
-      for (const u of out.effect.withheld) expect(new URL(`${u.slice(0, u.indexOf('//') + 2)}${userInfoHost(u)}`).host).toBe(new URL(u).host)
+      // Each withheld URL names the host it would actually connect to (as
+      // written: read back by URL, it is the URL's host once each `\` in its
+      // user info is taken as part of it, as macOS `open` does).
+      for (const u of out.effect.withheld) {
+        const start = u.indexOf('//') + 2
+        const end = u.slice(start).search(/[/?#]|$/u) + start
+        const at = u.lastIndexOf('@', end - 1)
+        const asOpen = `${u.slice(0, start)}${u.slice(start, at).replaceAll('\\', '%5C')}${u.slice(at)}`
+        // (Undefined on both sides when what follows the `@` is no host at all.)
+        const hostOf = (s: string) => (URL.canParse(s) ? new URL(s).host : undefined)
+        expect({ u, host: hostOf(`${u.slice(0, start)}${userInfoHost(u)}`) }).toEqual({ u, host: hostOf(asOpen) })
+      }
     } else if (found.length > 0) {
       // Only when every URL carries user info: nothing opened, all withheld.
       expect(withUserInfo).toEqual(found)
@@ -692,6 +736,9 @@ test('runLocal: an effect of an action on the selection is handed on; of a stand
     { kind: 'open', urls: ['https://a.example'], skipped: [] },
     { kind: 'open', urls: ['https://good.com@evil.com'], skipped: [], withheld: [] },
     { kind: 'open', urls: ['https://a.example'], skipped: ['https://good.com@evil.com'], withheld: [] },
+    { kind: 'open', urls: ['https://good.com\\@evil.com'], skipped: [], withheld: [] },
+    { kind: 'open', urls: ['https://good.com\\@evil.com/x'], skipped: [], withheld: [] },
+    { kind: 'open', urls: ['https://a.example'], skipped: ['https://good.com\\@evil.com/x'], withheld: [] },
     { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['https://b.example'] },
     { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['javascript:alert(1)'] },
     { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: 'https://good.com@evil.com' },

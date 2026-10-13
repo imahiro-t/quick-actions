@@ -8,7 +8,9 @@
 //
 // - its definition is the person's own: the merged `customActions` is the
 //   very text of their user settings (~/.claude/settings.json), and no
-//   project, local or flag settings move HOME (scopeVerdict);
+//   project, local or flag settings move HOME or set a variable the dynamic
+//   loader reads (LD_*, DYLD_*), which could reach `/usr/bin/env` itself
+//   (scopeVerdict);
 // - the executable it lands on, every symbolic link followed, is written
 //   exactly so in the allowlist of their home (ALLOWLIST_RELATIVE), never one in
 //   the session's project, with its SHA-256 matching when the entry has one;
@@ -16,9 +18,19 @@
 //   their terminal (the approval is kept in the plugin's own $.store, which no
 //   setting can write); anything of the three changed asks again.
 //
+// - with `execOrigin: terminal` in the person's user settings, it is asked
+//   from their own hand: a press at the terminal or the command typed at the
+//   prompt (originRestricted), approved or not;
+// - fewer than EXEC_CONCURRENT_MAX exec actions are running in the session
+//   (takeSlot).
+//
 // It then runs through `/usr/bin/env -i` (the environment cut down to a few
 // variables), in the home directory, with a timeout, its output cut at a limit
-// and its hidden characters escaped as a model's answer's are.
+// and its hidden characters escaped as a model's answer's are. Each run is
+// kept in a short history ($.store, HISTORY_KEY): when, which action, what ran
+// and how it ended, never what it was given or what it wrote.
+// `/quick-actions exec-approvals` lists the approvals and the history, and
+// revokes approvals (approvalsListText).
 //
 // Everything here is pure (the checks, the argument vector, the texts) and
 // tested on its own: register.tsx reads the settings and the files, as only
@@ -30,6 +42,7 @@ import { MESSAGES } from './i18n'
 import type { Lang } from './i18n'
 import { showHiddenNoted } from './selection-local'
 import { sha256 } from './sha'
+import type { ExecSlot } from '../types'
 
 /** How long an exec action may run when its definition says nothing, in milliseconds. */
 export const EXEC_TIMEOUT_DEFAULT_MS = 30_000
@@ -61,8 +74,23 @@ export const EXEC_PATH = '/usr/bin:/bin:/usr/sbin:/sbin'
 /** The $.store key the approvals are kept under, by action ID. */
 export const APPROVALS_KEY = 'execApprovals'
 
-/** The settings sources other than the person's own whose `env` may not set HOME. */
+/**
+ * The settings sources other than the person's own whose `env` may set
+ * neither HOME nor a variable of the dynamic loader (LOADER_VARIABLE).
+ */
 export const HOME_SOURCES = ['project', 'local', 'flag'] as const
+
+/**
+ * The variables the dynamic loader reads (LD_PRELOAD, LD_LIBRARY_PATH,
+ * DYLD_INSERT_LIBRARIES and the like): set in a settings' `env`, they may
+ * reach `/usr/bin/env` itself as Claude Code starts it, before `-i` clears
+ * anything. Capitals only, as the loaders read them.
+ */
+export const LOADER_VARIABLE = /^(LD_|DYLD_)/
+
+/** The first name in `env` that LOADER_VARIABLE matches; undefined when none does. */
+export const loaderVariable = (env: Readonly<Record<string, unknown>>): string | undefined =>
+  Object.keys(env).find(name => LOADER_VARIABLE.test(name))
 
 // Control characters (NUL, ESC, newline, DEL, the C1 ones), the bidirectional
 // controls and the line and paragraph separators: none may be in a path, so
@@ -396,9 +424,56 @@ export function scopeVerdict(
   for (const settings of others) {
     if (settings === undefined) return { code: 'execScope', why: 'unreadable' }
     const env = settings['env']
-    if (isRecord(env) && Object.prototype.hasOwnProperty.call(env, 'HOME')) return { code: 'execScope', why: 'home' }
+    if (!isRecord(env)) continue
+    if (Object.prototype.hasOwnProperty.call(env, 'HOME')) return { code: 'execScope', why: 'home' }
+    const loader = loaderVariable(env)
+    if (loader !== undefined) return { code: 'execScope', why: 'loader', name: pathShown(loader) }
   }
   return undefined
+}
+
+/** The `execOrigin` value that keeps exec actions to the person's own hand. */
+export const EXEC_ORIGIN_TERMINAL = 'terminal'
+
+/** The `userConfig` field that sets it. */
+export const EXEC_ORIGIN_FIELD = 'execOrigin'
+
+/**
+ * Whether a `/config` change (config.set) would take execOrigin off
+ * `terminal` from other than the person in the menu (a plugin's
+ * `$.config.set`, the bridge): its key is `<plugin>.execOrigin` (or
+ * `<plugin>@<marketplace>.execOrigin`), its origin not `composer` and its
+ * value not `terminal`. A layer of defence only: what counts is the user
+ * settings read at each run (originRestricted).
+ */
+export function weakensExecOrigin(e: { key: string; value: unknown; origin: { kind: string } }, plugin: string): boolean {
+  const suffix = `.${EXEC_ORIGIN_FIELD}`
+  if (!e.key.endsWith(suffix)) return false
+  const owner = e.key.slice(0, -suffix.length)
+  if (owner !== plugin && !owner.startsWith(`${plugin}@`)) return false
+  return e.origin.kind !== 'composer' && e.value !== EXEC_ORIGIN_TERMINAL
+}
+
+/** `/quick-actions exec-approvals`: lists the approvals and the history, and revokes approvals. Reserved, as `hint` is. */
+export const EXEC_ADMIN_ARG = 'exec-approvals'
+
+/**
+ * Whether exec actions run only from the person's own hand (a press at the
+ * terminal, the command typed at the prompt): `execOrigin` is `terminal` in
+ * any entry of `plugin` (or `plugin@…`) in their user settings' `pluginConfigs`
+ * (`user`; undefined: not readable), or in the merged options (`merged`). The
+ * user settings decide it, so no project, local or flag settings can turn it
+ * off; any of them may still turn it on. User settings that cannot be read
+ * leave the merged value alone to decide (the exec gate refuses every exec
+ * definition then in any case).
+ */
+export function originRestricted(user: Readonly<Record<string, unknown>> | undefined, merged: unknown, plugin: string): boolean {
+  if (merged === EXEC_ORIGIN_TERMINAL) return true
+  if (user === undefined || !isRecord(user['pluginConfigs'])) return false
+  return Object.entries(user['pluginConfigs']).some(
+    ([key, v]) =>
+      (key === plugin || key.startsWith(`${plugin}@`)) && isRecord(v) && isRecord(v['options']) && v['options']['execOrigin'] === EXEC_ORIGIN_TERMINAL,
+  )
 }
 
 /** Whether `path` is `dir` or lies under it. */
@@ -473,3 +548,177 @@ export const unexpected = (err: unknown): CustomReason => ({
   code: 'unexpected',
   detail: err instanceof Error ? named(err.message).slice(0, 200) : 'exec',
 })
+
+// ---------------------------------------------------------------------------
+// How many run at once, and the history of what ran.
+
+/** The most exec actions running at once in one session: one more is refused (execBusy). */
+export const EXEC_CONCURRENT_MAX = 3
+/**
+ * How long past its timeout a slot is still held: a run ends at its timeout at
+ * the latest, so a slot held longer than that and this was never given back
+ * (its run dropped by a reload, say) and is let go.
+ */
+export const EXEC_SLOT_GRACE_MS = 30_000
+
+// A slot (ExecSlot, ../types) taken with the time unknown holds until 0:
+// counted until the time can be read again, then let go at once, even if its
+// run is still going, so a clock that cannot be read for a while may let the
+// limit be passed briefly. A rare case, and the run still ends at its timeout.
+export type { ExecSlot }
+
+/**
+ * `slots` with one more taken by `token`, when fewer than `max` are held:
+ * those whose time is past (`until <= now`) let go first. With `now` unknown,
+ * every slot counts (none is let go: the safe side) and the new one holds
+ * until 0 (see ExecSlot). `holdMs`: how long the run may take (its timeout
+ * and EXEC_SLOT_GRACE_MS). `taken`: whether it was.
+ */
+export function takeSlot(
+  slots: readonly ExecSlot[],
+  now: number | undefined,
+  token: string,
+  holdMs: number,
+  max: number,
+): { slots: ExecSlot[]; taken: boolean } {
+  const live = now === undefined ? [...slots] : slots.filter(slot => slot.until > now)
+  if (live.length >= max) return { slots: live, taken: false }
+  return { slots: [...live, { token, until: now === undefined ? 0 : now + holdMs }], taken: true }
+}
+
+/** `slots` without the one `token` took (the others, whoever took them, kept). */
+export const releaseSlot = (slots: readonly ExecSlot[], token: string): ExecSlot[] => slots.filter(slot => slot.token !== token)
+
+/** `slots` less those whose time is past; all kept with `now` unknown. */
+export const liveSlots = (slots: readonly ExecSlot[], now: number | undefined): ExecSlot[] =>
+  now === undefined ? [...slots] : slots.filter(slot => slot.until > now)
+
+/** The $.store key the history of exec runs is kept under. */
+export const HISTORY_KEY = 'execHistory'
+/** The most runs the history keeps: past it, the oldest go. */
+export const EXEC_HISTORY_MAX = 50
+/** The most of the fixed arguments (shownArgs) a history entry keeps, in UTF-16 code units. */
+export const HISTORY_ARGS_MAX = 500
+/** The most of where a run was asked from (fromName) a history entry keeps, in UTF-16 code units. */
+export const HISTORY_FROM_MAX = 40
+/** The most of the history `/quick-actions exec-approvals` lists, newest first. */
+export const HISTORY_LISTED = 20
+
+/** How a run ended: exit 0, another exit code, its timeout, or not started at all. */
+export type ExecOutcome = 'ok' | 'exit' | 'timeout' | 'notStarted'
+const OUTCOMES: readonly ExecOutcome[] = ['ok', 'exit', 'timeout', 'notStarted']
+
+/**
+ * One run as the history keeps it. `at`: when it started (ms since the epoch;
+ * 0 when the clock could not be read). `path`: the executable as it lands
+ * (pathShown: hidden characters named, at most 200 code units). `args`: its
+ * fixed arguments (shownArgs, at most HISTORY_ARGS_MAX). `from`: where it was
+ * asked from (fromName). What it was given and what it wrote are never kept.
+ */
+export type ExecHistoryEntry = {
+  at: number
+  id: string
+  path: string
+  args: string
+  result: ExecOutcome
+  exitCode?: number
+  from: string
+}
+
+/** One run as the history keeps it (ExecHistoryEntry), every field shown safe and cut to its limit. */
+export function historyEntry(p: {
+  at: number | undefined
+  id: string
+  realPath: string
+  args: readonly string[]
+  result: ExecOutcome
+  exitCode?: number
+  from: string
+}): ExecHistoryEntry {
+  return {
+    at: p.at !== undefined && Number.isSafeInteger(p.at) && p.at >= 0 ? p.at : 0,
+    id: cutText(named(p.id), 100).text,
+    path: pathShown(p.realPath),
+    args: cutText(shownArgs(p.args), HISTORY_ARGS_MAX).text,
+    result: p.result,
+    ...(p.result === 'exit' && p.exitCode !== undefined ? { exitCode: p.exitCode } : {}),
+    from: cutText(named(p.from), HISTORY_FROM_MAX).text,
+  }
+}
+
+/** The history as $.store holds it, oldest first: an entry not of ExecHistoryEntry's shape left out; at most EXEC_HISTORY_MAX, the newest. */
+export function parseHistory(value: unknown): ExecHistoryEntry[] {
+  if (!Array.isArray(value)) return []
+  const out: ExecHistoryEntry[] = []
+  for (const e of value) {
+    if (!isRecord(e)) continue
+    const { at, id, path, args, result, exitCode, from } = e
+    if (typeof at !== 'number' || !Number.isSafeInteger(at) || at < 0) continue
+    if (typeof id !== 'string' || typeof path !== 'string' || typeof args !== 'string' || typeof from !== 'string') continue
+    if (!OUTCOMES.includes(result as ExecOutcome)) continue
+    if (exitCode !== undefined && (typeof exitCode !== 'number' || !Number.isInteger(exitCode))) continue
+    out.push({ at, id, path, args, result: result as ExecOutcome, ...(typeof exitCode === 'number' ? { exitCode } : {}), from })
+  }
+  return out.slice(-EXEC_HISTORY_MAX)
+}
+
+/** `list` with `entry` after its last, the oldest gone past EXEC_HISTORY_MAX. */
+export const appendHistory = (list: readonly ExecHistoryEntry[], entry: ExecHistoryEntry): ExecHistoryEntry[] =>
+  [...list, entry].slice(-EXEC_HISTORY_MAX)
+
+/**
+ * Where a run was asked from, in a word for the history: the command's origin
+ * (composer, bridge, sdk, plugin, peer, scheduled-trigger, …) when it has one,
+ * else the surface pressed on (terminal, mobile, desktop, vscode), else
+ * `unknown`.
+ */
+export const fromName = (from: { surface?: string; origin?: string }): string =>
+  cutText(named(from.origin ?? from.surface ?? 'unknown'), HISTORY_FROM_MAX).text
+
+const two = (n: number) => String(n).padStart(2, '0')
+
+/** `ms` as the local `YYYY-MM-DD HH:MM:SS` (by `utcOffsetMinutes`); undefined for 0, the time not known. */
+export function localStamp(ms: number, utcOffsetMinutes: (ms: number) => number): string | undefined {
+  if (ms <= 0) return undefined
+  const d = new Date(ms + utcOffsetMinutes(ms) * 60_000)
+  if (Number.isNaN(d.getTime())) return undefined
+  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}`
+}
+
+/**
+ * What `/quick-actions exec-approvals` shows: whether execOrigin keeps exec
+ * actions to the person's own hand (`restricted`), every approval kept (by
+ * ID), then the newest HISTORY_LISTED runs, newest first, and how to revoke.
+ * Every value from $.store has its hidden characters named.
+ */
+export function approvalsListText(
+  lang: Lang,
+  approvals: Readonly<Record<string, ExecApproval>>,
+  history: readonly ExecHistoryEntry[],
+  restricted: boolean,
+  utcOffsetMinutes: (ms: number) => number,
+): string {
+  const t = MESSAGES[lang]
+  const lines = [t.execAdminOrigin(restricted), '']
+  const ids = Object.keys(approvals).sort()
+  if (ids.length === 0) lines.push(t.execAdminNoApprovals)
+  else {
+    lines.push(t.execAdminApprovals(ids.length))
+    for (const id of ids) {
+      const a = approvals[id]!
+      lines.push(`- ${t.execAdminApprovalLine(cutText(named(id), 100).text, pathShown(a.path), cutText(shownArgs(a.args), HISTORY_ARGS_MAX).text, named(a.sha256.slice(0, 12)))}`)
+    }
+  }
+  lines.push('')
+  if (history.length === 0) lines.push(t.execAdminNoHistory)
+  else {
+    const shown = history.slice(-HISTORY_LISTED).reverse()
+    lines.push(t.execAdminHistory(shown.length, history.length))
+    for (const e of shown) {
+      const when = localStamp(e.at, utcOffsetMinutes) ?? t.execAdminUnknownTime
+      lines.push(`- ${t.execAdminHistoryLine(when, named(e.id), named(e.path), t.execAdminOutcome(e.result, e.exitCode), named(e.from))}`)
+    }
+  }
+  lines.push('', t.execAdminUsage)
+  return lines.join('\n')
+}

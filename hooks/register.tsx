@@ -31,31 +31,45 @@ import { definitionIndex, displaySafe, parseCustomActions, problemFor, problemLi
 import type { CustomProblem, CustomReason } from './custom'
 import {
   APPROVALS_KEY,
+  EXEC_ADMIN_ARG,
+  EXEC_CONCURRENT_MAX,
   EXEC_FILE_MAX,
+  EXEC_SLOT_GRACE_MS,
   EXEC_STDIN_MAX,
+  HISTORY_KEY,
   HOME_SOURCES,
   NO_GATE,
   allowlistOf,
   allowlistPath,
   allowlistPlace,
+  appendHistory,
   approvalQuestion,
+  approvalsListText,
   buildInvocation,
   conversationInput,
   execFailureText,
   execOutputText,
+  fromName,
   gateAll,
   hashOf,
+  historyEntry,
   isTimeout,
+  liveSlots,
   locate,
+  originRestricted,
   parseApprovals,
+  parseHistory,
   pathShown,
+  releaseSlot,
   sameApproval,
   scopeVerdict,
+  takeSlot,
   unexpected,
   usableHome,
   utf8Length,
+  weakensExecOrigin,
 } from './exec'
-import type { Allowlist, ExecApproval, ExecGateResult, ExecHostEnv, Located, StatSeen } from './exec'
+import type { Allowlist, ExecApproval, ExecGateResult, ExecHistoryEntry, ExecHostEnv, Located, StatSeen } from './exec'
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
@@ -238,6 +252,10 @@ const picking = atom({ plugin: 'quick-actions', key: 'picking' } as const, null)
 const hint = atom({ plugin: 'quick-actions', key: 'hint' } as const, null)
 const hintKind = atom({ plugin: 'quick-actions', key: 'hintKind' } as const, null)
 const asking = atom({ plugin: 'quick-actions', key: 'asking' } as const, 0)
+// The exec actions running now, a slot each (./exec takeSlot): kept with the
+// session rather than in the module, so a reload (an option changed) does not
+// forget the runs still going.
+const execSlots = atom({ plugin: 'quick-actions', key: 'execSlots' } as const, [])
 
 // The language: settled in register when the setting names one; for `auto`,
 // by the first hook that needs it, whichever event comes first, and once only.
@@ -699,14 +717,18 @@ const canApprove = (from: RunFrom) => from.surface === 'terminal' || from.origin
 /** What the exec gate refused, by action ID, and the problems it tells (the refused definitions, then the allowlist's entries left out). */
 type ExecGateView = { rejected: ReadonlyMap<string, CustomReason>; problems: readonly CustomProblem[] }
 
-/** What one load's exec gate checks (its exec definitions, the setting as merged) and where its answer is kept. */
-type ExecLoad = { specs: readonly ExecAction<unknown>[]; setting: unknown; pending?: Promise<ExecGateView> }
+/**
+ * What one load's exec gate checks (its exec definitions, the setting as
+ * merged) and where its answer is kept; with the merged `execOrigin`, which
+ * each run reads with the user settings (./exec originRestricted).
+ */
+type ExecLoad = { specs: readonly ExecAction<unknown>[]; setting: unknown; execOrigin: unknown; pending?: Promise<ExecGateView> }
 
 const NO_GATE_VIEW: ExecGateView = { rejected: NO_GATE.rejected, problems: [] }
 
 // The exec gate of the load running now, set by register, as usageRecorded
 // is: a run checks it again. Before any load, nothing is exec.
-let currentExecLoad: ExecLoad = { specs: [], setting: undefined }
+let currentExecLoad: ExecLoad = { specs: [], setting: undefined, execOrigin: undefined }
 
 /** Whether the host is Windows, for the exec gate. Never rejects. */
 async function isWindows($: EngineInterface): Promise<boolean> {
@@ -809,21 +831,93 @@ async function gateOf($: EngineInterface, load: ExecLoad): Promise<ExecGateView>
   }
 }
 
-// The approvals are read, added to and written back one at a time, as the
-// usage scores are, so two approved close together never lose one.
-let approvalWrite: Promise<void> = Promise.resolve()
+// The approvals and the history are read, changed and written back one at a
+// time, as the usage scores are, so two approved, run or revoked close
+// together never lose one.
+let execStoreWrite: Promise<unknown> = Promise.resolve()
+
+/** `work` run after every earlier one of the queue: what it resolves to, or undefined when it rejected. Never rejects. */
+function inExecStoreQueue<T>(work: () => Promise<T>): Promise<T | undefined> {
+  const done = execStoreWrite.then(work).catch(() => undefined)
+  execStoreWrite = done
+  return done
+}
 
 /** Keeps `approval` for the action `id` in $.store. Never rejects: unsaved, it is asked again next time. */
-function saveApproval($: EngineInterface, id: string, approval: ExecApproval): Promise<void> {
-  approvalWrite = approvalWrite.then(async () => {
-    try {
-      const kept = parseApprovals(await $.store.get(APPROVALS_KEY))
-      await $.store.set(APPROVALS_KEY, { ...kept, [id]: { path: approval.path, args: [...approval.args], sha256: approval.sha256 } })
-    } catch {
-      // Not kept: the next run asks again.
-    }
+async function saveApproval($: EngineInterface, id: string, approval: ExecApproval): Promise<void> {
+  // Not kept: the next run asks again.
+  await inExecStoreQueue(async () => {
+    const kept = parseApprovals(await $.store.get(APPROVALS_KEY))
+    await $.store.set(APPROVALS_KEY, { ...kept, [id]: { path: approval.path, args: [...approval.args], sha256: approval.sha256 } })
   })
-  return approvalWrite
+}
+
+/** Adds one run to the history in $.store (./exec appendHistory). Never rejects: unsaved, it is simply not listed. */
+async function recordRun($: EngineInterface, entry: ExecHistoryEntry): Promise<void> {
+  await inExecStoreQueue(async () => {
+    await $.store.set(HISTORY_KEY, appendHistory(parseHistory(await $.store.get(HISTORY_KEY)), entry))
+  })
+}
+
+/**
+ * Removes the approval of the action `id` from $.store, or every approval
+ * (`id` null): how many were removed; undefined when the store could not be
+ * read or written. A run after that asks again (sameApproval fails).
+ */
+async function revokeApprovals($: EngineInterface, id: string | null): Promise<number | undefined> {
+  return inExecStoreQueue(async () => {
+    const kept = parseApprovals(await $.store.get(APPROVALS_KEY))
+    if (id === null) {
+      await $.store.set(APPROVALS_KEY, {})
+      return Object.keys(kept).length
+    }
+    if (!Object.prototype.hasOwnProperty.call(kept, id)) return 0
+    const { [id]: _gone, ...rest } = kept
+    await $.store.set(APPROVALS_KEY, rest)
+    return 1
+  })
+}
+
+/** A config.set that would take execOrigin off `terminal` from other than the person (./exec weakensExecOrigin): its refusal; else undefined. */
+async function execOriginGuard($: EngineInterface, e: { key: string; value: unknown; origin: { kind: string } }): Promise<{ deny: string } | undefined> {
+  if (!weakensExecOrigin(e, PLUGIN)) return undefined
+  return { deny: MESSAGES[await ensureLanguage($)].execOriginConfigDenied }
+}
+
+/** Whether exec actions are kept to the person's own hand now (./exec originRestricted), the user settings read afresh. */
+async function execOriginRestricted($: EngineInterface, load: ExecLoad): Promise<boolean> {
+  return originRestricted(await settingsOf($, 'user'), load.execOrigin, PLUGIN)
+}
+
+/**
+ * `/quick-actions exec-approvals [revoke <id> | revoke --all]`: with no
+ * argument, the approvals and the history (./exec approvalsListText), shown
+ * only to the person's own hand while execOrigin is on, since they tell what
+ * runs; `revoke` from anywhere, as it only takes away. Anything else: how to
+ * write it, nothing changed.
+ */
+async function execAdmin($: EngineInterface, l: Lang, arg: string | undefined, from: RunFrom, load: ExecLoad): Promise<string> {
+  const t = MESSAGES[l]
+  if (arg === undefined) {
+    const restricted = await execOriginRestricted($, load)
+    if (restricted && !canApprove(from)) return reasonText({ code: 'execOrigin' }, l)
+    const approvals = parseApprovals(await readQuietly($.store.get(APPROVALS_KEY)))
+    const history = parseHistory(await readQuietly($.store.get(HISTORY_KEY)))
+    return approvalsListText(l, approvals, history, restricted, utcOffsetMinutes)
+  }
+  const words = arg.split(/\s+/)
+  if (words.length !== 2 || words[0]!.toLowerCase() !== 'revoke') return t.execAdminBadArgs(displaySafe(arg))
+  const target = words[1]!
+  if (target === '--all') {
+    const count = await revokeApprovals($, null)
+    return count === undefined ? t.execAdminFailed : t.execAdminRevokedAll(count)
+  }
+  // Action IDs are lowercase, as the command takes them.
+  const id = target.toLowerCase()
+  const shown = displaySafe(id)
+  const count = await revokeApprovals($, id)
+  if (count === undefined) return t.execAdminFailed
+  return count === 0 ? t.execAdminNotApproved(shown) : t.execAdminRevoked(shown)
 }
 
 /** What an exec action works on: the selected text, the conversation (read as it starts) or a standalone one's argument. */
@@ -834,7 +928,8 @@ type ExecReady = { realPath: string; size: number; sha256: string }
 
 /**
  * Every check before an exec action runs, in order, the first that fails its
- * reason: not Windows; not refused by this load's gate; the allowlist read
+ * reason: not Windows; not refused by this load's gate; asked from the
+ * person's own hand, when execOrigin says so; the allowlist read
  * again and the command's landing path in it; that file's SHA-256 the
  * entry's, when it has one; and approved for that path, those arguments and
  * that SHA-256 (asked now, at the person's terminal alone, when it is not).
@@ -843,6 +938,9 @@ async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from
   if (await isWindows($)) return { code: 'execUnsupported' }
   const gated = (await ensureExecGate($, currentExecLoad)).rejected.get(def.id)
   if (gated !== undefined) return gated
+  // Approved or not, only from the person's own hand while execOrigin is on;
+  // read each run, so a change of the user settings counts from the next one.
+  if (!canApprove(from) && (await execOriginRestricted($, currentExecLoad))) return { code: 'execOrigin' }
   const list = await loadAllowlist($)
   if ('code' in list) return list
   const located = await locateExec($, def.command, list.entries)
@@ -894,7 +992,8 @@ async function execStdin($: EngineInterface, input: ExecInput): Promise<string |
  * An exec action (./exec), from any of the three kinds. Its checks and its
  * approval come first, before its entry opens, as the approval's dialog puts
  * the pane away (see the tool.call hook): refused, the entry opens failed,
- * saying why, and a toast says so too. Then, right before it starts, its
+ * saying why, and a toast says so too. Then a slot of EXEC_CONCURRENT_MAX:
+ * none free, refused the same way. Then, right before it starts, its
  * SHA-256 is read again (a change meanwhile is not run), and it runs with no
  * shell, what it works on given on its standard input alone. Exit 0: its
  * output; any other, the code and its standard error; the timeout or a start
@@ -918,6 +1017,73 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
     await refuse(ready)
     return
   }
+  // A slot of EXEC_CONCURRENT_MAX, taken once the checks and the approval are
+  // through (a dialog waiting holds none) and given back however the run ends.
+  const token = await takeExecSlot($, def.timeoutMs)
+  if (token === undefined) {
+    await refuse({ code: 'execBusy', max: EXEC_CONCURRENT_MAX })
+    return
+  }
+  try {
+    await runExecReady($, def, lang, head, picked, input, from, ready, refuse)
+  } finally {
+    await giveExecSlotBack($, token)
+  }
+}
+
+// Each slot's token is its own, whatever load took it: a reload starts the
+// count again, so the time and a random part keep two apart.
+let slotCount = 0
+
+/**
+ * Takes a slot for a run of at most `timeoutMs` (./exec takeSlot), those past
+ * their time let go first: its token, or undefined when EXEC_CONCURRENT_MAX
+ * are held (or the slots could not be read: the safe side).
+ */
+async function takeExecSlot($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+  const now = await readQuietly($.clock.now())
+  const token = `${now ?? 0}-${++slotCount}-${Math.random()}`
+  let taken = false
+  try {
+    // The change may be tried more than once (update writes with ifVersion):
+    // the try that was written is the last, so its answer is the one kept.
+    await update($, execSlots, slots => {
+      const r = takeSlot(slots ?? [], now, token, timeoutMs + EXEC_SLOT_GRACE_MS, EXEC_CONCURRENT_MAX)
+      taken = r.taken
+      return r.slots
+    })
+  } catch {
+    return undefined
+  }
+  return taken ? token : undefined
+}
+
+/** Gives the slot `token` took back. Never rejects: one not given back is let go at its time (./exec takeSlot). */
+async function giveExecSlotBack($: EngineInterface, token: string): Promise<void> {
+  try {
+    await update($, execSlots, slots => releaseSlot(slots ?? [], token))
+  } catch {
+    // Let go at its time.
+  }
+}
+
+/**
+ * The run of an exec action whose checks are through (runExec), its slot
+ * held: its entry opened, its SHA-256 read again, then run, and kept in the
+ * history however it ended once started (recordRun). Never leaves the entry running.
+ */
+async function runExecReady(
+  $: EngineInterface,
+  def: ExecAction,
+  lang: Lang,
+  head: EntryHead,
+  picked: Picked | undefined,
+  input: ExecInput,
+  from: RunFrom,
+  ready: ExecReady,
+  refuse: (reason: CustomReason, entry?: number) => Promise<void>,
+) {
+  const t = MESSAGES[lang]
   const id = await begin($, def, lang, head, picked)
   try {
     const hash = await hashExec($, ready.realPath, ready.size)
@@ -930,6 +1096,9 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
     const invocation = buildInvocation({ realPath: ready.realPath, args: def.args, env, target: input.target, lang, stdin })
     if (invocation === undefined) return await refuse({ code: 'execPath', field: 'realPath', path: pathShown(ready.realPath) }, id)
     const startedAt = await readQuietly($.clock.now())
+    // What the history keeps of this run: never what it was given or wrote.
+    const record = (result: ExecHistoryEntry['result'], exitCode?: number) =>
+      recordRun($, historyEntry({ at: startedAt, id: def.id, realPath: ready.realPath, args: def.args, result, ...(exitCode === undefined ? {} : { exitCode }), from: fromName(from) }))
     let r: Awaited<ReturnType<EngineInterface['process']['run']>>
     try {
       r = await $.process.run(invocation.argv, { cwd: invocation.cwd, stdin: invocation.stdin, timeoutMs: def.timeoutMs })
@@ -937,12 +1106,15 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
       const endedAt = await readQuietly($.clock.now())
       const elapsed = startedAt === undefined || endedAt === undefined ? 0 : endedAt - startedAt
       const message = messageOf(err)
-      const why = isTimeout(message, elapsed, def.timeoutMs) ? t.execTimeout(Math.round(def.timeoutMs / 1000)) : t.execNotStarted(displaySafe(message))
+      const timedOut = isTimeout(message, elapsed, def.timeoutMs)
+      const why = timedOut ? t.execTimeout(Math.round(def.timeoutMs / 1000)) : t.execNotStarted(displaySafe(message))
       await settle($, id, false, t.failed(why))
+      await record(timedOut ? 'timeout' : 'notStarted')
       return
     }
     const ok = r.exitCode === 0
     await settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang, { stdoutCut: r.isStdoutTruncated, stderrCut: r.isStderrTruncated }))
+    await record(ok ? 'ok' : 'exit', ok ? undefined : r.exitCode)
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(displaySafe(messageOf(err))))
@@ -1397,7 +1569,7 @@ export const register: Register = (on, options) => {
   // Options change reloads the module, so reading the settings once here is
   // enough. The custom definitions join the built-ins after them; one that is
   // invalid is left out, with its reason kept in `problems` to show the person.
-  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close', HINT_ARG])
+  const custom = parseCustomActions(options.customActions, [...ACTIONS.map(a => a.id), 'close', HINT_ARG, EXEC_ADMIN_ARG])
   const problems = custom.problems
   const warnings = custom.warnings
   const allSpecs: readonly ActionSpec[] = [...ACTIONS, ...custom.specs]
@@ -1444,7 +1616,11 @@ export const register: Register = (on, options) => {
   // nothing and is settled at once, so the others draw as they always have.
   // What it refuses is left off the hint line and the ⋯ dialog, and told
   // with the problems of the setting (noticesOf); the run checks it again.
-  const execLoad: ExecLoad = { specs: custom.specs.flatMap(spec => (spec.kind === 'exec' ? [spec] : [])), setting: options.customActions }
+  const execLoad: ExecLoad = {
+    specs: custom.specs.flatMap(spec => (spec.kind === 'exec' ? [spec] : [])),
+    setting: options.customActions,
+    execOrigin: options.execOrigin,
+  }
   currentExecLoad = execLoad
   /** The problems and warnings to tell: the setting's, then the gate's. */
   const noticesOf = (gate: ExecGateView) => (gate.problems.length === 0 ? custom : { problems: [...problems, ...gate.problems], warnings })
@@ -1538,6 +1714,14 @@ export const register: Register = (on, options) => {
     // Warnings alone (a definition kept, allowing something risky) get a toast of their own;
     // with problems as well, the problems' toast stands for both. The exec
     // gate's problems count with the setting's, so the toast waits for it.
+    // The slots of runs a session before this one never gave back, past their time, let go.
+    const now = await readQuietly($.clock.now())
+    try {
+      await update($, execSlots, slots => liveSlots(slots ?? [], now))
+    } catch {
+      // Let go at the next run's taking instead.
+    }
+
     void ensureExecGate($, execLoad)
       .then(gate => {
         const notices = noticesOf(gate)
@@ -1574,6 +1758,16 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // execOrigin taken off `terminal` by other than the person in /config (a
+  // plugin's $.config.set, the bridge): refused. A layer of defence alone,
+  // which neither a hook of another plugin running first nor a settings file
+  // written directly passes through: what holds is that each run reads the
+  // user settings (./exec originRestricted).
+  // Failed before passing it on (the language not read, say): refused all the same, in English.
+  on('config.set', async ($, e, next) => (await execOriginGuard($, e)) ?? next(e)).catch(($, e, next) =>
+    next.called ? next(e) : weakensExecOrigin(e, PLUGIN) ? { deny: MESSAGES.en.execOriginConfigDenied } : next(e),
+  )
+
   on('command.run', { command: COMMAND }, async ($, e) => {
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
@@ -1602,6 +1796,8 @@ export const register: Register = (on, options) => {
       await update($, dismissed, () => null)
       return { text: withNotices(t.hintOpened, notices, l) }
     }
+    // `exec-approvals`: the exec approvals and history listed, or approvals revoked.
+    if (wanted === EXEC_ADMIN_ARG) return { text: withNotices(await execAdmin($, l, arg, from, execLoad), notices, l) }
     // An exec action the gate refused is defined, but cannot be run: told as one left out.
     const found = findAction(defs, wanted)
     const def = found === undefined || gate.rejected.has(found.id) ? undefined : found

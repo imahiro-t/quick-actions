@@ -15,8 +15,15 @@
     "customActions": {
       "type": "string",
       "title": "Custom actions",
-      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete, subagent or exec, taking an optional text argument). kind exec runs a local executable with no shell, what it works on given on its standard input: only when written in your user settings, listed in ~/.claude/quick-actions/allowed-executables.json and approved by you once at the terminal. Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in pinActions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
+      "description": "JSON array of your own action definitions (see README); target selection (the default), context or none (standalone: complete, subagent or exec, taking an optional text argument). kind exec runs a local executable with no shell, what it works on given on its standard input: only when written in your user settings, listed in ~/.claude/quick-actions/allowed-executables.json and approved by you once at the terminal (list or revoke approvals with /quick-actions exec-approvals; set execOrigin to terminal to refuse runs asked from anywhere else). Valid ones join the hint line (in the order you use them) and the ⋯ dialog; put their IDs in pinActions to pin them at the front. Invalid definitions are ignored with a warning; run /quick-actions to see why.",
       "default": ""
+    },
+    "execOrigin": {
+      "type": "string",
+      "title": "Exec origin",
+      "description": "Where approved exec actions (customActions of kind exec) may be run from: anywhere (the default) or terminal (only a press at your own terminal or /quick-actions <id> typed at its prompt; runs asked from the mobile or desktop app, an IDE, Remote Control, the SDK, another plugin, another session or a schedule are refused, approved or not). terminal takes effect when written in your user settings (~/.claude/settings.json); project, local or --settings settings cannot turn it off, and a change away from terminal is refused unless you make it in /config.",
+      "options": ["anywhere", "terminal"],
+      "default": "anywhere"
     },
     "language": {
       "type": "string",

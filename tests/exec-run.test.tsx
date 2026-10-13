@@ -3,7 +3,17 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { utf8Encode } from '../hooks/codec'
-import { ALLOWLIST_RELATIVE, APPROVALS_KEY, ENV_BIN, EXEC_PATH, EXEC_TIMEOUT_DEFAULT_MS } from '../hooks/exec'
+import {
+  ALLOWLIST_RELATIVE,
+  APPROVALS_KEY,
+  ENV_BIN,
+  EXEC_CONCURRENT_MAX,
+  EXEC_HISTORY_MAX,
+  EXEC_PATH,
+  EXEC_SLOT_GRACE_MS,
+  EXEC_TIMEOUT_DEFAULT_MS,
+  HISTORY_KEY,
+} from '../hooks/exec'
 import { MESSAGES } from '../hooks/i18n'
 import { sha256 } from '../hooks/sha'
 import { BAND, EN, EVERY_ACTION_FITS, JA, PANE, PICKER_PANE, PLUGIN, defaultProcessAnswer, execWorld, hintIcons, listedActions, runCommand, showKind, stage, start } from './stage'
@@ -582,4 +592,360 @@ test('static and gate problems together: the toast counts both', { options: { ..
   expect(s.toasts).toHaveLength(1)
   expect(s.toasts[0]).toContain('2 problem(s)')
   expect(s.toasts[0]).toContain('#1 (p): a definition of kind exec cannot have prompt')
+})
+
+// ---------------------------------------------------------------------------
+// SELM-00120: the dynamic loader's variables, where a run may be asked from
+// (execOrigin), how many run at once, the history and `/quick-actions exec-approvals`
+
+const fromAfar = (kind: 'bridge' | 'sdk' | 'peer' | 'scheduled-trigger' | 'task-notification', args: string) =>
+  ({ command: PLUGIN, args, origin: { kind }, presentation: { isFullscreen: true, columns: 120 } }) as const
+const fromPlugin = (args: string) => ({ command: PLUGIN, args, origin: { kind: 'plugin', name: 'other' }, presentation: { isFullscreen: true, columns: 120 } }) as const
+
+/** The user settings that hold SETTING and `execOrigin`. */
+const userWithOrigin = (execOrigin: string) => ({ pluginConfigs: { [`${PLUGIN}@market`]: { options: { customActions: SETTING, execOrigin } } } })
+
+test('a loader variable in the project settings: exec off, on neither the hint line nor the dialog, the command says why, nothing runs', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s, w } = setUp(on)
+  s.sourceSettings.project = { env: { LD_PRELOAD: '/repo/evil.so' } }
+  await start($)
+  s.selected = 'abc'
+  await clock.advance(400)
+  const reason = t.customReason({ code: 'execScope', why: 'loader', name: 'LD_PRELOAD' })
+  expect(s.toasts[0]).toContain(reason)
+  await runCommand($, '')
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal' })
+  expect(await listedActions(picker)).not.toContain('upper')
+  const r = await runCommand($, 'upper')
+  expect(JSON.stringify(r)).toContain(JSON.stringify(t.customIgnoredId('upper', reason)).slice(1, -1))
+  await clock.settle()
+  expect(w.asked).toEqual([])
+  expect(execRuns(s)).toEqual([])
+})
+
+test('a DYLD_ variable in the flag settings: exec off the same way', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.sourceSettings.flag = { env: { DYLD_INSERT_LIBRARIES: '/tmp/x.dylib' } }
+  await start($)
+  const r = await runCommand($, 'free')
+  await clock.settle()
+  expect(JSON.stringify(r)).toContain(t.customReason({ code: 'execScope', why: 'loader', name: 'DYLD_INSERT_LIBRARIES' }))
+  expect(execRuns(s)).toEqual([])
+})
+
+test('execOrigin terminal in the user settings: approved, still refused from anywhere but the terminal and the prompt', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s, w } = setUp(on)
+  s.sourceSettings.user = userWithOrigin('terminal')
+  await start($)
+  // Approved at the prompt, and run.
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(w.asked).toHaveLength(1)
+  expect(execRuns(s)).toHaveLength(1)
+  const reason = t.customReason({ code: 'execOrigin' })
+  for (const kind of ['bridge', 'sdk', 'peer', 'scheduled-trigger', 'task-notification'] as const) {
+    s.toasts = []
+    await $.command.run(fromAfar(kind, 'free'))
+    await clock.settle()
+    expect(execRuns(s)).toHaveLength(1)
+    expect(s.toasts.some(x => x.includes(reason))).toBe(true)
+  }
+  await $.command.run(fromPlugin('free'))
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+  expect((await paneTexts($)).join('\n')).toContain(reason)
+
+  // A press on the mobile app's or the desktop app's hint line: refused too.
+  for (const surface of ['mobile', 'desktop'] as const) {
+    await runCommand($, 'hint')
+    const band = await $.ui.mount({ ...BAND, surface, viewport: EVERY_ACTION_FITS })
+    await showKind(band, 'standalone')
+    await band.press({ key: 'free' })
+    await clock.settle()
+    await band.unmount()
+  }
+  expect(execRuns(s)).toHaveLength(1)
+
+  // A press at the terminal, and the prompt: run, no question asked again.
+  await runCommand($, 'hint')
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
+  await showKind(band, 'context')
+  await band.press({ key: 'talk' })
+  await clock.settle()
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(3)
+  expect(w.asked).toHaveLength(2)
+})
+
+test('execOrigin terminal in the user settings: another settings file merging anywhere does not lift it', { options: { ...OPTIONS, execOrigin: 'anywhere' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.sourceSettings.user = userWithOrigin('terminal')
+  s.sourceSettings.project = { pluginConfigs: { [`${PLUGIN}@market`]: { options: { execOrigin: 'anywhere' } } } }
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  await $.command.run(fromAfar('bridge', 'free'))
+  await clock.settle()
+  expect(execRuns(s)).toEqual([])
+  expect((await paneTexts($)).join('\n')).toContain(t.customReason({ code: 'execOrigin' }))
+})
+
+test('execOrigin terminal merged from another settings file alone: on as well', { options: { ...OPTIONS, execOrigin: 'terminal' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  await $.command.run(fromAfar('sdk', 'free'))
+  await clock.settle()
+  expect(execRuns(s)).toEqual([])
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+})
+
+test('execOrigin read at each run: turned on in the user settings mid-session, the next run from afar is refused', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  await $.command.run(fromAfar('bridge', 'free'))
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+  s.sourceSettings.user = userWithOrigin('terminal')
+  await $.command.run(fromAfar('bridge', 'free'))
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+})
+
+test('config.set: execOrigin taken off terminal by another plugin or the bridge is refused; by the person in /config, or to terminal, it goes through', { options: OPTIONS }, async ($, on) => {
+  on('config.set', (_$, e) => ({ value: e.value }))
+  setUp(on)
+  await start($)
+  const set = (key: string, value: string, origin: { kind: 'composer' } | { kind: 'bridge' } | { kind: 'plugin'; name: string }) =>
+    $.config.set({ key, value, previous: 'terminal', provider: { plugin: PLUGIN, tier: 'user' }, origin })
+  const denied = { deny: t.execOriginConfigDenied }
+  expect(await set(`${PLUGIN}.execOrigin`, 'anywhere', { kind: 'plugin', name: 'other' })).toEqual(denied)
+  expect(await set(`${PLUGIN}@market.execOrigin`, 'anywhere', { kind: 'bridge' })).toEqual(denied)
+  expect(await set(`${PLUGIN}.execOrigin`, 'anywhere', { kind: 'composer' })).toEqual({ value: 'anywhere' })
+  expect(await set(`${PLUGIN}.execOrigin`, 'terminal', { kind: 'plugin', name: 'other' })).toEqual({ value: 'terminal' })
+  // Any other row is left alone.
+  expect(await set(`${PLUGIN}.language`, 'ja', { kind: 'plugin', name: 'other' })).toEqual({ value: 'ja' })
+})
+
+/** Makes every exec run wait until released (oldest first): `release(n)` ends the first n waiting with exit 0. */
+function holdRuns(s: Stage) {
+  const waiting: (() => void)[] = []
+  s.processAnswer = argv =>
+    argv[0] === ENV_BIN ? new Promise(resolve => waiting.push(() => resolve({ exitCode: 0, stdout: 'done' }))) : defaultProcessAnswer(argv)
+  return {
+    waiting,
+    release: (n = 1) => {
+      for (const done of waiting.splice(0, n)) done()
+    },
+  }
+}
+
+test(`at most ${EXEC_CONCURRENT_MAX} exec actions at once: one more refused with why; one ended, the next runs`, { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  const held = holdRuns(s)
+  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) void runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
+  const busy = t.customReason({ code: 'execBusy', max: EXEC_CONCURRENT_MAX })
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
+  expect(s.toasts.some(x => x.includes(busy))).toBe(true)
+  // A refused one is not in the history: it never started.
+  expect(s.stored[HISTORY_KEY]).toBeUndefined()
+
+  held.release(1)
+  await clock.settle()
+  void runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX + 1)
+  held.release(EXEC_CONCURRENT_MAX)
+  await clock.settle()
+})
+
+test('a slot is given back however the run ends: exit 0, another code, a timeout, a start that failed', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  const answers = [{ exitCode: 0 }, { exitCode: 2 }, { deny: 'Command timed out' }, { deny: 'spawn EACCES' }, { exitCode: 0 }, { exitCode: 0 }]
+  let n = 0
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? answers[n++]! : defaultProcessAnswer(argv))
+  await start($)
+  for (let i = 0; i < answers.length; i++) {
+    await runCommand($, 'free')
+    await clock.settle()
+  }
+  expect(execRuns(s)).toHaveLength(answers.length)
+})
+
+test('slots never given back (their runs dropped, as by a reload) are let go past the timeout and the grace, not before', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  // Never released.
+  holdRuns(s)
+  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) void runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
+  // Just before their time: still held, and a session.start again keeps them.
+  await clock.advance(EXEC_TIMEOUT_DEFAULT_MS + EXEC_SLOT_GRACE_MS - 1000)
+  await start($)
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
+  // Past it: let go, and the next runs.
+  await clock.advance(2000)
+  void runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX + 1)
+})
+
+test('the history: each run that started, how it ended, from where; never what it was given; refused ones not kept', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  const answers = [{ exitCode: 0, stdout: 'SECRET-OUT' }, { exitCode: 4 }, { deny: 'Command timed out' }, { deny: 'spawn EACCES' }]
+  let n = 0
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? answers[n++]! : defaultProcessAnswer(argv))
+  await start($)
+  const at = clock.now()
+  await runCommand($, 'free SECRET-IN')
+  await clock.settle()
+  await $.command.run(fromAfar('bridge', 'free'))
+  await clock.settle()
+  await $.command.run(fromPlugin('free'))
+  await clock.settle()
+  await runCommand($, 'free')
+  await clock.settle()
+  // Refused before it started (not approved, from afar): not kept.
+  await $.command.run(fromAfar('sdk', 'upper'))
+  await clock.settle()
+  const history = s.stored[HISTORY_KEY] as { at: number; id: string; path: string; args: string; result: string; exitCode?: number; from: string }[]
+  expect(history.map(e => [e.id, e.path, e.args, e.result, e.exitCode, e.from])).toEqual([
+    ['free', TOOL, '[]', 'ok', undefined, 'composer'],
+    ['free', TOOL, '[]', 'exit', 4, 'bridge'],
+    ['free', TOOL, '[]', 'timeout', undefined, 'plugin'],
+    ['free', TOOL, '[]', 'notStarted', undefined, 'composer'],
+  ])
+  for (const e of history) expect(e.at).toBeGreaterThanOrEqual(at)
+  expect(JSON.stringify(history)).not.toContain('SECRET')
+})
+
+test(`the history keeps the newest ${EXEC_HISTORY_MAX}`, { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  s.stored[HISTORY_KEY] = Array.from({ length: EXEC_HISTORY_MAX }, (_, i) => ({ at: i + 1, id: 'old', path: TOOL, args: '[]', result: 'ok', from: 'composer' }))
+  await start($)
+  await runCommand($, 'free')
+  await clock.settle()
+  const history = s.stored[HISTORY_KEY] as { at: number; id: string }[]
+  expect(history).toHaveLength(EXEC_HISTORY_MAX)
+  expect(history[0]?.at).toBe(2)
+  expect(history.at(-1)?.id).toBe('free')
+})
+
+test('/quick-actions exec-approvals: the approvals and the history listed', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[HISTORY_KEY] = [{ at: 0, id: 'gone', path: '/opt/x', args: '[]', result: 'exit', exitCode: 9, from: 'unknown' }]
+  await start($)
+  await runCommand($, 'free')
+  await clock.settle()
+  const r = JSON.stringify(await runCommand($, 'exec-approvals'))
+  for (const line of [
+    t.execAdminOrigin(false),
+    t.execAdminApprovals(1),
+    `- ${t.execAdminApprovalLine('free', TOOL, '[]', hashOf(SCRIPT).slice(0, 12))}`,
+    t.execAdminHistory(2, 2),
+    `- ${t.execAdminHistoryLine(t.execAdminUnknownTime, 'gone', '/opt/x', t.execAdminOutcome('exit', 9), 'unknown')}`,
+    t.execAdminUsage,
+  ]) {
+    expect(r).toContain(JSON.stringify(line).slice(1, -1))
+  }
+  expect(r).toContain(`free ${TOOL} ${t.execAdminOutcome('ok')} (from: composer)`)
+  // Nothing run by listing.
+  expect(execRuns(s)).toHaveLength(1)
+})
+
+test('/quick-actions exec-approvals revoke <id>: removed, and the next run asks again; one with no approval said so', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s, w } = setUp(on)
+  s.stored[APPROVALS_KEY] = {
+    upper: { path: TOOL, args: ['--fixed', '$(not-expanded)'], sha256: hashOf(SCRIPT) },
+    free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) },
+    removed: { path: '/opt/x', args: [], sha256: 'f'.repeat(64) },
+  }
+  await start($)
+  expect(JSON.stringify(await runCommand($, 'exec-approvals revoke UPPER'))).toContain(t.execAdminRevoked('upper'))
+  expect(Object.keys(s.stored[APPROVALS_KEY] as object).sort()).toEqual(['free', 'removed'])
+  // An ID no longer defined can be revoked as well.
+  expect(JSON.stringify(await runCommand($, 'exec-approvals revoke removed'))).toContain(t.execAdminRevoked('removed'))
+  expect(JSON.stringify(await runCommand($, 'exec-approvals revoke upper'))).toContain(t.execAdminNotApproved('upper'))
+  s.selected = 'abc'
+  await runCommand($, 'upper')
+  await clock.settle()
+  expect(w.asked).toHaveLength(1)
+  expect(execRuns(s)).toHaveLength(1)
+  // free still approved: no question.
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(w.asked).toHaveLength(1)
+})
+
+test('/quick-actions exec-approvals revoke --all: every approval removed, counted; a bad argument changes nothing', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s, w } = setUp(on)
+  const kept = { upper: { path: TOOL, args: ['--fixed', '$(not-expanded)'], sha256: hashOf(SCRIPT) }, free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  s.stored[APPROVALS_KEY] = kept
+  await start($)
+  for (const bad of ['revoke', 'revoke a b', 'remove free', 'list']) {
+    expect(JSON.stringify(await runCommand($, `exec-approvals ${bad}`))).toContain(JSON.stringify(t.execAdminBadArgs(bad)).slice(1, -1))
+  }
+  expect(s.stored[APPROVALS_KEY]).toEqual(kept)
+  expect(JSON.stringify(await runCommand($, 'exec-approvals revoke --all'))).toContain(t.execAdminRevokedAll(2))
+  expect(s.stored[APPROVALS_KEY]).toEqual({})
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(w.asked).toHaveLength(1)
+})
+
+test('/quick-actions exec-approvals with execOrigin terminal: the list for the prompt alone, revoking from anywhere', { options: OPTIONS }, async ($, on) => {
+  const { s } = setUp(on)
+  s.sourceSettings.user = userWithOrigin('terminal')
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  const reason = t.customReason({ code: 'execOrigin' })
+  for (const kind of ['bridge', 'sdk'] as const) {
+    const r = JSON.stringify(await $.command.run(fromAfar(kind, 'exec-approvals')))
+    expect(r).toContain(JSON.stringify(reason).slice(1, -1))
+    expect(r).not.toContain(TOOL)
+  }
+  const listed = JSON.stringify(await runCommand($, 'exec-approvals'))
+  expect(listed).toContain(TOOL)
+  expect(listed).toContain(JSON.stringify(t.execAdminOrigin(true)).slice(1, -1))
+  expect(JSON.stringify(await $.command.run(fromAfar('bridge', 'exec-approvals revoke free')))).toContain(t.execAdminRevoked('free'))
+  expect(s.stored[APPROVALS_KEY]).toEqual({})
+})
+
+test('exec-approvals is reserved: a custom definition with that ID is left out, the command still lists', { options: { ...EN, customActions: JSON.stringify([{ ...FREE, id: 'exec-approvals' }]) } }, async ($, on) => {
+  const { s } = setUp(on, { setting: JSON.stringify([{ ...FREE, id: 'exec-approvals' }]) })
+  await start($)
+  const r = JSON.stringify(await runCommand($, 'exec-approvals'))
+  expect(r).toContain(t.execAdminNoApprovals)
+  expect(r).toContain(JSON.stringify(t.customReason({ code: 'idReserved' })).slice(1, -1))
+  expect(execRuns(s)).toEqual([])
 })

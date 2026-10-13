@@ -351,16 +351,48 @@ It is read again whenever the plugin reloads, like `pinActions` and `language`: 
 
 Definitions of kind `exec`, which run a program on your machine, work only as written in your user settings (`~/.claude/settings.json`), and also need the program in an allowlist file in your home directory and your approval at the first run: see [Running a local program (exec)](#running-a-local-program-exec).
 
+### `execOrigin`
+
+Where an approved [exec action](#running-a-local-program-exec) may be run from.
+
+| Value | Behaviour |
+| --- | --- |
+| `anywhere` (default) | As before: once approved, an exec action runs from wherever it is asked, with no dialog |
+| `terminal` | An exec action runs only when you press it at your own terminal or type `/quick-actions <id>` at its prompt. Asked from anywhere else, it is refused, approved or not, and the reason is shown (`exec actions are set not to run from here (execOrigin: terminal): press it at your own terminal or type /quick-actions <id>`) |
+
+- **What `terminal` refuses**: a press in the mobile app, the desktop app or an IDE (VS Code and the like; only a press at the terminal counts as your own), and a command sent through Remote Control, by the SDK, another plugin, another session, a scheduled run, a task notification or a channel, as well as a run whose origin cannot be told
+- **It counts from your user settings**: `terminal` takes effect when written in the `pluginConfigs` of your user settings (`~/.claude/settings.json`). A project's `.claude/settings.json`, `.claude/settings.local.json` or `--settings` cannot turn it off: `anywhere` written there leaves `terminal` in your user settings as it is. They can turn it on, though (`terminal` written there takes effect too)
+- **Turning it off is yours alone**: a change of `execOrigin` away from `terminal` is refused unless you make it yourself in `/config` (`Quick Actions execOrigin can be moved off terminal only by you, in /config`); another plugin or Remote Control cannot. This is a second line of defence only: what decides is your user settings, read again right before every run asked from anywhere but your terminal, so a change takes effect from the next run, with no reload
+- **When your user settings cannot be read** right before such a run (`~/.claude/settings.json` broken or half written, say), the run is refused as though `execOrigin` were `terminal`, **also when you never set it** (`exec actions do not run from here: the user settings (~/.claude/settings.json) could not be read to check execOrigin. …`). A press at your terminal and your prompt still run
+- It also limits who can see the list of [`/quick-actions exec-approvals`](#command)
+
+In `/config`, under `quick-actions`, pick `terminal` in `execOrigin`. From the command line, or directly in `settings.json`:
+
+```sh
+echo '{"execOrigin":"terminal"}' | claude plugin configure quick-actions@quick-actions --values-stdin
+```
+
+```json
+{
+  "pluginConfigs": {
+    "quick-actions@quick-actions": {
+      "options": { "execOrigin": "terminal" }
+    }
+  }
+}
+```
+
 ### Changed IDs
 
 - **`translate` → `translate-ja`**: the action that translates the selection into Japanese (🌐 To Japanese) now has the ID `translate-ja`. If your `pinActions` setting says `translate`, change it to `translate-ja` (left as it is, it is ignored as an unknown ID and no longer pinned). `/quick-actions translate` becomes `/quick-actions translate-ja` too (`translate` now answers as an unknown ID, with candidates)
 - **Removed IDs**: of the earlier built-ins, `command`, `error`, `regex`, `code-explain`, `review`, `stacktrace`, `log`, `security`, `test-ideas`, `glossary`, `simplify`, `proofread`, `structure`, `naming`, `usages`, `docs`, `next-step` and `send` are gone. Left in your `pinActions` setting, they are ignored like unknown IDs (they are simply no longer pinned; if no valid ID is left, nothing is pinned). Some of their uses have actions under other IDs (`explain-regex`, `explain-stacktrace`, `explain-log`, `check-writing`, `find-usages`, `unit-test-ideas`, `security-check`, for example)
 - A custom definition in [`customActions`](#customactions) with a built-in's ID is ignored. If the ID of a custom action you already had is now taken by a new built-in, give your custom action another ID (run `/quick-actions` to see the definitions ignored and why)
+- **`exec-approvals` is now reserved**: it is the [command](#command) that lists and revokes exec approvals, so a custom definition with the ID `exec-approvals` is ignored like one with a built-in's ID. If you had one, give it another ID
 
 ## Command
 
 ```
-/quick-actions [<id> [<argument>] | hint]
+/quick-actions [<id> [<argument>] | hint | exec-approvals [revoke <id> | revoke --all]]
 ```
 
 - **`/quick-actions <id>`**: runs an action and shows the result in the pane. An action on the selection runs on the selected text (with nothing selected, it answers `No text is selected` and runs nothing); a context action runs on the conversation, selected text or not; a standalone action runs on neither. An action that is not on the hint line can still be run by its ID, your own included. Letter case in the ID is ignored
@@ -370,6 +402,11 @@ Definitions of kind `exec`, which run a program on your machine, work only as wr
   - **An argument written wrong** (`/quick-actions timer 99h`, say): nothing runs, and it answers `Invalid argument for <id>: <argument> (<how to write it>)`. A mistake the action finds only when it reads the argument (dice with too many sides for `dice`, say) shows in the pane as a failure, `Invalid argument: …`
 - **`/quick-actions`** (no ID): opens the same dialog as the hint line's ⋯ (the right pane, on its "Select an action" tab), and the action picked there runs on the text that was selected when the command ran, or on the one selected since while the pane is open (with nothing selected, the dialog lists the context and standalone actions alone)
 - **`/quick-actions hint`**: opens the hint line, with nothing selected too (see [above](#opening-the-hint-line-without-a-selection-quick-actions-hint))
+- **`/quick-actions exec-approvals`**: lists what is kept for [exec actions](#running-a-local-program-exec): whether [`execOrigin`](#execorigin) limits them to your terminal, every approval (its ID, the path its program lands on, the fixed arguments and the first 12 digits of the SHA-256), by ID, and the newest 20 runs of the [history](#limits), newest first. Any hidden character in them is written as U+XXXX. When the approvals or the history cannot be read, it says so (`The exec approvals could not be read (this does not mean none is kept).`) rather than listing none
+  - **`/quick-actions exec-approvals revoke <id>`**: revokes the approval of that action (also of an ID no longer defined), so that its next run asks for approval again. It answers `<id> has no approval.` when there is none
+  - **`/quick-actions exec-approvals revoke --all`**: revokes them all, and says how many (`No exec approval to revoke.` when there were none). `revoke` and `--all` are read in any letter case (`Revoke --ALL` too)
+  - Any other argument (one starting with `-` other than `--all` included) changes nothing and shows how to use it
+  - **Who can use it**: revoking is accepted from anywhere, as it only takes approvals away. The list shows paths, arguments, hashes and the history, so with `execOrigin` set to `terminal` (or your user settings unreadable) it is shown only for a press at the terminal or your prompt, and anything else gets the `execOrigin` reason and nothing of the list. With `execOrigin` off (the default), the list is shown to any origin: the SDK, another plugin or Remote Control can read it too
 - **An unknown ID**: nothing runs, and it answers `Unknown action ID: <id> (candidates: …). Run /quick-actions (no ID) to search the list`. The candidates are up to ten actions that the ID matches in the ⋯ dialog's filter, in the order (none are listed when nothing matches)
 - The ID of a `customActions` definition that was ignored runs nothing and says why
 
@@ -884,7 +921,7 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 
 | Field | Required | Kinds | Meaning |
 | --- | --- | --- | --- |
-| `id` | yes | all | The ID written in `pinActions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button) or `hint` (the command's argument), and not one an earlier custom definition already took. Up to 64 characters (the longest name a subagent can have) |
+| `id` | yes | all | The ID written in `pinActions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button), `hint` or `exec-approvals` (the command's arguments), and not one an earlier custom definition already took. Up to 64 characters (the longest name a subagent can have) |
 | `icon` | yes | all | The icon on the hint line (one emoji). A symbol that is text by default (☀, ✂, 🗂 and the like) is drawn as an emoji, with VS16 (U+FE0F) added after it, so that it takes the two columns the terminal draws it in; one already followed by VS16 or VS15 is left as written, and so are ©, ® and ™, drawn as the one-column marks they are. Up to 16 characters (counted in code points, so a ZWJ sequence or a flag fits); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
 | `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }`. Up to 64 characters each (counted in code points); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
 | `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local), or `exec` (runs a program on your machine; see [Running a local program (exec)](#running-a-local-program-exec)) |
@@ -987,7 +1024,7 @@ Write `{STYLE}` and `{ANSWER_LANGUAGE}` in a prompt literally; at run time `{STY
 
 A definition is ignored, alone, when:
 
-- its `id` is missing or not in the format above, is a built-in's ID, `close` or `hint`, or was taken by an earlier custom definition (the first one keeps it)
+- its `id` is missing or not in the format above, is a built-in's ID, `close`, `hint` or `exec-approvals`, or was taken by an earlier custom definition (the first one keeps it)
 - `id` is longer than 64 characters (checked before its format)
 - `icon` is longer than 16 characters, `label` or `runningText` longer than 64, or `description` longer than 500 (in code points, each language's for `{ "ja", "en" }`), such as `label is too long (up to 64 characters)`
 - `icon`, `label`, `runningText` or `description` has a control character, a bidirectional control or a line or paragraph separator, such as `label contains a character it cannot have: U+001B (…)` (the character is written as U+XXXX)
@@ -1099,8 +1136,8 @@ As with every definition, the array goes in the `customActions` string, here in 
 
 The first time an exec action runs, and again whenever the path its command lands on, its fixed arguments (their contents or their order) or the program's SHA-256 differ from what you approved, a dialog headed "Approve run" asks before anything runs. It shows the action's label and ID, the program's path as it lands, the fixed arguments (as JSON) and its SHA-256, any hidden character in them written as U+XXXX or a JSON escape. Only "Approve and run" approves; "Cancel", closing the dialog or typing an answer of your own is no, and nothing runs (`not run: it was not approved`).
 
-- The approval is kept per action ID in the plugin's local store (`$.store`, a file in Claude Code's configuration directory), not in any setting or repository, so it cannot be handed out with them. There is no command to list or revoke approvals: to stop a program, take it out of the allowlist
-- It is asked only when you press the action at your own terminal or type `/quick-actions <id>` at its prompt. Run from anywhere else (the mobile app, the desktop app, Remote Control, or a command sent by the SDK, another plugin, another session or a scheduled run), an action not yet approved is not run (`this action is not approved yet: run it once at your own terminal to approve it`). Once approved, it runs from those too, with no dialog (see the security notes below)
+- The approval is kept per action ID in the plugin's local store (`$.store`, a file in Claude Code's configuration directory), not in any setting or repository, so it cannot be handed out with them. `/quick-actions exec-approvals` lists them, and `/quick-actions exec-approvals revoke <id>` (or `revoke --all`) revokes them, so that the next run asks again (see [Command](#command)). To stop a program altogether, take it out of the allowlist
+- It is asked only when you press the action at your own terminal or type `/quick-actions <id>` at its prompt. Run from anywhere else (the mobile app, the desktop app, an IDE, Remote Control, or a command sent by the SDK, another plugin, another session or a scheduled run), an action not yet approved is not run (`this action is not approved yet: run it once at your own terminal to approve it`). Once approved, it runs from those too, with no dialog, unless [`execOrigin`](#execorigin) is `terminal` (see the security notes below)
 - The program's SHA-256 is read again right before it starts. If it changed after the check (while the dialog was open, say), it is not run (`not run: the executable changed after it was checked`)
 - An approval says the program is the one you looked at, not that it is safe to run
 
@@ -1127,13 +1164,22 @@ The first time an exec action runs, and again whenever the path its command land
   - the `pluginConfigs` of your user settings has more than one entry of this plugin with `customActions` (installed from two marketplaces, say), or none
   - other settings (a project's `.claude/settings.json`, `.claude/settings.local.json` or `--settings`) set `customActions` of this plugin and override yours, whatever they hold
   - the `env` of the project's, the local or the `--settings` settings sets `HOME` (the allowlist is found through `HOME`)
+  - the `env` of the project's, the local or the `--settings` settings sets a variable of the dynamic loader, one whose name starts with `LD_` or `DYLD_` (`LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES` and the like), which could load code into `/usr/bin/env` itself (`exec definitions are off: the env of the project, local or --settings settings sets a variable of the dynamic loader (LD_PRELOAD)`). Only upper-case names count, as the loader reads no other. Your user settings' `env` is not checked. Like the `HOME` check, it is made when the plugin loads, so a change shows from the next load
   - the settings cannot be read
-- No more than 120 seconds a run. There is no limit on how many run at once, and no log of the runs
+- No more than 120 seconds a run
+- **No more than 3 at once**, in a session: a fourth, asked while three are running, is not run (`not run: 3 exec actions are running already`). Waiting in the approval dialog does not count. A run's place is given back when it ends, whatever the end (output, an exit code, its timeout or a failure to start). So that a place never given back (when the plugin reloads in the middle of a run, say) cannot stop exec for good, each place is let go anyway once the action's `timeoutMs` and 30 more seconds have passed since it started. The trade-off: a program left running past that by such a reload no longer counts, so for a while more than 3 can run (each still stopped at its timeout). Should the count itself fail to be read or written, the run is refused too (`not run: how many exec actions are running could not be checked`). The limit is per session, not across sessions, and cannot be changed
+- **A history of the runs**: each run whose program was started is recorded in the plugin's local store, the newest 50 kept, older ones dropped. A record holds the time (local time in the list; `unknown time` when the clock could not be read), the action's ID, the path the program landed on, the fixed arguments (up to 500 characters), the result (`succeeded`, `exit code N`, `timed out` or `not started`) and where it was asked from (`composer`, `terminal`, `mobile`, `bridge`, `sdk`, `plugin`, `scheduled-trigger` and the like; `unknown` when it cannot be told). What the program was given on its standard input (the selection, the conversation, the argument) and what it wrote are never recorded. See it with [`/quick-actions exec-approvals`](#command)
+  - A run refused before its program started (not approved, the dialog cancelled, `execOrigin`, three running already, the program changed, …) is not recorded: nothing ran
+  - The fixed arguments are kept in the history (and shown in the list): do not write secrets in `args`. They are in your user settings in plain text anyway
+  - A failure to write the history is not reported, and does not change the result shown
 
 ##### Security notes
 
 - **List only programs you trust**, kept where only you can write (the file and its directory). Giving `sha256` pins their contents. The hash is checked right before the program starts, but a file swapped in between the check and the start cannot be ruled out altogether
 - **An approved action runs whoever sends it**: once approved, an exec action runs with no dialog when it comes from the mobile app or Remote Control, and also from a command sent by the SDK, another plugin, another session or a scheduled run, and whoever sends it decides its standard input (an argument of their choosing, or a selection). A model steered by prompt injection, or another session, can therefore hand an approved program any input it likes. List only programs that are safe to run on any input: never an interpreter or shell itself (`/bin/sh`, `/usr/bin/python3` and the like, which run their standard input as code), and not one that, depending on its input, runs commands, deletes or overwrites files, or sends things out
+  - **To close this**, set [`execOrigin`](#execorigin) to `terminal` in your user settings: approved or not, an exec action then runs only from a press at your own terminal or your prompt. A press in the desktop app or an IDE is refused too
+- **With `execOrigin` off** (the default), anything that can send a command (the SDK, another plugin, Remote Control, another session) can also read `/quick-actions exec-approvals`: the paths, fixed arguments and SHA-256 of what you approved, and the history. Set it to `terminal` to keep the list to your own terminal
+- **Others can get in your way, not run code**: a sender other than you can revoke approvals (`revoke` is accepted from anywhere), so that your next run asks again, and, with `execOrigin` off, keep the 3 places of the [run limit](#limits) busy, so that your own runs are refused for a while. Neither runs anything new. `execOrigin: terminal` stops the second
 - **What you hand it goes to it**: the selection, or the whole conversation (with any file contents and secrets that came up in it), goes to the program, and what it does with it (writing files, sending it over the network) is up to the program. It runs with your own permissions, with no sandbox
 - Write exec definitions in your user settings alone. Those in a project's settings are ignored, and a project that overrides `customActions` turns exec off
 - Not defended against: `HOME` changed before Claude Code starts (your user settings are read from that same place)
@@ -1174,7 +1220,6 @@ Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exis
 
 - Reading custom actions from a file of their own (such as `~/.claude/quick-actions.json`) rather than one setting
 - Letting custom subagents use tools that run commands or change files, once their exposure to prompt injection and the permission prompts are worked out
-- For exec actions: a setting that refuses an approved action sent from anything but your own press or prompt, a command to list and revoke approvals, and checking the `env` of the project's settings for loader variables (`LD_*` and the like)
 
 ## License
 

@@ -1945,12 +1945,24 @@ test('neutralizeTags: a candidate is never a character skipped or matched after 
   for (const ch of TAG_ELLS) {
     expect({ ch, opener: TAG_OPENERS.includes(ch) }).toEqual({ ch, opener: false })
   }
+  // SELM-00113: nor the combining dot above passed over after one.
+  expect(TAG_OPENERS.includes('\u0307')).toBe(false)
 })
 
 // SELM-00110: the look-alikes of an l still left after SELM-00093.
 
-test('TAG_ELLS: the six look-alikes of an l, each one code unit long', () => {
-  expect([...TAG_ELLS].map(c => c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0'))).toEqual(['026A', '0130', 'A781', '2D4F', '16C1', '0660'])
+test('TAG_ELLS: the nine look-alikes of an l, each one code unit long', () => {
+  expect([...TAG_ELLS].map(c => c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0'))).toEqual([
+    '026A',
+    '0130',
+    'A781',
+    '2D4F',
+    '16C1',
+    '0660',
+    '0399',
+    '0131',
+    '06F1',
+  ])
   for (const ch of TAG_ELLS) expect(ch.length).toBe(1)
   // Neither a lower-case i nor | is one.
   expect(TAG_ELLS.includes('i')).toBe(false)
@@ -1990,9 +2002,11 @@ test('neutralizeTags: each of TAG_ELLS is an l at the word\'s l only, in any wor
       expect({ c, s, got: neutralizeSelectedTags(s) }).toEqual({ c, s, got: s })
     }
   }
-  // ɪ and İ are still an i where the word has one; the other four match no i.
-  for (const tag of ['<ɪnput>', '</İnput>', '<ɪɴᴘᴜᴛ>']) expect(neutralizeInputTags(tag)).toBe(`&lt;${tag.slice(1)}`)
-  for (const c of ['ꞁ', 'ⵏ', 'ᛁ', '٠']) {
+  // ɪ, İ, Ι and ı are still an i where the word has one; the other five match no i.
+  for (const tag of ['<ɪnput>', '</İnput>', '<ɪɴᴘᴜᴛ>', '<\u0399nput>', '</\u0131nput>', '<\u0399\u039D\u03A1\u03A5\u03A4>']) {
+    expect({ tag, got: neutralizeInputTags(tag) }).toEqual({ tag, got: `&lt;${tag.slice(1)}` })
+  }
+  for (const c of ['ꞁ', 'ⵏ', 'ᛁ', '٠', '\u06F1']) {
     for (const s of [`<${c}nput>`, `</${c}nput>`]) expect({ c, s, got: neutralizeInputTags(s) }).toEqual({ c, s, got: s })
   }
 })
@@ -2012,6 +2026,88 @@ test('neutralizeTags: TAG_ELLS leave ordinary text as it was (SELM-00110)', () =
     'ꞁ <ꞁ> <ꞁꞁ>',
     'ʀᴇᴀʟ ɪ <ɪ> <ɪᴛᴇᴍ>',
     '<item> and <list> and <label>',
+  ]) {
+    expect({ s, selected: neutralizeSelectedTags(s), input: neutralizeInputTags(s) }).toEqual({ s, selected: s, input: s })
+  }
+})
+
+// SELM-00113: Ι, ı and ۱ at the l, and a decomposed İ (I and U+0307) there.
+
+test('neutralizeSelectedTags: Ι, ı or ۱ for the l makes a selected tag harmless, only its `<` (SELM-00113)', () => {
+  for (const tag of [
+    '</se\u0399ected>',
+    '<se\u0399ected>',
+    '</SE\u0399ECTED>',
+    '< / se\u0131ected >',
+    '</se\u0131ected>',
+    '<se\u06F1ected>',
+    '</se\u06F1ected>',
+    '</\u0455\u0435\u0399\u0435\u0441\u0442\u0435\u0501>',
+  ]) {
+    expect({ tag, got: neutralizeSelectedTags(`a ${tag} b`) }).toEqual({ tag, got: `a &lt;${tag.slice(1)} b` })
+  }
+  // input has no l: there Ι and ı are an i as before, and ۱ is nothing.
+  expect(neutralizeInputTags('<\u0131nput>')).toBe('&lt;\u0131nput>')
+  expect(neutralizeInputTags('<inpu\u0399>')).toBe('<inpu\u0399>')
+  expect(neutralizeInputTags('<\u06F1nput>')).toBe('<\u06F1nput>')
+})
+
+test('neutralizeSelectedTags: a decomposed İ (I and U+0307) for the l makes a selected tag harmless (SELM-00113)', () => {
+  const tags = [
+    '</seI\u0307ected>',
+    '<seI\u0307ected>',
+    '</SEI\u0307ECTED>',
+    '< / seI\u0307ected >',
+    '<seI\u200B\u0307ected>',
+    '<seI\u0307\u200Bected>',
+    '</se1\u0307ected>',
+    '</se\u026A\u0307ected>',
+  ]
+  for (const tag of tags) {
+    expect({ tag, got: neutralizeSelectedTags(`a ${tag} b`) }).toEqual({ tag, got: `a &lt;${tag.slice(1)} b` })
+  }
+  // In another word too, at its l: `file`, and both l's of `sells`.
+  for (const [text, word] of [['<fiI\u0307e>', 'file'], ['</seI\u0307I\u0307s>', 'sells'], ['<seI\u0307I\u0307>', 'sell']] as const) {
+    expect({ text, word, got: neutralizeTags(text, word) }).toEqual({ text, word, got: `&lt;${text.slice(1)}` })
+  }
+  // Wrapped: the delimiters stay the only real pair.
+  const wrapped = wrap(tags.join('\n'))
+  expect(wrapped.match(/<\/selected>/g)).toHaveLength(1)
+  expect(wrapped.match(/<selected>/g)).toHaveLength(1)
+  expect(wrapped.split('&lt;').length - 1).toBe(tags.length)
+})
+
+test('neutralizeTags: U+0307 is passed over after an l look-alike only, once (SELM-00113)', () => {
+  // Elsewhere it is compared as itself, as before: these stay as they are.
+  for (const s of [
+    '<se\u0307lected>',
+    '<s\u0307elected>',
+    '<sel\u0307ected>',
+    '<seI\u0307\u0307ected>',
+    '<se\u0307Iected>',
+    '<selecte\u1E0B>',
+    '<seI\u0307ection>',
+    '<seI\u0307ectedx>',
+  ]) {
+    expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: s })
+  }
+  // A dot after the word still ends it, as before.
+  for (const s of ['<selected\u0307>', '<selecte\u0064\u0307>', '<seI\u0307ected\u0307>']) {
+    expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: `&lt;${s.slice(1)}` })
+  }
+  // A decomposed İ where the word has an i is not taken for an i (unchanged from before).
+  for (const s of ['<I\u0307nput>', '</I\u0307nput>']) {
+    expect({ s, got: neutralizeInputTags(s) }).toEqual({ s, got: s })
+  }
+})
+
+test('neutralizeTags: Ι, ı, ۱ and a decomposed İ leave ordinary text as it was (SELM-00113)', () => {
+  for (const s of [
+    '\u0399\u03A3\u03A4\u039F\u03A1\u0399\u0391 <\u0399> <\u0399\u03A3>',
+    '\u0131l\u0131k \u0131\u015F\u0131k <\u0131l> <\u0131>',
+    '\u06F1\u06F2\u06F3 <\u06F1> <\u06F1\u06F2>',
+    'I\u0307stanbul <I\u0307zmir> <I\u0307> <I\u0307I\u0307>',
+    'e\u0307 <e\u0307> <l\u0307>',
   ]) {
     expect({ s, selected: neutralizeSelectedTags(s), input: neutralizeInputTags(s) }).toEqual({ s, selected: s, input: s })
   }

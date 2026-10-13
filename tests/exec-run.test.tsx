@@ -736,15 +736,32 @@ test('config.set: execOrigin taken off terminal by another plugin or the bridge 
   expect(await set(`${PLUGIN}.language`, 'ja', { kind: 'plugin', name: 'other' })).toEqual({ value: 'ja' })
 })
 
-/** Makes every exec run wait until released (oldest first): `release(n)` ends the first n waiting with exit 0. */
-function holdRuns(s: Stage) {
+/**
+ * Makes every exec run wait until released (oldest first): `release(n)` ends
+ * the first n waiting with exit 0. `start(args)` runs the command without
+ * waiting for it, and `drain()` releases every run still waiting and waits for
+ * every command so started: a test that starts one ends with it, so none is
+ * still pending when the engine is torn down (where it would be rejected with
+ * "no implementation for command.run", a rejection nothing handles).
+ */
+function holdRuns($: Engine, s: Stage, clock: { settle: () => Promise<void> }) {
   const waiting: (() => void)[] = []
+  const started: Promise<unknown>[] = []
   s.processAnswer = argv =>
     argv[0] === ENV_BIN ? new Promise(resolve => waiting.push(() => resolve({ exitCode: 0, stdout: 'done' }))) : defaultProcessAnswer(argv)
+  const release = (n = 1) => {
+    for (const done of waiting.splice(0, n)) done()
+  }
   return {
     waiting,
-    release: (n = 1) => {
-      for (const done of waiting.splice(0, n)) done()
+    release,
+    start: (args: string) => {
+      started.push(runCommand($, args))
+    },
+    drain: async () => {
+      release(waiting.length)
+      await clock.settle()
+      await Promise.all(started.splice(0))
     },
   }
 }
@@ -754,8 +771,8 @@ test(`at most ${EXEC_CONCURRENT_MAX} exec actions at once: one more refused with
   const { s } = setUp(on)
   s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
   await start($)
-  const held = holdRuns(s)
-  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) void runCommand($, 'free')
+  const held = holdRuns($, s, clock)
+  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) held.start('free')
   await clock.settle()
   expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
   const busy = t.customReason({ code: 'execBusy', max: EXEC_CONCURRENT_MAX })
@@ -768,11 +785,10 @@ test(`at most ${EXEC_CONCURRENT_MAX} exec actions at once: one more refused with
 
   held.release(1)
   await clock.settle()
-  void runCommand($, 'free')
+  held.start('free')
   await clock.settle()
   expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX + 1)
-  held.release(EXEC_CONCURRENT_MAX)
-  await clock.settle()
+  await held.drain()
 })
 
 test('a slot is given back however the run ends: exit 0, another code, a timeout, a start that failed', { options: OPTIONS }, async ($, on) => {
@@ -795,9 +811,9 @@ test('slots never given back (their runs dropped, as by a reload) are let go pas
   const { s } = setUp(on)
   s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
   await start($)
-  // Never released.
-  holdRuns(s)
-  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) void runCommand($, 'free')
+  // Not released while the test looks: only drained once it is done.
+  const held = holdRuns($, s, clock)
+  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) held.start('free')
   await clock.settle()
   expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
   // Just before their time: still held, and a session.start again keeps them.
@@ -808,9 +824,10 @@ test('slots never given back (their runs dropped, as by a reload) are let go pas
   expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX)
   // Past it: let go, and the next runs.
   await clock.advance(2000)
-  void runCommand($, 'free')
+  held.start('free')
   await clock.settle()
   expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX + 1)
+  await held.drain()
 })
 
 test('the history: each run that started, how it ended, from where; never what it was given; refused ones not kept', { options: OPTIONS }, async ($, on) => {

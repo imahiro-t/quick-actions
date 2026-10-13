@@ -176,6 +176,14 @@ test('extractUrls: in the host, any half-width symbol with Japanese straight aft
   // `]`s between the symbols and the Japanese.
   expect(extractUrls('https://a.example-]を参照')).toEqual(['https://a.example'])
   expect(extractUrls('https://a.example@]]を参照')).toEqual(['https://a.example'])
+  // A `]` that splits the symbols: those before it go too, so no `https://example.com-` is left.
+  expect(extractUrls('https://example.com-]-を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com.]-を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com~]-を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://a.example@]~を参照')).toEqual(['https://a.example'])
+  expect(extractUrls('https://example.com-]]-]-を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://例え-]-を参照')).toEqual(['https://例え'])
+  expect(extractUrls('https://example.com]-を参照')).toEqual(['https://example.com'])
   // With a port and user info.
   expect(extractUrls('https://user@example.com:8080@を参照')).toEqual(['https://user@example.com:8080'])
   expect(extractUrls('https://example.com:8080-を参照')).toEqual(['https://example.com:8080'])
@@ -185,6 +193,11 @@ test('extractUrls: in the host, any half-width symbol with Japanese straight aft
   expect(extractUrls('https://[::1]@を参照')).toEqual(['https://[::1]'])
   expect(extractUrls('https://[::1].を参照')).toEqual(['https://[::1]'])
   expect(extractUrls('https://[::1]:8080/')).toEqual(['https://[::1]:8080/'])
+  expect(extractUrls('https://[::1]-を参照')).toEqual(['https://[::1]'])
+  expect(extractUrls('https://[::1]-]-を参照')).toEqual(['https://[::1]'])
+  expect(extractUrls('https://[::]-を参照')).toEqual(['https://[::]'])
+  expect(extractUrls('https://[::]]-を参照')).toEqual(['https://[::]'])
+  expect(extractUrls('https://user@[::1]-]-を参照')).toEqual(['https://user@[::1]'])
   // A closing bracket or quote, as before.
   expect(extractUrls('https://example.com)を参照')).toEqual(['https://example.com'])
   expect(extractUrls('https://example.com]を参照')).toEqual(['https://example.com'])
@@ -293,6 +306,10 @@ test('extractUrls: a run of URLs each cut by Japanese or a hidden character, wit
   // `]` outside an IPv6 literal is no host URL reads, so nothing is taken; only the time counts.
   linear('a long run of ]', k => `https://a-${']'.repeat(k)}x`, 400_000, urls => expect(urls).toEqual([]))
   linear('a long run of - and ]', k => `https://a${'-]'.repeat(k)}x`, 200_000, urls => expect(urls).toEqual([]))
+  // Symbols split by `]`s before Japanese are all dropped, read back once.
+  linear('a long run of - and ] before Japanese', k => `https://a${'-]'.repeat(k)}-を`, 200_000, urls => expect(urls).toEqual(['https://a']))
+  linear('host - ] - cuts', runOf('https://a.example-]-あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('a long IPv6 run of - and ] before Japanese', k => `https://[::1]${'-]'.repeat(k)}-を`, 200_000, urls => expect(urls).toEqual(['https://[::1]']))
   // Not cut before the run (a host this long is more than URL takes, so it is not taken either).
   linear('a long IDN run of - and .', k => `https://例${'-.'.repeat(k)}テ`, 200_000, urls => expect(urls).not.toContain('https://例'))
   linear('a long IDN run of - and . then @', k => `https://例${'-.'.repeat(k)}@を`, 200_000, urls => expect(urls).toEqual(['https://例']))
@@ -365,7 +382,10 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
       // not a letter or digit, not `/ ? # \` and not `]`, which closes an
       // IPv6 literal) with Japanese after it, or after `]`s, read off the
       // whole candidate: cut before the run, unless the run is only `-` and
-      // `.` after a non-ASCII character with Japanese straight after it.
+      // `.` after a non-ASCII character with Japanese straight after it. Then,
+      // while what is left ends with `]`s after a symbol, those `]`s and the
+      // symbols before them go too, unless they hold the `]` closing an IPv6
+      // literal (the first `]` after the host's first `[`).
       const scheme = m[0].slice(0, 8).toLowerCase() === 'https://' ? 8 : 7
       const host = m[0].slice(scheme).split(/[/?#\\]/)[0]!
       const isSymbol = (c: string | undefined) =>
@@ -381,7 +401,19 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
         const afterNonAscii = i > 0 && host.charCodeAt(i - 1) > 0x7f
         const idn = afterNonAscii && /^[-.]+$/.test(host.slice(i, j)) && k === j
         if (!idn) {
-          cut = cut.slice(0, Math.min(cut.length, scheme + i))
+          if (scheme + i < cut.length) {
+            const open = host.indexOf('[')
+            const closer = open === -1 ? -1 : host.indexOf(']', open)
+            let left = host.slice(0, i)
+            for (;;) {
+              const brackets = /\]+$/.exec(left)
+              if (brackets === null || (closer >= brackets.index && closer < left.length)) break
+              const symbols = /[!"$%&'()*+,\-.:;<=>@[^_`{|}~]+$/.exec(left.slice(0, brackets.index))
+              if (symbols === null) break
+              left = left.slice(0, symbols.index)
+            }
+            cut = cut.slice(0, scheme + left.length)
+          }
           break
         }
       }
@@ -392,20 +424,25 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
     return urls
   }
   const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007', '!', ';', '(https://', '[::1]', '-', '~', '_', '&', '+', '$', '*', '|', '%', 'ü']
+  // Fewer pieces, mostly symbols and `]`s in the host, so that symbols split
+  // by `]`s before Japanese (`-]-あ`), next to IPv6 literals, come up often.
+  const hostPieces = ['https://', 'a.b', '-', '~', '@', ':', ']', '-]', '[', '[::1]', '[::]', 'あ', 'ü', '/', ' ']
   let seed = 12345
   const next = (n: number) => {
     seed = (seed * 1103515245 + 12345) % 2147483648
     return seed % n
   }
-  let withUrls = 0
-  for (let i = 0; i < 5_000; i++) {
-    let text = ''
-    for (let k = 1 + next(30); k > 0; k--) text += pieces[next(pieces.length)]
-    const urls = extractUrls(text)
-    expect({ text, urls }).toEqual({ text, urls: reference(text) })
-    if (urls.length > 0) withUrls++
+  for (const [set, runs, least] of [[pieces, 5_000, 500], [hostPieces, 5_000, 500]] as const) {
+    let withUrls = 0
+    for (let i = 0; i < runs; i++) {
+      let text = ''
+      for (let k = 1 + next(30); k > 0; k--) text += set[next(set.length)]
+      const urls = extractUrls(text)
+      expect({ text, urls }).toEqual({ text, urls: reference(text) })
+      if (urls.length > 0) withUrls++
+    }
+    expect(withUrls).toBeGreaterThan(least)
   }
-  expect(withUrls).toBeGreaterThan(500)
 })
 
 test('shownUrl: the password of the user info is hidden, as parse-url hides it; nothing else changes', () => {

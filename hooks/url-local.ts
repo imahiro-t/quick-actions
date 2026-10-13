@@ -120,16 +120,55 @@ const HOST_SYMBOL = '[!"$-.:->@\\[^_`{-~]'
 // JAPANESE_AFTER's: a label mixing ASCII, a symbol and Japanese
 // (`https://abc-テスト.jp`) gives `https://abc`, and Japanese after user info
 // (`https://user@例え.jp`) gives `https://user`, since neither can be told
-// from `https://example.com-を参照` or `https://example.com@を参照`. A match
-// only starts at the start of a run of symbols (the leading lookbehind), so a long run
-// with no Japanese after it is read a bounded number of times, not once from
-// each of its characters: linear. Only searched in the host (urlsInRun): in
-// the path, query or fragment (`/a,日本`) such Japanese is the URL's own.
-// Global: searched forward.
+// from `https://example.com-を参照` or `https://example.com@を参照`. A `]`
+// that splits a run (`https://example.com-]-を参照`) is not part of it, so the
+// cut before the last run leaves symbols and `]`s at the end; backOverBrackets
+// drops them too. A match only starts at the start of a run of symbols (the
+// leading lookbehind), so a long run with no Japanese after it is read a
+// bounded number of times, not once from each of its characters: linear.
+// Only searched in the host (urlsInRun): in the path, query or fragment
+// (`/a,日本`) such Japanese is the URL's own. Global: searched forward.
 const HOST_SYMBOL_JAPANESE = new RegExp(
   `(?<!${HOST_SYMBOL})(?:(?<![^\\x00-\\x7F])|(?![-.]+${JAPANESE}))${HOST_SYMBOL}+(?=\\]*${JAPANESE})`,
   'gu',
 )
+
+// One character of HOST_SYMBOL (tested on one UTF-16 unit).
+const HOST_SYMBOL_CHAR = new RegExp(`^${HOST_SYMBOL}$`)
+
+/**
+ * Where a URL cut before a run of symbols in its host (HOST_SYMBOL_JAPANESE,
+ * at `cut`, at or after `hostFrom`, where the host starts) ends, once no
+ * symbols are left before it behind `]`s. HOST_SYMBOL leaves out `]`, so in
+ * `https://example.com-]-を参照` only the last `-` is cut off, and trimEnd
+ * would then drop the unpaired `]` and leave `https://example.com-`, another
+ * host. So while the URL ends with `]`s right after a symbol, those `]`s and
+ * the run of symbols before them are dropped too, giving `https://example.com`.
+ * The `]` that closes an IPv6 literal (the first `]` after a `[` in the host)
+ * is kept, with all before it: `https://[::1]-を参照` gives `https://[::1]`,
+ * and so does `https://[::]]-を参照` (after trimEnd), though `:` is a symbol.
+ * Only the stretch of the host before `cut` is read, a bounded number of
+ * times, and the next URL starts past `cut` (what is dropped holds only
+ * symbols and `]`s, never a scheme), so urlsInRun stays linear.
+ */
+function backOverBrackets(run: string, hostFrom: number, cut: number): number {
+  if (run[cut - 1] !== ']') return cut
+  // Searched only up to `cut`: a `]` lies right before it, so the second
+  // search ends there too.
+  let open = hostFrom
+  while (open < cut && run[open] !== '[') open++
+  const closer = open < cut ? run.indexOf(']', open) : -1
+  let end = cut
+  for (;;) {
+    let brackets = end
+    while (brackets > hostFrom && run[brackets - 1] === ']') brackets--
+    if (brackets === end || (closer >= brackets && closer < end)) return end
+    let symbols = brackets
+    while (symbols > hostFrom && HOST_SYMBOL_CHAR.test(run[symbols - 1]!)) symbols--
+    if (symbols === brackets) return end
+    end = symbols
+  }
+}
 
 // Where a URL's authority (user info, host and port) ends: the characters URL
 // reads as starting the path, query or fragment of an http(s) URL (shownUrl
@@ -220,11 +259,12 @@ function urlsInRun(run: string): string[] {
     const hostFrom = start + (run[start + 4] === ':' ? 7 : 8)
     const hostSymbol = nextHostSymbol(hostFrom)
     // The cut goes after the ASCII character or closer, before the Japanese;
-    // before the run of symbols in the host.
+    // before the run of symbols in the host, and before any symbols and `]`s
+    // left in front of it (backOverBrackets).
     const end = Math.min(
       nextHidden(start),
       japanese < run.length ? japanese + 1 : run.length,
-      hostSymbol < nextAuthorityEnd(hostFrom) ? hostSymbol : run.length,
+      hostSymbol < nextAuthorityEnd(hostFrom) ? backOverBrackets(run, hostFrom, hostSymbol) : run.length,
     )
     found.push(run.slice(start, end))
     // `end` is past `start`, at `hostFrom` at least: the scheme holds no

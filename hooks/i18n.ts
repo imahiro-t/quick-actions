@@ -196,6 +196,33 @@ export type Messages = {
   argFieldLabel: string
   /** The accessible name of a result entry's button (stop, again, set the argument): the button's text and the entry's action. */
   entryButtonName: (button: string, entry: string) => string
+  /** An exec action's output cut at its limit: said after it. */
+  execTruncated: string
+  /** An exec action that exited 0 and wrote nothing. */
+  execNoOutput: string
+  /** An exec action that exited with another code. */
+  execExit: (code: number) => string
+  /** Heads an exec action's standard error, shown with a failure. */
+  execStderr: string
+  /** Heads an exec action's standard output, shown with a failure. */
+  execStdout: string
+  /** An exec action stopped at its timeout (in seconds). */
+  execTimeout: (seconds: number) => string
+  /** An exec action that could not start: why. */
+  execNotStarted: (reason: string) => string
+  /**
+   * The approval asked before an exec action first runs, or runs changed: the
+   * action, the executable's path as it lands, its fixed arguments (JSON) and
+   * its SHA-256. Ends in a question mark.
+   */
+  execApproveQuestion: (label: string, id: string, path: string, args: string, sha256: string) => string
+  /** The approval dialog's chip (12 characters at most). */
+  execApproveHeader: string
+  /** The approval dialog's options: approve and run, or not. */
+  execApprove: string
+  execCancel: string
+  /** The toast when an exec action was not run: its label and why. */
+  execRefusedToast: (label: string, reason: string) => string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -278,11 +305,65 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'target':
           return `target は ${r.allowed.join(' / ')} のいずれかにしてください（指定: ${r.value}）`
         case 'contextKind':
-          return `target が context の定義は kind を fork にしてください（指定: ${r.kind}）`
+          return `target が context の定義は kind を fork か exec にしてください（指定: ${r.kind}）`
         case 'noneKind':
-          return `target が none のアクションは complete か subagent で書いてください（指定: ${r.kind}）`
+          return `target が none のアクションは complete・subagent・exec のいずれかで書いてください（指定: ${r.kind}）`
         case 'unexpected':
           return `定義を読めませんでした: ${r.detail}`
+        case 'execPath':
+          return r.field === 'command'
+            ? `command は実行ファイルの絶対パスで書いてください（PATH からは探しません。~・相対パス・.・..・連続した /・末尾の /・=・制御文字は使えません。指定: ${r.path}）`
+            : `実行ファイルの実体のパスに使えない文字や形が含まれているため実行できません（=・制御文字など。実体: ${r.path}）`
+        case 'execField':
+          return `kind が exec の定義には ${r.field} を書けません`
+        case 'execScope':
+          switch (r.why) {
+            case 'unreadable':
+              return 'exec の定義の出どころを確かめられないため無効にしました（設定を読めませんでした）'
+            case 'keys':
+              return 'exec の定義はユーザー設定（~/.claude/settings.json）の pluginConfigs で本プラグインの customActions を持つ項目が 1 つのときだけ使えます'
+            case 'mismatch':
+              return 'exec の定義はユーザー設定（~/.claude/settings.json）に書いたものだけが使えます（プロジェクトなどの設定が customActions を上書きしています）'
+            case 'home':
+              return 'プロジェクト・ローカル・--settings の設定の env が HOME を変えているため、exec の定義を無効にしました'
+          }
+          return 'exec の定義を無効にしました'
+        case 'execAllowlist':
+          switch (r.why) {
+            case 'noHome':
+              return 'HOME が絶対パスでないため、ホワイトリストを読めません（exec の定義を無効にしました）'
+            case 'missing':
+              return 'ホワイトリスト ~/.claude/quick-actions/allowed-executables.json がありません（exec の定義を無効にしました）'
+            case 'unreadable':
+              return 'ホワイトリスト ~/.claude/quick-actions/allowed-executables.json を読めません（exec の定義を無効にしました）'
+            case 'invalid':
+              return 'ホワイトリスト ~/.claude/quick-actions/allowed-executables.json が {"executables": [{"path": ..., "sha256": ...}]} の形ではありません（exec の定義を無効にしました）'
+            case 'inProject':
+              return 'ホワイトリストの実体が今のプロジェクトの中にあるため読みません（exec の定義を無効にしました）'
+          }
+          return 'ホワイトリストを使えません'
+        case 'execAllowlistEntry':
+          return `ホワイトリストの ${r.entry} 番目の項目を無視しました（path は実体の絶対パス、sha256 は 64 桁の16進数で書いてください）`
+        case 'execNotAllowed':
+          return `実行ファイル ${r.path} がホワイトリストにありません（シンボリックリンクは実体のパスで照合します）`
+        case 'execMissing':
+          return `command が通常のファイルを指していません: ${r.path}`
+        case 'execUnsupported':
+          return 'exec のアクションは macOS と Linux でだけ使えます'
+        case 'execTooLarge':
+          return `実行ファイルが大きすぎて SHA-256 を確かめられません（${grouped(r.max)} バイトまで。ラッパースクリプトを使ってください）`
+        case 'execUnreadable':
+          return `実行ファイルを読めないため SHA-256 を確かめられません: ${r.path}`
+        case 'execHashMismatch':
+          return `実行ファイル ${r.path} の SHA-256 がホワイトリストと一致しません`
+        case 'execRemote':
+          return 'このアクションはまだ承認されていません。ローカルの端末で一度実行して承認してください'
+        case 'execDeclined':
+          return '承認されなかったため実行しませんでした'
+        case 'execChanged':
+          return '確認のあとで実行ファイルが変わったため実行しませんでした'
+        case 'execInputTooLarge':
+          return `渡す内容が大きすぎます（${grouped(r.max)} バイトまで）`
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
@@ -332,6 +413,19 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterLabel: '絞り込み',
     argFieldLabel: '引数',
     entryButtonName: (button, entry) => `${button}: ${entry}`,
+    execTruncated: '（出力が上限を超えたため、以降を省略しました）',
+    execNoOutput: '（出力なし）',
+    execExit: code => `終了コード ${code}`,
+    execStderr: '標準エラー:',
+    execStdout: '標準出力:',
+    execTimeout: seconds => `${seconds} 秒で時間切れになったため停止しました`,
+    execNotStarted: reason => `起動できませんでした（${reason}）`,
+    execApproveQuestion: (label, id, path, args, sha) =>
+      `Quick Actions のアクション「${label}」（${id}）は次の実行ファイルを実行します。ホワイトリストに載っていても、内容を確かめてから承認してください。選択テキストや会話はこのプログラムに渡ります。\n実行ファイル: ${path}\n固定引数: ${args}\nSHA-256: ${sha}\n承認して実行しますか?`,
+    execApproveHeader: '実行の承認',
+    execApprove: '承認して実行',
+    execCancel: 'キャンセル',
+    execRefusedToast: (label, reason) => `Quick Actions: ${label} を実行しませんでした（${reason}）`,
   },
   en: {
     thinking: 'Thinking…',
@@ -397,11 +491,65 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'target':
           return `target must be one of ${r.allowed.join(', ')} (given: ${r.value})`
         case 'contextKind':
-          return `a definition with target context must have kind fork (given: ${r.kind})`
+          return `a definition with target context must have kind fork or exec (given: ${r.kind})`
         case 'noneKind':
-          return `an action with target none must be complete or subagent (given: ${r.kind})`
+          return `an action with target none must be complete, subagent or exec (given: ${r.kind})`
         case 'unexpected':
           return `the definition could not be read: ${r.detail}`
+        case 'execPath':
+          return r.field === 'command'
+            ? `write command as the executable's absolute path (PATH is not searched; no ~, relative path, . or .. part, double /, / at the end, = or control character; given: ${r.path})`
+            : `the path the executable lands on has a character or form that cannot be run (= or a control character, say; it lands on: ${r.path})`
+        case 'execField':
+          return `a definition of kind exec cannot have ${r.field}`
+        case 'execScope':
+          switch (r.why) {
+            case 'unreadable':
+              return 'exec definitions are off: where they came from could not be checked (the settings could not be read)'
+            case 'keys':
+              return 'exec definitions work only when exactly one entry of this plugin in pluginConfigs of your user settings (~/.claude/settings.json) has customActions'
+            case 'mismatch':
+              return 'exec definitions work only as written in your user settings (~/.claude/settings.json); other settings (a project\'s, say) override customActions'
+            case 'home':
+              return 'exec definitions are off: the env of the project, local or --settings settings changes HOME'
+          }
+          return 'exec definitions are off'
+        case 'execAllowlist':
+          switch (r.why) {
+            case 'noHome':
+              return 'HOME is not an absolute path, so the allowlist cannot be read (exec definitions are off)'
+            case 'missing':
+              return 'there is no allowlist ~/.claude/quick-actions/allowed-executables.json (exec definitions are off)'
+            case 'unreadable':
+              return 'the allowlist ~/.claude/quick-actions/allowed-executables.json cannot be read (exec definitions are off)'
+            case 'invalid':
+              return 'the allowlist ~/.claude/quick-actions/allowed-executables.json is not {"executables": [{"path": ..., "sha256": ...}]} (exec definitions are off)'
+            case 'inProject':
+              return 'the allowlist lands inside the current project, so it is not read (exec definitions are off)'
+          }
+          return 'the allowlist cannot be used'
+        case 'execAllowlistEntry':
+          return `entry ${r.entry} of the allowlist is ignored (write path as the executable's real absolute path and sha256 as 64 hexadecimal digits)`
+        case 'execNotAllowed':
+          return `the executable ${r.path} is not in the allowlist (a symbolic link is matched by the path it lands on)`
+        case 'execMissing':
+          return `command does not lead to a regular file: ${r.path}`
+        case 'execUnsupported':
+          return 'exec actions work on macOS and Linux only'
+        case 'execTooLarge':
+          return `the executable is too large to check its SHA-256 (up to ${grouped(r.max)} bytes; use a wrapper script)`
+        case 'execUnreadable':
+          return `the executable cannot be read to check its SHA-256: ${r.path}`
+        case 'execHashMismatch':
+          return `the SHA-256 of the executable ${r.path} does not match the allowlist`
+        case 'execRemote':
+          return 'this action is not approved yet: run it once at your own terminal to approve it'
+        case 'execDeclined':
+          return 'not run: it was not approved'
+        case 'execChanged':
+          return 'not run: the executable changed after it was checked'
+        case 'execInputTooLarge':
+          return `what it would be given is too large (up to ${grouped(r.max)} bytes)`
       }
     },
     customProblemsHeading: 'Ignored in customActions:',
@@ -452,6 +600,19 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerFilterLabel: 'Filter',
     argFieldLabel: 'Argument',
     entryButtonName: (button, entry) => `${button}: ${entry}`,
+    execTruncated: '(the output passed its limit; the rest is left out)',
+    execNoOutput: '(no output)',
+    execExit: code => `exit code ${code}`,
+    execStderr: 'Standard error:',
+    execStdout: 'Standard output:',
+    execTimeout: seconds => `stopped: it ran past its timeout of ${seconds} s`,
+    execNotStarted: reason => `could not start (${reason})`,
+    execApproveQuestion: (label, id, path, args, sha) =>
+      `The Quick Actions action "${label}" (${id}) runs this executable. Even though it is in your allowlist, check it before you approve: the selected text or the conversation goes to it.\nExecutable: ${path}\nFixed arguments: ${args}\nSHA-256: ${sha}\nApprove and run it?`,
+    execApproveHeader: 'Approve run',
+    execApprove: 'Approve and run',
+    execCancel: 'Cancel',
+    execRefusedToast: (label, reason) => `Quick Actions: ${label} was not run (${reason})`,
   },
 }
 

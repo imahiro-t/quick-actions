@@ -10,6 +10,7 @@
 import { ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE, WEB_TOOLS } from './actions'
 import type { ActionSpec, Target } from './actions'
 import type { ArgSpec } from './args'
+import { EXEC_ARGS_MAX, EXEC_ARG_MAX, EXEC_TIMEOUT_DEFAULT_MS, EXEC_TIMEOUT_MAX_MS, EXEC_TIMEOUT_MIN_MS, isSafeExecPath } from './exec'
 import { MESSAGES } from './i18n'
 import type { Lang, Localized } from './i18n'
 
@@ -19,7 +20,13 @@ export const ALLOWED_SUBAGENT_TOOLS: readonly string[] = [...READ_ONLY_TOOLS, ..
 /** The models a custom complete or subagent action may name. */
 export const MODELS: readonly string[] = ['haiku', 'sonnet', 'opus']
 
-export const KINDS: readonly string[] = ['complete', 'fork', 'subagent']
+export const KINDS: readonly string[] = ['complete', 'fork', 'subagent', 'exec']
+
+/**
+ * The fields of the other kinds an exec definition may not have: one there
+ * says its author meant another kind, so it is refused rather than run.
+ */
+export const NOT_EXEC_FIELDS: readonly string[] = ['prompt', 'model', 'tools', 'task', 'maxTokens', 'description']
 
 /** What a custom action may work on: the selection (the default), the conversation, or neither (standalone). */
 export const TARGETS: readonly string[] = ['selection', 'context', 'none']
@@ -87,6 +94,38 @@ export type CustomReason =
   | { code: 'contextKind'; kind: string }
   | { code: 'noneKind'; kind: string }
   | { code: 'unexpected'; detail: string }
+  // An exec definition (./exec). `path` is shown as is: hidden characters named, cut short.
+  /** A command that is not an absolute path written as it lands (the definition's), or a path it lands on that no `env` can run (`realPath`). */
+  | { code: 'execPath'; field: 'command' | 'realPath'; path: string }
+  /** A field of another kind (NOT_EXEC_FIELDS) in an exec definition. */
+  | { code: 'execField'; field: string }
+  /** Not the person's own: see ./exec scopeVerdict. */
+  | { code: 'execScope'; why: 'unreadable' | 'keys' | 'mismatch' | 'home' }
+  /** The allowlist cannot be used: see ./exec allowlistPlace and allowlistOf (read by ./register loadAllowlist). */
+  | { code: 'execAllowlist'; why: 'noHome' | 'missing' | 'unreadable' | 'invalid' | 'inProject' }
+  /** An entry of the allowlist left out (its place, from 1). */
+  | { code: 'execAllowlistEntry'; entry: number }
+  /** The executable the command lands on is in no entry of the allowlist. */
+  | { code: 'execNotAllowed'; path: string }
+  /** The command leads to no regular file. */
+  | { code: 'execMissing'; path: string }
+  /** Exec actions do not run here (Windows). */
+  | { code: 'execUnsupported' }
+  // Found as an exec action is about to run.
+  /** Too large to have its SHA-256 checked. */
+  | { code: 'execTooLarge'; max: number }
+  /** Its bytes could not be read to check its SHA-256. */
+  | { code: 'execUnreadable'; path: string }
+  /** Its SHA-256 is not the allowlist entry's. */
+  | { code: 'execHashMismatch'; path: string }
+  /** Not approved, and asked from where no approval can be given (not the person's terminal). */
+  | { code: 'execRemote' }
+  /** The approval was not given. */
+  | { code: 'execDeclined' }
+  /** The executable changed between its approval (or its check) and its start. */
+  | { code: 'execChanged' }
+  /** What it would be given on its standard input is past the limit (bytes). */
+  | { code: 'execInputTooLarge'; max: number }
 
 /**
  * One problem with the setting: `index` is the definition's place in the array
@@ -120,7 +159,7 @@ const codePointName = (ch: string) => `U+${(ch.codePointAt(0) ?? 0).toString(16)
  * from a definition (an id, a kind, a JSON error quoting the file) never puts
  * a raw control or bidirectional character into the problem list or a toast.
  */
-const displaySafe = (s: string): string => s.replace(DISPLAY_FORBIDDEN_ALL, codePointName)
+export const displaySafe = (s: string): string => s.replace(DISPLAY_FORBIDDEN_ALL, codePointName)
 
 /**
  * A value as the person wrote it, with displaySafe applied, short enough for
@@ -242,6 +281,44 @@ const CUSTOM_ARG: ArgSpec<Localized> = {
   hint: { ja: MESSAGES.ja.customArgHint, en: MESSAGES.en.customArgHint },
 }
 
+/**
+ * An exec definition, checked as written (./exec checks the rest as it is
+ * shown and run): no field of another kind; `command` an absolute path
+ * written as it lands (isSafeExecPath); `args` up to EXEC_ARGS_MAX strings of
+ * up to EXEC_ARG_MAX, none with a NUL, taken as they are; `timeoutMs` a whole
+ * number of milliseconds within its bounds; any target. Called within
+ * parseOne, so it fails as the others do.
+ */
+function parseExec(d: Record<string, unknown>, base: { id: string; icon: string; label: Localized; runningText?: Localized }): ActionSpec {
+  const other = NOT_EXEC_FIELDS.find(f => d[f] !== undefined)
+  if (other !== undefined) fail({ code: 'execField', field: other })
+  if (absent(d['command'])) fail({ code: 'missing', field: 'command' })
+  const command = d['command']
+  if (!isSafeExecPath(command)) fail({ code: 'execPath', field: 'command', path: shown(command) })
+  const args = d['args'] ?? []
+  if (
+    !Array.isArray(args) ||
+    args.length > EXEC_ARGS_MAX ||
+    !args.every(a => typeof a === 'string' && a.length <= EXEC_ARG_MAX && !a.includes('\0'))
+  ) {
+    fail({ code: 'invalid', field: 'args' })
+  }
+  const timeoutMs = d['timeoutMs'] ?? EXEC_TIMEOUT_DEFAULT_MS
+  if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs < EXEC_TIMEOUT_MIN_MS || timeoutMs > EXEC_TIMEOUT_MAX_MS) {
+    fail({ code: 'invalid', field: 'timeoutMs' })
+  }
+  const target = targetOf(d)
+  return {
+    ...base,
+    kind: 'exec',
+    ...(target === 'selection' ? {} : { target }),
+    ...(target === 'none' ? { arg: CUSTOM_ARG } : {}),
+    command: command as string,
+    args: [...(args as string[])],
+    timeoutMs: timeoutMs as number,
+  }
+}
+
 /** One definition checked against the IDs already taken; the first reason found if it is not valid. */
 function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<string>): ActionSpec | CustomReason {
   try {
@@ -263,6 +340,8 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     if (absent(d['kind'])) fail({ code: 'missing', field: 'kind' })
     const kind = d['kind']
     if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
+    const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
+    if (kind === 'exec') return parseExec(d, base)
     const prompt = required(d, 'prompt')
     const target = targetOf(d)
     const context = target === 'context'
@@ -270,7 +349,6 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     if (context && kind !== 'fork') fail({ code: 'contextKind', kind: kind as string })
     // A standalone one has no conversation to carry: never a fork.
     if (target === 'none' && kind === 'fork') fail({ code: 'noneKind', kind: kind as string })
-    const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
     const standalone = target === 'none' ? { target: 'none' as const, arg: CUSTOM_ARG } : {}
 
     if (kind === 'fork') {
@@ -398,6 +476,23 @@ export function problemLine(p: CustomProblem, lang: Lang): string {
  */
 export const problemFor = (problems: readonly CustomProblem[], id: string): CustomProblem | undefined =>
   id === '' ? undefined : problems.find(p => p.id !== null && p.id.trim().toLowerCase() === id)
+
+/**
+ * The place (from 0) of the definition the custom action `id` was read from,
+ * in the setting: the first object with that ID, as parseCustomActions keeps
+ * the first. Null when it cannot be found (the setting is not that JSON).
+ */
+export function definitionIndex(setting: unknown, id: string): number | null {
+  if (typeof setting !== 'string') return null
+  try {
+    const parsed: unknown = JSON.parse(setting)
+    if (!Array.isArray(parsed)) return null
+    const i = parsed.findIndex(d => isRecord(d) && d['id'] === id)
+    return i < 0 ? null : i
+  } catch {
+    return null
+  }
+}
 
 /** One warning on one line: the definition's place (from 1) and ID, then what it allows. */
 export const warningLine = (w: CustomWarning, lang: Lang): string =>

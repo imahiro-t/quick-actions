@@ -1,7 +1,8 @@
 import type { Engine } from 'claude-code/testing'
-import type { On, ProcessRunResult, UiCopyResult } from 'claude-code'
+import type { On, ProcessRunResult, SettingsSource, UiCopyResult } from 'claude-code'
 
 import type { ActionDef, ActionSpec } from '../hooks/actions'
+import { base64Encode, utf8Encode } from '../hooks/codec'
 import type { Messages } from '../hooks/i18n'
 import { fixedRows } from '../hooks/picker-rows'
 import type { FilterRow } from '../hooks/picker-rows'
@@ -324,6 +325,11 @@ export type Stage = {
   settings: Record<string, unknown>
   settingsReads: number
   settingsDeny: string | null
+  // What $.settings.read({ source }) answers for one source (absent: {}),
+  // how many times the plugin asked for one, and the sources that refuse.
+  sourceSettings: Partial<Record<SettingsSource, Record<string, unknown>>>
+  sourceReads: SettingsSource[]
+  sourceDeny: SettingsSource[]
   // Set to hold every model call (complete and fork) and every subagent
   // registration until it settles: the pane shows it running meanwhile.
   hold: Promise<void> | null
@@ -357,7 +363,7 @@ export type Stage = {
   // Every $.process.run the plugin asked for (its argv and timeout), in order,
   // and how each is answered: a result, a reason to refuse it with (the
   // plugin's call then rejects with it), or a promise of either.
-  processRuns: { argv: string[]; timeoutMs?: number }[]
+  processRuns: { argv: string[]; timeoutMs?: number; cwd?: string; stdin?: string; env?: Record<string, string> }[]
   processAnswer: (argv: readonly string[]) => ProcessAnswer | Promise<ProcessAnswer>
   // Every $.ui.copy the plugin asked for (its text and surface), in order, and what each answers.
   copies: { text: string; surface?: string }[]
@@ -365,18 +371,26 @@ export type Stage = {
 }
 
 /** How the stage answers one $.process.run: what the command came to, or a refusal (the call rejects). */
-export type ProcessAnswer = { exitCode: number; stdout?: string } | { deny: string }
+export type ProcessAnswer =
+  | { exitCode: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean; isStderrTruncated?: boolean }
+  | { deny: string }
 
 /** The default answer to $.process.run: `uname -s` reads Darwin, any other command exits 0. */
 export const defaultProcessAnswer = (argv: readonly string[]): ProcessAnswer =>
   argv[0] === 'uname' ? { exitCode: 0, stdout: 'Darwin\n' } : { exitCode: 0 }
 
-const processResult = (a: { exitCode: number; stdout?: string }): ProcessRunResult => ({
+const processResult = (a: {
+  exitCode: number
+  stdout?: string
+  stderr?: string
+  isStdoutTruncated?: boolean
+  isStderrTruncated?: boolean
+}): ProcessRunResult => ({
   exitCode: a.exitCode,
   stdout: a.stdout ?? '',
-  stderr: '',
-  isStdoutTruncated: false,
-  isStderrTruncated: false,
+  stderr: a.stderr ?? '',
+  isStdoutTruncated: a.isStdoutTruncated ?? false,
+  isStderrTruncated: a.isStderrTruncated ?? false,
 })
 
 const reply = (s: Stage, text: string) => {
@@ -389,7 +403,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {}, processRuns: [], processAnswer: defaultProcessAnswer, copies: [], copyAnswer: { isCopied: true } }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, sourceSettings: {}, sourceReads: [], sourceDeny: [], hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {}, processRuns: [], processAnswer: defaultProcessAnswer, copies: [], copyAnswer: { isCopied: true } }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -403,7 +417,13 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('store.keys', () => ({ value: Object.keys(s.stored) }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('process.run', async (_$, e) => {
-    s.processRuns.push({ argv: [...e.argv], ...(e.init?.timeoutMs === undefined ? {} : { timeoutMs: e.init.timeoutMs }) })
+    s.processRuns.push({
+      argv: [...e.argv],
+      ...(e.init?.timeoutMs === undefined ? {} : { timeoutMs: e.init.timeoutMs }),
+      ...(e.init?.cwd === undefined ? {} : { cwd: e.init.cwd }),
+      ...(e.init?.stdin === undefined ? {} : { stdin: e.init.stdin }),
+      ...(e.init?.env === undefined ? {} : { env: { ...e.init.env } }),
+    })
     const a = await s.processAnswer(e.argv)
     return 'deny' in a ? { deny: a.deny } : { value: processResult(a) }
   })
@@ -450,7 +470,12 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   on('ui.panes', () => ({
     value: s.panes.map(id => ({ id, title: id, isShown: id === s.shown, isFocused: id === s.focused, isPlaced: true })),
   }))
-  on('settings.read', () => {
+  on('settings.read', (_$, e) => {
+    if (e.source !== undefined) {
+      s.sourceReads.push(e.source)
+      if (s.sourceDeny.includes(e.source)) return { deny: `${e.source} refused` }
+      return { value: s.sourceSettings[e.source] ?? {} }
+    }
     s.settingsReads++
     if (s.settingsDeny !== null) return { deny: s.settingsDeny }
     return { value: s.settings }
@@ -520,9 +545,9 @@ export async function reselect(s: Stage, clock: Clock) {
   await clock.advance(400)
 }
 
-/** A definition's prompt; undefined for a local action, which has none, or for no definition. */
+/** A definition's prompt; undefined for a local or exec action, which has none, or for no definition. */
 export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
-  def === undefined || def.kind === 'local' ? undefined : def.prompt
+  def === undefined || def.kind === 'local' || def.kind === 'exec' ? undefined : def.prompt
 
 /** The hint line's kind buttons are keyed by this and the kind: never an action's ID. */
 export const KIND_KEY = '_kind-'
@@ -587,4 +612,77 @@ export function pageShown(texts: readonly string[], t: Messages, count: number):
   if (m === null) return undefined
   const [page, pages] = [Number(m[1]), Number(m[2])]
   return texts[0] === pageText(t, page, pages, count) ? [page, pages] : undefined
+}
+
+// ---------------------------------------------------------------------------
+// The world an exec action reads (SELM-00117), for the tests that ask for it
+// (execWorld): files and where each lands, the environment, the session's
+// directories and messages, and the approval dialog. None of it is answered
+// unless a test asks, so the other tests see the engine as before.
+
+/** One file or directory of the mocked file system: what it is, where it lands, and a file's content. */
+export type WorldFile = { kind?: 'file' | 'dir' | 'other'; realPath?: string; content?: string; isLink?: boolean }
+
+export type ExecWorld = {
+  // By the path asked for: a path not here is missing (ENOENT). A link is an
+  // entry whose realPath is another path; its content is that path's.
+  files: Record<string, WorldFile>
+  env: Record<string, string>
+  root: string
+  cwd: string
+  messages: { role: 'user' | 'assistant'; text: string }[]
+  // What the approval dialog answers: a label, any other text (as typed
+  // under "Other"), or null to dismiss it (the call rejects).
+  answer: string | null
+  // Every question the plugin asked, in order, and what happens as one is asked (null: nothing).
+  asked: { question: string; header?: string; options: string[] }[]
+  onAsk: (() => void) | null
+  // Every path read with $.fs.read, in order.
+  reads: string[]
+}
+
+const contentOf = (w: ExecWorld, path: string): string | undefined => {
+  const f = w.files[path]
+  if (f === undefined) return undefined
+  if (f.content !== undefined) return f.content
+  return f.realPath !== undefined && f.realPath !== path ? w.files[f.realPath]?.content : undefined
+}
+
+/** Answers the calls an exec action makes from `w` (see ExecWorld), which the test may change as it goes. */
+export function execWorld(on: On, init: Partial<ExecWorld> = {}): ExecWorld {
+  const w: ExecWorld = { files: {}, env: {}, root: '/repo', cwd: '/repo', messages: [], answer: null, asked: [], onAsk: null, reads: [], ...init }
+  on('env.get', (_$, e) => ({ value: w.env[e.name] }))
+  on('session.root', () => ({ value: w.root }))
+  on('session.cwd', () => ({ value: w.cwd }))
+  on('session.messages', () => ({ value: w.messages.map(m => ({ ...m, toolUses: [] })) }))
+  on('fs.stat', (_$, e) => {
+    const f = w.files[e.path]
+    if (f === undefined) return { deny: `ENOENT: ${e.path}` }
+    const real = f.realPath ?? e.path
+    const kind = f.kind ?? w.files[real]?.kind ?? 'file'
+    const content = contentOf(w, e.path) ?? ''
+    return {
+      value: {
+        kind,
+        size: utf8Encode(content).length,
+        mtimeMs: 0,
+        isLink: f.isLink ?? real !== e.path,
+        ...(e.resolve ? { realPath: real } : {}),
+      },
+    }
+  })
+  on('fs.read', (_$, e) => {
+    w.reads.push(e.path)
+    const content = contentOf(w, e.path)
+    if (content === undefined) return { deny: `ENOENT: ${e.path}` }
+    return { value: e.as === 'bytes' ? { base64: base64Encode(utf8Encode(content)) } : content }
+  })
+  on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
+    const q = (e as unknown as { questions: { question: string; header?: string; options: { label: string }[] }[] }).questions[0]!
+    w.asked.push({ question: q.question, ...(q.header === undefined ? {} : { header: q.header }), options: q.options.map(o => o.label) })
+    w.onAsk?.()
+    if (w.answer === null) throw new Error('dismissed')
+    return { result: { answers: { [q.question]: w.answer } } }
+  })
+  return w
 }

@@ -1662,11 +1662,13 @@ for (const language of ['ja', 'en'] as const) {
             expect(s.forks.length).toBe(before.forks + 1)
             expect(s.forks.at(-1)).toContain(a.prompt)
             expect(s.forks.at(-1)).toContain('TypeError: x is undefined')
-          } else {
+          } else if (a.kind === 'subagent') {
             expect(s.spawned.length).toBe(before.spawned + 1)
             expect(s.spawned.at(-1)?.subagentType).toBe(`${PLUGIN}:${a.id}`)
             expect(s.spawned.at(-1)?.prompt).toContain(a.task)
             expect(s.registered.at(-1)).toMatchObject({ name: a.id, model: a.model, omitClaudeMd: true })
+          } else {
+            throw new Error(`a built-in of kind ${a.kind}`)
           }
         }
         await band.unmount()

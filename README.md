@@ -189,6 +189,7 @@ What goes out depends on the kind of action and how it runs.
 - The selection is passed as the text to work on, not as instructions: it is wrapped in `<selected>…</selected>`, any such tag inside it, opening or closing, in any case and with spaces or invisible characters in it (`</SELECTED>`, `</selected >`, `< / selected>` and the like), or written with fullwidth forms, look-alike letters from another script (Cyrillic, Greek and the like), characters that look like an `l` where the tag has one (`I`, `1`, `ɪ`, `İ`, `ꞁ`, `ⵏ`, `ᛁ`, `٠`, `Ι`, `ı` and `۱`, and an `I` followed by a combining dot above (U+0307, a decomposed `İ`), as in `</seIected>`; a lower-case `i` and `|` are not taken for one) or invisible characters such as U+034F (`＜／ｓｅｌｅｃｔｅｄ＞` and the like), is made harmless first (its `<` written `&lt;`) so the text cannot close the wrapping early, and the prompt says the text inside is data, not instructions. The same applies to actions you add in `customActions`, and to the argument of a standalone action you add there (wrapped in `<input>…</input>` the same way). This is no complete defense, though: if you select untrusted text (a web page, tool output) the answer can still be steered by instructions inside it. The `fork` actions, 💬 Ask Claude and 🧾 Why so?, are the most exposed, since they read the selection together with the conversation (🧾 Why so? takes it as something Claude said and reasons about it in that context). The built-in `complete` actions have no tools, and the built-in `subagent` actions have only read-only tools (Read / Grep / Glob) or the web tools (`WebSearch` / `WebFetch`): none of them can write files or run commands
 - **The actions that check the web** (📚 Check on the web `web-check`, 📘 Official docs `official-docs`, 🚑 Search the error `search-error`, 📦 Package info `package-info`) send the selection outside: words from it go to a web search service as queries, and they fetch pages at URLs written in the selection or turned up by the search. They have no tool that reads files, and like every subagent of this plugin they run without CLAUDE.md (yours, the project's or the rules) in their context, so nothing from the repository or CLAUDE.md is put into those queries or URLs: the queries come from the selection, and the pages fetched are ones the selection names or the search found (their prompts also tell them to build queries from the selection alone and fetch only such URLs, though that part rests on the model following it). The pages they fetch can carry instructions of their own (prompt injection) that steer the answer, or what is searched and fetched next. Since they cannot change files or run commands, the effect stays within the answer in the pane. They send only when you press one on the hint line or in the ⋯ dialog, or run `/quick-actions <id>`. They are not in the first-time order, but they can always be picked in the ⋯ dialog (type `web-check` or the like in its filter), and once used they may show on the hint line in the order of use (no setting takes them out of the order). Whether they can search or fetch at all also depends on your Claude Code permissions for `WebSearch` / `WebFetch`
 - Actions you add in [`customActions`](#customactions) send the same way as their kind (the selection, the conversation, or the prompt and the argument). A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, its argument and the files it read (inside the repository or out) to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
+- **Custom actions of kind `exec`** ask no model: they hand the selection, the conversation (as JSON) or the argument to a program on your own machine, on its standard input, and the plugin sends nothing out for them. What the program does with it is up to the program (see [Running a local program (exec)](#running-a-local-program-exec))
 
 ### Usage counts
 
@@ -347,6 +348,8 @@ Directly in `settings.json`, escaped the same way:
 ```
 
 It is read again whenever the plugin reloads, like `pinActions` and `language`: a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code. Run `/quick-actions` after a change to see whether any definition was ignored, and why.
+
+Definitions of kind `exec`, which run a program on your machine, work only as written in your user settings (`~/.claude/settings.json`), and also need the program in an allowlist file in your home directory and your approval at the first run: see [Running a local program (exec)](#running-a-local-program-exec).
 
 ### Changed IDs
 
@@ -884,19 +887,22 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 | `id` | yes | all | The ID written in `pinActions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button) or `hint` (the command's argument), and not one an earlier custom definition already took. Up to 64 characters (the longest name a subagent can have) |
 | `icon` | yes | all | The icon on the hint line (one emoji). A symbol that is text by default (☀, ✂, 🗂 and the like) is drawn as an emoji, with VS16 (U+FE0F) added after it, so that it takes the two columns the terminal draws it in; one already followed by VS16 or VS15 is left as written, and so are ©, ® and ™, drawn as the one-column marks they are. Up to 16 characters (counted in code points, so a ZWJ sequence or a flag fits); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
 | `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }`. Up to 64 characters each (counted in code points); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
-| `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local) |
-| `target` | no | all | What it works on: `selection` (the default, also when empty), `context` (the conversation, with no selected text; `kind` must then be `fork`) or `none` (a standalone action, on neither the selection nor the conversation; `kind` must then be `complete` or `subagent`). It is shown as `[icon]`, `<icon>` or `{icon}` accordingly |
-| `prompt` | yes | all | complete: the system prompt; fork: the instruction that follows the selection (with `target` `context`, the instruction alone); subagent: its system prompt |
+| `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local), or `exec` (runs a program on your machine; see [Running a local program (exec)](#running-a-local-program-exec)) |
+| `target` | no | all | What it works on: `selection` (the default, also when empty), `context` (the conversation, with no selected text; `kind` must then be `fork` or `exec`) or `none` (a standalone action, on neither the selection nor the conversation; `kind` must then be `complete`, `subagent` or `exec`). It is shown as `[icon]`, `<icon>` or `{icon}` accordingly |
+| `prompt` | yes | complete, fork, subagent | complete: the system prompt; fork: the instruction that follows the selection (with `target` `context`, the instruction alone); subagent: its system prompt |
 | `runningText` | no | all | What the pane shows while it runs, as `label` is written (default "Thinking…" / "考え中…"). Up to 64 characters each, with the same characters refused as in `label` |
 | `model` | complete and subagent | complete, subagent | `haiku`, `sonnet` or `opus` only, lowercase. A fork uses the conversation's model and ignores it |
 | `maxTokens` | no | complete | The longest answer, a whole number from 1 to 32000 (default 1500) |
 | `task` | subagent | subagent | What opens the request the subagent is spawned with; the selection follows it (with `target` `none`, the argument, or nothing when there is none) |
 | `description` | no | subagent | What the subagent type says it is for, as `label` is written (default: built from the label). Up to 500 characters each, with the same characters refused as in `label` |
 | `tools` | no | subagent | Picked from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch` (names as written here). Default: `["Read", "Grep", "Glob"]`. A definition naming any other tool is ignored as a whole |
+| `command` | exec | exec | The program's absolute path (see [Running a local program (exec)](#running-a-local-program-exec)) |
+| `args` | no | exec | Its fixed arguments, an array of strings passed as written |
+| `timeoutMs` | no | exec | How long it may run, 1000 to 120000 milliseconds (default 30000) |
 
-Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored.
+Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored, except on an `exec` definition: one with `prompt`, `model`, `tools`, `task`, `maxTokens` or `description` is ignored as a whole.
 
-**The argument of an action with `target` `none`**: a custom standalone action takes one optional free-text argument of up to 500 characters (its type and default cannot be defined). The argument written in `/quick-actions <id> <argument>` is passed in `<input>…</input>`, as data rather than instructions: a line ahead of it says the text inside is data the user typed, not instructions, and any `<input>` / `</input>` tag inside it (in the same forms as for `<selected>` in [What is sent, and when](#what-is-sent-and-when)) is made harmless first. It goes as the user's input for complete, after `task` for subagent. Pressed on the hint line or in the ⋯ dialog, it asks for the argument on the [argument screen](#the-argument-screen) (with no default, an empty Enter says it runs with no argument, and the field shows "text"), and what is typed there is passed the same way. With none (an empty field, or a press in the mobile app too), complete is given only a set line saying there is no input, and subagent `task` alone.
+**The argument of an action with `target` `none`**: a custom standalone action takes one optional free-text argument of up to 500 characters (its type and default cannot be defined). The argument written in `/quick-actions <id> <argument>` is passed in `<input>…</input>`, as data rather than instructions: a line ahead of it says the text inside is data the user typed, not instructions, and any `<input>` / `</input>` tag inside it (in the same forms as for `<selected>` in [What is sent, and when](#what-is-sent-and-when)) is made harmless first. It goes as the user's input for complete, after `task` for subagent. Pressed on the hint line or in the ⋯ dialog, it asks for the argument on the [argument screen](#the-argument-screen) (with no default, an empty Enter says it runs with no argument, and the field shows "text"), and what is typed there is passed the same way. With none (an empty field, or a press in the mobile app too), complete is given only a set line saying there is no input, and subagent `task` alone. An `exec` action gets the argument as it is (not wrapped in `<input>`), on its standard input, and empty input when there is none.
 
 complete:
 
@@ -986,9 +992,10 @@ A definition is ignored, alone, when:
 - `icon` is longer than 16 characters, `label` or `runningText` longer than 64, or `description` longer than 500 (in code points, each language's for `{ "ja", "en" }`), such as `label is too long (up to 64 characters)`
 - `icon`, `label`, `runningText` or `description` has a control character, a bidirectional control or a line or paragraph separator, such as `label contains a character it cannot have: U+001B (…)` (the character is written as U+XXXX)
 - a required field is missing or empty (`model` and `task` as its kind needs them), or a value is of the wrong shape (`label` with only one of `ja` / `en`, `maxTokens` out of range, `tools` empty or not an array)
-- `kind` is not `complete` / `fork` / `subagent`, or `model` is not `haiku` / `sonnet` / `opus`
-- `target` is not `selection` / `context` / `none` (lowercase), is `context` with a `kind` other than `fork`, or is `none` with the `kind` `fork`, such as `target must be one of selection, context, none (given: foo)`, `a definition with target context must have kind fork (given: complete)` or `an action with target none must be complete or subagent (given: fork)`
+- `kind` is not `complete` / `fork` / `subagent` / `exec`, or `model` is not `haiku` / `sonnet` / `opus`
+- `target` is not `selection` / `context` / `none` (lowercase), is `context` with a `kind` other than `fork` or `exec`, or is `none` with the `kind` `fork`, such as `target must be one of selection, context, none (given: foo)`, `a definition with target context must have kind fork or exec (given: complete)` or `an action with target none must be complete, subagent or exec (given: fork)`
 - `tools` names a tool outside the five above: the whole definition is ignored rather than run without it, since that would run something other than what you wrote
+- of kind `exec`: `command` is not an absolute path (or has a character or form it cannot have), `args` is not an array of strings within its limits, `timeoutMs` is out of range, or it has a field of the other kinds (`prompt`, `model`, `tools`, `task`, `maxTokens`, `description`), such as `write command as the executable's absolute path (PATH is not searched; …; given: jq)` or `a definition of kind exec cannot have prompt`. Where it came from, the allowlist and the approval are checked too: see [Where the problems show](#where-the-problems-show)
 
 When the setting is not valid JSON, or not an array, every custom definition is ignored. In settings.json the value must be a string (the array in quotes, its quotes escaped): Claude Code does not load the plugin with an unquoted array there. The built-ins work as before in every case. To see what was ignored and why:
 
@@ -1000,7 +1007,137 @@ When the setting is not valid JSON, or not an array, every custom definition is 
 
 - With `WebFetch` / `WebSearch` allowed, the subagent can send the selected text or its argument, and whatever it read with `Read` / `Grep` / `Glob` (any file Claude Code's permissions let it read, not only the repository's), to outside sites: on its own, or steered by instructions written in the selection (prompt injection; the selection is wrapped in `<selected>…</selected>` with any such tag inside it made harmless, and the prompt says it is data, not instructions, as for every action on the selection, but that is no complete defense). Allow them only for actions you will run on text you trust, and keep the default read-only tools otherwise
 - A definition that allows `Read` or `Grep` (both hand the subagent the contents of files) together with `WebFetch` or `WebSearch` gets a warning, such as `#2 (web-check): it allows Read together with WebFetch, so it could send the contents of files it reads out to the web`. The definition is not ignored and still runs: the warning is listed after every result of `/quick-actions` (under the problems, if any), at the top of the pane while it is open, and, when the setting has no problems, in a toast at the start of a session. `Glob` returns only file names, so `Glob` with the web tools gets no warning
-- Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted in `customActions`
+- Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted in `customActions`. An [`exec` action](#running-a-local-program-exec) is a separate thing: it gives no model a tool, but runs one program you listed in your allowlist and approved yourself
+
+#### Running a local program (exec)
+
+A definition of kind `exec` runs a program on your own machine (a script or tool of yours) and asks no model: the program gets the selection, the conversation or the argument on its standard input, and what it writes to its standard output is shown in the pane. It works in all three kinds: `[icon]` on the selection, `<icon>` on the conversation and `{icon}` standalone. Uses include formatting or converting text, or handing it to an in-house tool, quickly and the same way every time.
+
+So that a cloned repository or a shared settings file cannot make you run a command (a repository's `.claude/settings.json` can hold plugin settings too), an exec action runs only when all three of these hold (anything else is refused, and the reason shown):
+
+1. The definition is written in your **user settings** (`~/.claude/settings.json`)
+2. The program is listed in the **allowlist file** in your home directory, `~/.claude/quick-actions/allowed-executables.json` (never read from a repository)
+3. You **approved** it at your own terminal the first time it ran, and again after it changed (an approval cannot come with a repository or a setting)
+
+##### Fields
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `command` | yes | The program's absolute path. PATH is not searched (`jq` alone is refused), and a path with `~`, a relative path, a `.` or `..` part, a double `/`, a `/` at its end, `=`, a control character or a bidirectional control is refused. Up to 4096 characters. It may be a symbolic link: it is matched against the allowlist by the path it lands on, every link followed |
+| `args` | no | The fixed arguments, an array of strings passed as written: there is no shell, and nothing in them is expanded or replaced (`~`, `$HOME`, `*` and `$(…)` reach the program as those characters). Up to 32, each up to 4096 characters, with no NUL. Default: none |
+| `timeoutMs` | no | How long it may run, in milliseconds: a whole number from 1000 to 120000 (default 30000) |
+| `target` | no | `selection` (the default), `context` or `none`, as for the other kinds |
+
+`id`, `icon`, `label` and `runningText` are written as for the other kinds. `prompt`, `model`, `tools`, `task`, `maxTokens` and `description` cannot be: a definition of kind `exec` with any of them is ignored (`a definition of kind exec cannot have prompt`), so that one meant for a model is not run as a program by mistake.
+
+Examples of the three kinds (the paths are examples; write your own programs'):
+
+```json
+[
+  {
+    "id": "upper",
+    "icon": "🔠",
+    "label": { "ja": "大文字にする", "en": "Upper case" },
+    "kind": "exec",
+    "command": "/Users/me/bin/upper.sh"
+  },
+  {
+    "id": "save-chat",
+    "icon": "💾",
+    "label": { "ja": "会話を保存", "en": "Save the chat" },
+    "kind": "exec",
+    "target": "context",
+    "command": "/Users/me/bin/save-chat",
+    "args": ["--format", "markdown"],
+    "timeoutMs": 10000
+  },
+  {
+    "id": "new-ticket",
+    "icon": "🎫",
+    "label": { "ja": "チケットを作る", "en": "New ticket" },
+    "kind": "exec",
+    "target": "none",
+    "command": "/Users/me/bin/new-ticket"
+  }
+]
+```
+
+As with every definition, the array goes in the `customActions` string, here in `pluginConfigs` of `~/.claude/settings.json` (see [`customActions`](#customactions) for how to write it).
+
+##### What the program gets
+
+- **Standard input** (UTF-8). What it works on never goes into the arguments or a command line:
+  - On the selection: the selected text as it is, up to 1 MiB (1,048,576 bytes). A larger selection is not run (`what it would be given is too large (up to 1,048,576 bytes)`)
+  - On the conversation: a JSON array of its messages, oldest first, as `[{"role":"user","text":"…"},{"role":"assistant","text":"…"}]`, read when the action starts. Tool calls and their results are left out. Past 1 MiB, the oldest messages are left out until it fits. The newest message is not cut, so one that is over 1 MiB by itself is left out too: the program can then get an empty array `[]`, and nothing says so
+  - Standalone: the argument as typed in `/quick-actions <id> <argument>` or on the [argument screen](#the-argument-screen) (up to 500 characters), as it is, not wrapped in `<input>…</input>`; empty when there is none
+- **Arguments**: the path the command lands on, then `args` as written
+- **Environment variables**: it is started through `/usr/bin/env -i`, so it gets these and nothing else (API keys, tokens and the rest of Claude Code's environment do not reach it): `PATH`, fixed to `/usr/bin:/bin:/usr/sbin:/sbin`; `HOME`, `LANG`, `LC_ALL` and `TMPDIR` as Claude Code has them (each left out when unset); `QUICK_ACTIONS_TARGET` (`selection`, `context` or `none`); and `QUICK_ACTIONS_LANG` (`en` or `ja`, the display language)
+- **Working directory**: your home directory, not the project's. Have the program use absolute paths
+
+**The fixed PATH and the shebang line**: as `PATH` holds only the system directories, a script starting `#!/usr/bin/env python3` or `#!/usr/bin/env node` cannot find an interpreter installed with Homebrew, asdf, nvm and the like, and fails (`env: node: No such file or directory`, exit code 127). Write the interpreter's absolute path in the shebang line instead (`#!/opt/homebrew/bin/python3`, say), or list a wrapper script that starts the interpreter by its absolute path. An asdf shim is itself a shell script and does not work there: write the interpreter's real path (for Node, `node -p process.execPath` prints it). The commands the script runs need absolute paths too (or a `PATH` the script sets itself).
+
+##### The allowlist file
+
+`~/.claude/quick-actions/allowed-executables.json` lists the programs exec actions may run:
+
+```json
+{
+  "executables": [
+    { "path": "/Users/me/bin/upper.sh", "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" },
+    { "path": "/Users/me/bin/save-chat" }
+  ]
+}
+```
+
+- `path` (required): the program's absolute path, as it lands, every symbolic link followed. The entry's own path is not resolved, but compared character for character with the path the command lands on. For a command that is a link (`/opt/homebrew/bin/jq`, say), write the path it leads to, as `realpath /opt/homebrew/bin/jq` prints it. A link written in the allowlist matches nothing, so it cannot be pointed at another file later
+- `sha256` (optional): the program's SHA-256, 64 hexadecimal digits (upper or lower case), as `shasum -a 256 /path/to/program` (macOS) or `sha256sum /path/to/program` (Linux) prints it. When given, the program's contents are checked against it right before each run, and a program that does not match is not run (`the SHA-256 of the executable … does not match the allowlist`). Updating the program (a `brew upgrade`, say) changes it: write the new value
+- An entry with no valid `path`, or a `sha256` that is not 64 hexadecimal digits, is ignored and listed (`entry 2 of the allowlist is ignored (…)`). When the file is missing, cannot be read or is not of this shape, every exec definition is off
+- The file is not read when it lands (links followed) inside the session's project directory or working directory, so a repository cannot supply it, even through a link. Starting Claude Code in your home directory itself is the exception
+- Keep the file, and the programs it lists, where only you can write
+
+##### Approving a program
+
+The first time an exec action runs, and again whenever the path its command lands on, its fixed arguments (their contents or their order) or the program's SHA-256 differ from what you approved, a dialog headed "Approve run" asks before anything runs. It shows the action's label and ID, the program's path as it lands, the fixed arguments (as JSON) and its SHA-256, any hidden character in them written as U+XXXX or a JSON escape. Only "Approve and run" approves; "Cancel", closing the dialog or typing an answer of your own is no, and nothing runs (`not run: it was not approved`).
+
+- The approval is kept per action ID in the plugin's local store (`$.store`, a file in Claude Code's configuration directory), not in any setting or repository, so it cannot be handed out with them. There is no command to list or revoke approvals: to stop a program, take it out of the allowlist
+- It is asked only when you press the action at your own terminal or type `/quick-actions <id>` at its prompt. Run from anywhere else (the mobile app, the desktop app, Remote Control, or a command sent by the SDK, another plugin, another session or a scheduled run), an action not yet approved is not run (`this action is not approved yet: run it once at your own terminal to approve it`). Once approved, it runs from those too, with no dialog (see the security notes below)
+- The program's SHA-256 is read again right before it starts. If it changed after the check (while the dialog was open, say), it is not run (`not run: the executable changed after it was checked`)
+- An approval says the program is the one you looked at, not that it is safe to run
+
+##### What the pane shows
+
+- **Exit code 0**: the standard output, its leading blank lines and trailing white space taken off, up to 100,000 characters (the rest left out, with a note). With none, "(no output)"
+- **Any other exit code**: "Failed: exit code N", then "Standard error:" (up to 4,000 characters) and "Standard output:" (up to 100,000), each when there is any. One that was cut, here or by Claude Code's own limit of 4 MiB a stream, is noted under its heading
+- **Past `timeoutMs`**: it is stopped, and "Failed: stopped: it ran past its timeout of N s" is shown. A program that cannot start shows "Failed: could not start (…)". The two are told apart by the time taken and the message, so one that fails to start right at its timeout may be reported as having run past it
+- Control characters, bidirectional controls and invisible characters in the output are escaped by the same rule as a model's answer (see [What is sent, and when](#what-is-sent-and-when)), and the output is drawn as Markdown source, not rendered
+- A run that was refused opens a failed result saying why, and a toast says so too
+
+##### Where the problems show
+
+- Mistakes in a definition itself (`command`, `args`, `timeoutMs`, a field it cannot have) are listed like those of any [invalid definition](#invalid-definitions)
+- What needs your files (where the definitions came from, the allowlist, whether each command is in it) is checked once each time the plugin loads. An exec action refused there is left off the hint line and out of the ⋯ dialog (even when pinned), `/quick-actions <id>` says it is not valid and why, and the reason is listed in the results of `/quick-actions`, in the toast at the start of a session and at the top of the pane
+- A change to the allowlist file or the settings shows on the hint line and in those lists from the next load (`/reload-plugins`, or a new session). The checks right before a run are made every time, though: a program taken out of the allowlist stops running at once, and one added shows up after the reload
+
+##### Limits
+
+- macOS and Linux only (on Windows: `exec actions work on macOS and Linux only`). `/usr/bin/env` must be there
+- A program up to 4 MiB (4,194,304 bytes), as its SHA-256 is read in full (`the executable is too large to check its SHA-256 …`). For a larger one, list a small wrapper script that starts it by its absolute path; the allowlist and the approval then cover the wrapper alone, not the program it starts
+- The path a program lands on cannot contain `=` (`env` would take it for a variable) or a control character
+- Exec is off (every exec definition refused, with the reason) when:
+  - the `pluginConfigs` of your user settings has more than one entry of this plugin with `customActions` (installed from two marketplaces, say), or none
+  - other settings (a project's `.claude/settings.json`, `.claude/settings.local.json` or `--settings`) set `customActions` of this plugin and override yours, whatever they hold
+  - the `env` of the project's, the local or the `--settings` settings sets `HOME` (the allowlist is found through `HOME`)
+  - the settings cannot be read
+- No more than 120 seconds a run. There is no limit on how many run at once, and no log of the runs
+
+##### Security notes
+
+- **List only programs you trust**, kept where only you can write (the file and its directory). Giving `sha256` pins their contents. The hash is checked right before the program starts, but a file swapped in between the check and the start cannot be ruled out altogether
+- **An approved action runs whoever sends it**: once approved, an exec action runs with no dialog when it comes from the mobile app or Remote Control, and also from a command sent by the SDK, another plugin, another session or a scheduled run, and whoever sends it decides its standard input (an argument of their choosing, or a selection). A model steered by prompt injection, or another session, can therefore hand an approved program any input it likes. List only programs that are safe to run on any input: never an interpreter or shell itself (`/bin/sh`, `/usr/bin/python3` and the like, which run their standard input as code), and not one that, depending on its input, runs commands, deletes or overwrites files, or sends things out
+- **What you hand it goes to it**: the selection, or the whole conversation (with any file contents and secrets that came up in it), goes to the program, and what it does with it (writing files, sending it over the network) is up to the program. It runs with your own permissions, with no sandbox
+- Write exec definitions in your user settings alone. Those in a project's settings are ignored, and a project that overrides `customActions` turns exec off
+- Not defended against: `HOME` changed before Claude Code starts (your user settings are read from that same place)
+- This is a separate mechanism from the tools of a custom subagent: `Bash` and the other tools that run commands or change files are still not accepted there
 
 ### Built-in actions and the catalog page
 
@@ -1037,6 +1174,7 @@ Push the tag before the `ref` reaches claude-plugins' `main`: until the tag exis
 
 - Reading custom actions from a file of their own (such as `~/.claude/quick-actions.json`) rather than one setting
 - Letting custom subagents use tools that run commands or change files, once their exposure to prompt injection and the permission prompts are worked out
+- For exec actions: a setting that refuses an approved action sent from anything but your own press or prompt, a command to list and revoke approvals, and checking the `env` of the project's settings for loader variables (`LD_*` and the like)
 
 ## License
 

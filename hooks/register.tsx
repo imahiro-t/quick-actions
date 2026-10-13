@@ -54,7 +54,7 @@ import {
   settleIn,
 } from './order'
 import type { HintKind, OrderSlot } from './order'
-import { HINT_ACCENT, paneStyle, parsePaneTheme } from './palette'
+import { paneStyle, parsePaneTheme } from './palette'
 import { nextEntryId } from './entries'
 import type { PaneStyle } from './palette'
 import { random, randomBytes } from './random'
@@ -1452,10 +1452,13 @@ export const register: Register = (on, options) => {
       await update($, hint, () => null)
       await update($, hintKind, () => null)
     }
-    // The hover labels: cut where the row ends rather than wrapped onto another.
+    // The hover labels: cut where the row ends rather than wrapped onto another,
+    // in the terminal's foreground (nothing paints the line's background, so a
+    // theme colour such as `suggestion` falls to about 1.8:1 where the theme
+    // and the terminal disagree).
     const tip = (scope: string, label: string) => (
       <Box display="none" flexShrink={TIP_SHRINK} {...(tipColumns === undefined ? {} : { width: tipColumns })} hover={{ scope, display: 'flex' }}>
-        <Text color={HINT_ACCENT} wrap="truncate"> {label}</Text>
+        <Text wrap="truncate"> {label}</Text>
       </Box>
     )
 
@@ -1470,13 +1473,16 @@ export const register: Register = (on, options) => {
     // action. A hover label's Box (its width tipColumns) shrinks with
     // TIP_SHRINK, a hundred times ACTIONS_SHRINK, so where the row runs short
     // the label gives way first and the actions' Box stays as laid out.
+    // The kind shown is bold and underlined in the terminal's foreground, as
+    // the inline ⋯ dialog's kind listed is: it stands apart by more than bold
+    // without a colour of its own.
     return (
       <Box flexDirection="row" overflow="hidden">
         {shownKinds.map(k => (
           <Box key={`act-${kindKey(k)}`} flexShrink={0} hover={{ scope: `tip-kind-${k}` }}>
             {k === kind ? (
               <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
-                <Text bold color={HINT_ACCENT}>{kindLabel(k)}</Text>
+                <Text bold underline>{kindLabel(k)}</Text>
               </Button>
             ) : (
               <Button key={kindKey(k)} label={kindName(k)} onPress={() => update($, hintKind, () => k)}>
@@ -1654,9 +1660,9 @@ export const register: Register = (on, options) => {
     // dimColor as before. Inline nothing paints the background, so the others
     // keep the terminal's foreground (the theme's `inactive` falls to about
     // 2.9:1 where the theme and the terminal disagree), and the one listing
-    // is bold and underlined, also in the foreground: it stands apart by more
-    // than bold without a colour of its own, as HINT_ACCENT would fall to
-    // about 1.8:1 there.
+    // is bold and underlined, also in the foreground, as the hint line's kind
+    // shown is: it stands apart by more than bold without a colour of its own,
+    // as the theme's accent (`suggestion`) would fall to about 1.8:1 there.
     const switchKind = (k: HintKind | 'all') =>
       update($, picking, p => {
         if (p === null) return p

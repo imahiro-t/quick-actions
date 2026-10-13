@@ -3,7 +3,6 @@ import type { Engine } from 'claude-code/testing'
 
 import { LEAD_RESERVE, TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
 import { MESSAGES } from '../hooks/i18n'
-import { HINT_ACCENT } from '../hooks/palette'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
@@ -89,25 +88,27 @@ for (const surface of SURFACES) {
   })
 }
 
-// The line's accents, the kind shown and the hover labels, are drawn in the
-// theme key HINT_ACCENT (`suggestion`), never raw `cyan`: the terminal's cyan
-// falls to 1.9-3.4:1 on a light background (SELM-00085).
+// The kind shown is bold and underlined in the terminal's foreground, and the
+// hover labels in the foreground alone (SELM-00112): nothing paints the line's
+// background, so a theme colour (`suggestion`) falls to about 1.8:1 where the
+// theme and the terminal disagree, and raw `cyan` to 1.9-3.4:1 on a light
+// background (SELM-00085). The buttons' names stay as they were.
 for (const surface of SURFACES) {
-  test(`[${surface}] the kind shown and the hover labels in the theme's accent, no raw cyan`, { options: JA }, async ($, on) => {
+  test(`[${surface}] the kind shown bold and underlined, the hover labels, both in the foreground, no raw cyan`, { options: JA }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     await select(s, clock, SELECTED)
     const band = await $.ui.mount({ ...BAND, surface })
     const all = async () => band.findAll({ type: 'Text' })
-    expect(HINT_ACCENT).toBe('suggestion')
-    expect((await all()).filter(t => t.props.bold === true).map(t => [t.text, t.props.color])).toEqual([['[選択]', HINT_ACCENT]])
+    const shown = async () => (await all()).filter(t => t.props.bold === true).map(t => [t.text, t.props.underline, t.props.color])
+    expect(await shown()).toEqual([['[選択]', true, undefined]])
     const tips = (await all()).filter(t => t.props.wrap === 'truncate')
     expect(tips.length).toBeGreaterThan(0)
-    for (const tip of tips) expect(tip.props.color).toBe(HINT_ACCENT)
+    for (const tip of tips) expect([tip.props.color, tip.props.bold, tip.props.underline]).toEqual([undefined, undefined, undefined])
     expect((await all()).filter(t => t.props.color === 'cyan')).toEqual([])
     await showKind(band, 'standalone')
-    expect((await all()).filter(t => t.props.bold === true).map(t => [t.text, t.props.color])).toEqual([['{単独}', HINT_ACCENT]])
+    expect(await shown()).toEqual([['{単独}', true, undefined]])
     expect((await all()).filter(t => t.props.color === 'cyan')).toEqual([])
     await band.unmount()
   })

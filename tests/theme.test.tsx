@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { HINT_ACCENT, PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
+import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
 import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
@@ -91,8 +91,9 @@ type PickerMount = Parameters<typeof pickerKindButtons>[0]
  * none is dimColor (the theme's `inactive` falls to about 2.9:1 there,
  * SELM-00109): the others keep the terminal's foreground, and the one listed
  * is bold and underlined, also with no colour of its own, so that it stands
- * apart by more than bold without HINT_ACCENT, which falls to about 1.8:1
- * where the theme and the terminal disagree.
+ * apart by more than bold without the theme's accent (`suggestion`), which
+ * falls to about 1.8:1 where the theme and the terminal disagree, as the hint
+ * line's kind shown does.
  */
 async function kindsLeftToCore(picker: PickerMount, placement: 'dock' | 'inline') {
   const docked = placement === 'dock'
@@ -514,14 +515,14 @@ for (const theme of THEMES) {
 // nothing paints the background (the hint line, inline), dimColor (the
 // theme's `inactive`) falls to about 2.9:1 where the theme and the terminal
 // disagree, so they keep the terminal's foreground there; the kind shown
-// still stands apart, bold in HINT_ACCENT on the hint line, bold and
-// underlined in the inline ⋯ dialog. Docked under auto they stay dimColor,
+// still stands apart, bold and underlined in the foreground, on the hint line
+// and in the inline ⋯ dialog alike (SELM-00112). Docked under auto they stay dimColor,
 // on the theme's own background (see the tests above).
 
 for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme: 'light' }, { ...JA, paneTheme: 'dark' }] as const) {
   const name = `${options.language}${'paneTheme' in options ? ` ${options.paneTheme}` : ''}`
   for (const surface of SURFACES) {
-    test(`[${name}] [${surface}] the hint line: the kinds not shown and ✕ in the terminal's foreground, the kind shown bold in the accent`, { options: { ...options, ...MIXED } }, async ($, on) => {
+    test(`[${name}] [${surface}] the hint line: the kinds not shown and ✕ in the terminal's foreground, the kind shown bold and underlined in the terminal's foreground`, { options: { ...options, ...MIXED } }, async ($, on) => {
       const clock = mock.clock(on)
       const s = stage(on)
       await start($)
@@ -536,7 +537,7 @@ for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme:
           const listing = String(b.key) === `${KIND_KEY}${shown}`
           const text = b.children.find(c => typeof c === 'object' && c !== null) as { props?: Record<string, unknown> } | undefined
           expect([b.key, b.props.dimColor, b.props.color]).toEqual([b.key, undefined, undefined])
-          if (listing) expect([text?.props?.['bold'], text?.props?.['color']]).toEqual([true, HINT_ACCENT])
+          if (listing) expect([text?.props?.['bold'], text?.props?.['underline'], text?.props?.['color']]).toEqual([true, true, undefined])
           else expect(text).toBeUndefined()
         }
       }

@@ -2092,7 +2092,7 @@ test('neutralizeTags: U+0307 is passed over after an l look-alike only, once (SE
     expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: s })
   }
   // A dot after the word still ends it, as before.
-  for (const s of ['<selected\u0307>', '<selecte\u0064\u0307>', '<seI\u0307ected\u0307>']) {
+  for (const s of ['<selected\u0307>', '<selected\u200B\u0307>', '<seI\u0307ected\u0307>']) {
     expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: `&lt;${s.slice(1)}` })
   }
   // A decomposed İ where the word has an i is not taken for an i (unchanged from before).

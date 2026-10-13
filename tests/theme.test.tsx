@@ -90,10 +90,10 @@ type PickerMount = Parameters<typeof pickerKindButtons>[0]
  * others are dimColor, as before. Inline nothing paints the background, so
  * none is dimColor (the theme's `inactive` falls to about 2.9:1 there,
  * SELM-00109): the others keep the terminal's foreground, and the one listed
- * is bold and underlined, also with no colour of its own, so that it stands
- * apart by more than bold without the theme's accent (`suggestion`), which
- * falls to about 1.8:1 where the theme and the terminal disagree, as the hint
- * line's kind shown does.
+ * is bold and underlined, also with no colour of its own, as the hint line's
+ * kind shown is, so that it stands apart by more than bold without the
+ * theme's accent (`suggestion`), which falls to about 1.8:1 where the theme
+ * and the terminal disagree.
  */
 async function kindsLeftToCore(picker: PickerMount, placement: 'dock' | 'inline') {
   const docked = placement === 'dock'
@@ -516,8 +516,8 @@ for (const theme of THEMES) {
 // theme's `inactive`) falls to about 2.9:1 where the theme and the terminal
 // disagree, so they keep the terminal's foreground there; the kind shown
 // still stands apart, bold and underlined in the foreground, on the hint line
-// and in the inline ⋯ dialog alike (SELM-00112). Docked under auto they stay dimColor,
-// on the theme's own background (see the tests above).
+// and in the inline ⋯ dialog alike (SELM-00112). Docked under auto they stay
+// dimColor, on the theme's own background (see the tests above).
 
 for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme: 'light' }, { ...JA, paneTheme: 'dark' }] as const) {
   const name = `${options.language}${'paneTheme' in options ? ` ${options.paneTheme}` : ''}`

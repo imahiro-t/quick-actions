@@ -9,9 +9,14 @@ import {
   HISTORY_FROM_MAX,
   HISTORY_LISTED,
   appendHistory,
+  addsExecDefinition,
   approvalsListText,
+  configSetFailureDenial,
+  execBaseline,
   fromName,
   historyEntry,
+  isOwnCustomActionsChange,
+  isOwnFieldKey,
   isOwnPluginKey,
   liveSlots,
   loaderVariable,
@@ -123,6 +128,75 @@ test('weakensExecOrigin: execOrigin off terminal from other than the person in /
   expect(weakensExecOrigin(change(`${PLUGIN}.language`, 'en', 'plugin'), PLUGIN)).toBe(false)
   expect(weakensExecOrigin(change(`${PLUGIN}-x.execOrigin`, 'anywhere', 'plugin'), PLUGIN)).toBe(false)
   expect(weakensExecOrigin(change('execOrigin', 'anywhere', 'plugin'), PLUGIN)).toBe(false)
+})
+
+test('isOwnCustomActionsChange: customActions changed from other than the person in /config', () => {
+  const change = (key: string, kind: string) => ({ key, value: '[]', origin: { kind } })
+  for (const key of [`${PLUGIN}.customActions`, `${PLUGIN}@market.customActions`]) {
+    expect(isOwnCustomActionsChange(change(key, 'plugin'), PLUGIN)).toBe(true)
+    expect(isOwnCustomActionsChange(change(key, 'bridge'), PLUGIN)).toBe(true)
+    expect(isOwnCustomActionsChange(change(key, 'composer'), PLUGIN)).toBe(false)
+  }
+  for (const key of [`${PLUGIN}.language`, `${PLUGIN}-x.customActions`, `${PLUGIN}-x@market.customActions`, 'customActions', `${PLUGIN}.customActionsX`]) {
+    expect(isOwnCustomActionsChange(change(key, 'plugin'), PLUGIN)).toBe(false)
+  }
+  expect(isOwnFieldKey(`${PLUGIN}@market.execOrigin`, PLUGIN, 'execOrigin')).toBe(true)
+  expect(isOwnFieldKey(`${PLUGIN}@market.execOrigin`, PLUGIN, 'customActions')).toBe(false)
+})
+
+test('execBaseline: the one user entry\'s customActions text; none, several or not a string hold none; unreadable is unknown', () => {
+  expect(execBaseline(user({ [`${PLUGIN}@market`]: { options: { customActions: '[1]' } }, [PLUGIN]: { options: { language: 'en' } } }), PLUGIN)).toBe('[1]')
+  expect(execBaseline(user({}), PLUGIN)).toBe('')
+  expect(execBaseline({}, PLUGIN)).toBe('')
+  expect(execBaseline(user({ [PLUGIN]: { options: { customActions: '[1]' } }, [`${PLUGIN}@market`]: { options: { customActions: '[1]' } } }), PLUGIN)).toBe('')
+  expect(execBaseline(user({ [PLUGIN]: { options: { customActions: [1] } } }), PLUGIN)).toBe('')
+  expect(execBaseline(user({ [`${PLUGIN}-x`]: { options: { customActions: '[1]' } } }), PLUGIN)).toBe('')
+  expect(execBaseline(undefined, PLUGIN)).toBeUndefined()
+})
+
+test('addsExecDefinition: a new or altered valid exec definition; taking out, other kinds, key order and reordering are not', () => {
+  const specs = (defs: unknown[]) => parseCustomActions(JSON.stringify(defs), ['close']).specs
+  const UP = { id: 'up', icon: 'U', label: { en: 'Up', ja: '上' }, kind: 'exec', command: '/Users/me/bin/up', args: ['-x'], timeoutMs: 5000 }
+  const ASK = { id: 'ask', icon: 'A', label: 'Ask', kind: 'complete', model: 'haiku', prompt: 'p' }
+  const base = specs([UP, ASK])
+  // Added, or any field changed.
+  expect(addsExecDefinition(specs([UP, ASK, { ...UP, id: 'up2' }]), base)).toBe(true)
+  for (const changed of [{ command: '/Users/me/bin/evil' }, { args: ['-y'] }, { args: [] }, { label: { en: 'Down', ja: '上' } }, { icon: 'D' }, { timeoutMs: 6000 }, { target: 'context' }]) {
+    expect(addsExecDefinition(specs([{ ...UP, ...changed }, ASK]), base)).toBe(true)
+  }
+  // Another kind turned into exec under the same ID.
+  expect(addsExecDefinition(specs([UP, { id: 'ask', icon: 'A', label: 'Ask', kind: 'exec', command: '/Users/me/bin/ask' }]), base)).toBe(true)
+  // An exec definition left out as a duplicate, made valid by taking out the one before it.
+  const EVIL = { ...UP, command: '/Users/me/bin/evil' }
+  const dupBase = specs([UP, EVIL])
+  expect(dupBase).toHaveLength(1)
+  expect(addsExecDefinition(specs([EVIL]), dupBase)).toBe(true)
+  // An invalid one mended.
+  const broken = specs([UP, { ...UP, id: 'up2', command: 'relative/path' }])
+  expect(addsExecDefinition(specs([UP, { ...UP, id: 'up2' }]), broken)).toBe(true)
+  // Not added: taken out, other kinds only, the same in another key order or another place, exec turned into another kind.
+  expect(addsExecDefinition(specs([ASK]), base)).toBe(false)
+  expect(addsExecDefinition(specs([]), base)).toBe(false)
+  expect(addsExecDefinition(specs([UP, { ...ASK, prompt: 'q' }, { ...ASK, id: 'ask2' }]), base)).toBe(false)
+  const reordered = { timeoutMs: 5000, args: ['-x'], command: UP.command, kind: 'exec', label: { ja: '上', en: 'Up' }, icon: 'U', id: 'up' }
+  expect(addsExecDefinition(specs([ASK, reordered]), base)).toBe(false)
+  expect(addsExecDefinition(specs([{ id: 'up', icon: 'U', label: 'Up', kind: 'complete', model: 'haiku', prompt: 'p' }]), base)).toBe(false)
+  // Against nothing known: any exec definition counts.
+  expect(addsExecDefinition(specs([UP]), undefined)).toBe(true)
+  expect(addsExecDefinition(specs([ASK]), undefined)).toBe(false)
+  expect(addsExecDefinition(specs([UP]), [])).toBe(true)
+})
+
+test('configSetFailureDenial: a failed hook refuses execOrigin weakened and any customActions change from other than the person', () => {
+  const change = (key: string, value: unknown, kind: string) => ({ key, value, origin: { kind } })
+  expect(configSetFailureDenial(change(`${PLUGIN}.execOrigin`, 'anywhere', 'plugin'), PLUGIN)).toBe('execOriginConfigDenied')
+  expect(configSetFailureDenial(change(`${PLUGIN}@market.customActions`, '[]', 'plugin'), PLUGIN)).toBe('customActionsConfigDenied')
+  expect(configSetFailureDenial(change(`${PLUGIN}.customActions`, '', 'bridge'), PLUGIN)).toBe('customActionsConfigDenied')
+  expect(configSetFailureDenial(change(`${PLUGIN}.customActions`, '[]', 'composer'), PLUGIN)).toBeUndefined()
+  expect(configSetFailureDenial(change(`${PLUGIN}.execOrigin`, 'terminal', 'plugin'), PLUGIN)).toBeUndefined()
+  expect(configSetFailureDenial(change(`${PLUGIN}.language`, 'ja', 'plugin'), PLUGIN)).toBeUndefined()
+  // The messages exist in both languages.
+  for (const lang of ['en', 'ja'] as const) expect(MESSAGES[lang].customActionsConfigDenied).toContain('customActions')
 })
 
 test('fromName: the origin first, then the surface, else unknown; cut short and shown safe', () => {

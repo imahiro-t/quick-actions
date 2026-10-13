@@ -24,6 +24,13 @@
 // - fewer than EXEC_CONCURRENT_MAX exec actions are running in the session
 //   (takeSlot).
 //
+// A layer of defence beside these: a /config change from other than the
+// person (another plugin's $.config.set, the bridge) may neither take
+// execOrigin off terminal (weakensExecOrigin) nor add or alter an exec
+// definition in customActions (addsExecDefinition), which would land in the
+// user settings and so pass scopeVerdict; register.tsx's config.set hook
+// refuses it.
+//
 // It then runs through `/usr/bin/env -i` (the environment cut down to a few
 // variables), in the home directory, with a timeout, its output cut at a limit
 // and its hidden characters escaped as a model's answer's are. Each run is
@@ -37,6 +44,7 @@
 // it may hand `$` on, and these judge what it read.
 
 import { base64Decode } from './codec'
+import type { ActionSpec } from './actions'
 import type { CustomReason } from './custom'
 import { MESSAGES } from './i18n'
 import type { Lang } from './i18n'
@@ -402,7 +410,7 @@ export const allowlistPath = (home: string) => `${home}/${ALLOWLIST_RELATIVE}`
  * Whether `key` names this plugin (`plugin`) in settings: the plugin's name
  * alone, or with its marketplace (`plugin@marketplace`). The one rule every
  * check of the plugin's own settings goes by (scopeVerdict,
- * originRestricted, weakensExecOrigin).
+ * originRestricted, isOwnFieldKey).
  */
 export const isOwnPluginKey = (key: string, plugin: string) => key === plugin || key.startsWith(`${plugin}@`)
 
@@ -457,11 +465,94 @@ export const EXEC_ORIGIN_FIELD = 'execOrigin'
  * value not `terminal`. A layer of defence only: what counts is the user
  * settings read at each run (originRestricted).
  */
-export function weakensExecOrigin(e: { key: string; value: unknown; origin: { kind: string } }, plugin: string): boolean {
-  const suffix = `.${EXEC_ORIGIN_FIELD}`
-  if (!e.key.endsWith(suffix)) return false
-  if (!isOwnPluginKey(e.key.slice(0, -suffix.length), plugin)) return false
-  return e.origin.kind !== 'composer' && e.value !== EXEC_ORIGIN_TERMINAL
+export function weakensExecOrigin(e: ConfigChange, plugin: string): boolean {
+  return isOwnFieldKey(e.key, plugin, EXEC_ORIGIN_FIELD) && e.origin.kind !== 'composer' && e.value !== EXEC_ORIGIN_TERMINAL
+}
+
+/** A `/config` change (config.set) as the guards read it: the row's key, the new value and where it came from. */
+export type ConfigChange = { key: string; value: unknown; origin: { kind: string } }
+
+/** Whether a config.set `key` is this plugin's `field`: `<plugin>.<field>` or `<plugin>@<marketplace>.<field>` (isOwnPluginKey). */
+export function isOwnFieldKey(key: string, plugin: string, field: string): boolean {
+  const suffix = `.${field}`
+  return key.endsWith(suffix) && isOwnPluginKey(key.slice(0, -suffix.length), plugin)
+}
+
+/** The `userConfig` field that holds the custom definitions, exec ones among them. */
+export const EXEC_CUSTOM_ACTIONS_FIELD = 'customActions'
+
+/**
+ * Whether a `/config` change (config.set) is to this plugin's customActions
+ * (`<plugin>.customActions` or `<plugin>@<marketplace>.customActions`) from
+ * other than the person in the menu (a plugin's `$.config.set`, the bridge).
+ * Such a change may not add or alter an exec definition (addsExecDefinition).
+ */
+export const isOwnCustomActionsChange = (e: ConfigChange, plugin: string): boolean =>
+  isOwnFieldKey(e.key, plugin, EXEC_CUSTOM_ACTIONS_FIELD) && e.origin.kind !== 'composer'
+
+/**
+ * The customActions text a change from other than the person is judged
+ * against: the person's own, in their user settings (`user`; undefined: not
+ * readable, and so is the result). By scopeVerdict's rule: the text of the one
+ * entry of `plugin` in `pluginConfigs` that has `options.customActions`, when
+ * it is a string; anything else (none, several, not a string) holds no exec
+ * definition that may run, so it is `''`. Never the change's `previous`,
+ * which is the merged value and may come from a project's settings: judged
+ * against it, the project's exec definitions could be copied into the user
+ * settings, and so pass scopeVerdict.
+ */
+export function execBaseline(user: Readonly<Record<string, unknown>> | undefined, plugin: string): string | undefined {
+  if (user === undefined) return undefined
+  const holders = ownOptions(user, plugin).filter(options => options[EXEC_CUSTOM_ACTIONS_FIELD] !== undefined)
+  if (holders.length !== 1) return ''
+  const own = holders[0]![EXEC_CUSTOM_ACTIONS_FIELD]
+  return typeof own === 'string' ? own : ''
+}
+
+/** `value` as JSON with every object's keys in order, at any depth: the same definition written in another key order reads the same. */
+function canonicalJson(value: unknown): string {
+  const sorted = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sorted)
+      : isRecord(v)
+        ? Object.fromEntries(
+            Object.keys(v)
+              .sort()
+              .map(k => [k, sorted(v[k])]),
+          )
+        : v
+  return JSON.stringify(sorted(value)) ?? ''
+}
+
+/**
+ * Whether the valid definitions after a change (`next`, parseCustomActions'
+ * specs) hold an exec definition not in the valid ones it is judged against
+ * (`base`; undefined: not known, so any exec definition counts): one whose ID
+ * is new to `base`'s exec definitions, or whose definition differs in any
+ * field (its command, arguments, label, timeout, …), key order aside. The
+ * valid definitions are compared, not the text, so one made valid (its
+ * duplicate before it taken out, its mistake mended) counts as added too.
+ * Taking exec definitions out, turning one into another kind, reordering them
+ * and changing the other kinds' do not.
+ */
+export function addsExecDefinition(next: readonly ActionSpec[], base: readonly ActionSpec[] | undefined): boolean {
+  const execs = next.filter(spec => spec.kind === 'exec')
+  if (base === undefined) return execs.length > 0
+  const known = new Map(base.filter(spec => spec.kind === 'exec').map(spec => [spec.id, canonicalJson(spec)]))
+  return execs.some(spec => known.get(spec.id) !== canonicalJson(spec))
+}
+
+/**
+ * What a config.set hook that failed before passing the change on refuses,
+ * without reading it any further (the safe side): an execOrigin taken off
+ * `terminal` (weakensExecOrigin), or any change to customActions from other
+ * than the person (isOwnCustomActionsChange), exec definition or not; else
+ * undefined, to pass it on.
+ */
+export function configSetFailureDenial(e: ConfigChange, plugin: string): 'execOriginConfigDenied' | 'customActionsConfigDenied' | undefined {
+  if (weakensExecOrigin(e, plugin)) return 'execOriginConfigDenied'
+  if (isOwnCustomActionsChange(e, plugin)) return 'customActionsConfigDenied'
+  return undefined
 }
 
 /** `/quick-actions exec-approvals`: lists the approvals and the history, and revokes approvals. Reserved, as `hint` is. */

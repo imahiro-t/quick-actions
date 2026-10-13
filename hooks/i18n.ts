@@ -261,6 +261,7 @@ export type Messages = {
   execAdminNoneToRevoke: string
   /** Why a change of execOrigin away from terminal was refused: it came from other than the person in /config. */
   execOriginConfigDenied: string
+  customActionsConfigDenied: string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -504,6 +505,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminHistoryUnreadable: 'exec の実行履歴を読み込めませんでした（記録がないという意味ではありません）。',
     execAdminNoneToRevoke: '取り消す exec の承認はありません。',
     execOriginConfigDenied: 'Quick Actions の execOrigin を terminal から外せるのは、本人が /config で変更したときだけです',
+    customActionsConfigDenied: 'Quick Actions の customActions に exec の定義を足したり変えたりできるのは、本人が /config で変更したときだけです',
   },
   en: {
     thinking: 'Thinking…',
@@ -731,6 +733,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminHistoryUnreadable: 'The exec run history could not be read (this does not mean none is recorded).',
     execAdminNoneToRevoke: 'No exec approval to revoke.',
     execOriginConfigDenied: 'Quick Actions execOrigin can be moved off terminal only by you, in /config',
+    customActionsConfigDenied: 'Quick Actions customActions can have exec definitions added or changed only by you, in /config',
   },
 }
 

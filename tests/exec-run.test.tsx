@@ -736,6 +736,60 @@ test('config.set: execOrigin taken off terminal by another plugin or the bridge 
   expect(await set(`${PLUGIN}.language`, 'ja', { kind: 'plugin', name: 'other' })).toEqual({ value: 'ja' })
 })
 
+test('config.set: an exec definition added or altered in customActions by another plugin or the bridge is refused; by the person in /config it goes through', { options: OPTIONS }, async ($, on) => {
+  on('config.set', (_$, e) => ({ value: e.value }))
+  setUp(on)
+  await start($)
+  const set = (value: string, origin: { kind: 'composer' } | { kind: 'bridge' } | { kind: 'plugin'; name: string }, key = `${PLUGIN}.customActions`) =>
+    $.config.set({ key, value, previous: SETTING, provider: { plugin: PLUGIN, tier: 'user' }, origin })
+  const other = { kind: 'plugin', name: 'other' } as const
+  const denied = { deny: t.customActionsConfigDenied }
+  const added = JSON.stringify([...DEFS, { ...UPPER, id: 'evil', command: `${HOME}/bin/evil.sh` }])
+  const swapped = JSON.stringify([{ ...UPPER, command: `${HOME}/bin/evil.sh` }, TALK, FREE])
+  const relabelled = JSON.stringify([{ ...UPPER, label: 'Lowercase' }, TALK, FREE])
+  for (const value of [added, swapped, relabelled]) {
+    expect(await set(value, other)).toEqual(denied)
+    expect(await set(value, { kind: 'bridge' }, `${PLUGIN}@market.customActions`)).toEqual(denied)
+    expect(await set(value, { kind: 'composer' })).toEqual({ value })
+  }
+  // Taking exec definitions out, changing the other kinds, or the same exec definitions (reordered): let through.
+  const ASK = { id: 'ask', icon: 'A', label: 'Ask', kind: 'complete', model: 'haiku', prompt: 'p' }
+  for (const value of [JSON.stringify([UPPER]), '', JSON.stringify([...DEFS, ASK]), JSON.stringify([FREE, ASK, TALK, UPPER])]) {
+    expect(await set(value, other)).toEqual({ value })
+  }
+})
+
+test('config.set: exec definitions of the project settings copied into customActions by another plugin are refused; the user settings unreadable, any exec definition is', { options: OPTIONS }, async ($, on) => {
+  on('config.set', (_$, e) => ({ value: e.value }))
+  const { s } = setUp(on)
+  await start($)
+  const set = (value: string) => $.config.set({ key: `${PLUGIN}.customActions`, value, previous: SETTING, provider: { plugin: PLUGIN, tier: 'user' }, origin: { kind: 'plugin', name: 'other' } })
+  const denied = { deny: t.customActionsConfigDenied }
+  // The merged value (`previous`) holds them from the project; the user settings do not.
+  s.sourceSettings.user = userSettings('[]')
+  s.sourceSettings.project = { pluginConfigs: { [`${PLUGIN}@market`]: { options: { customActions: SETTING } } } }
+  expect(await set(SETTING)).toEqual(denied)
+  // No entry in the user settings at all: the same.
+  s.sourceSettings.user = {}
+  expect(await set(SETTING)).toEqual(denied)
+  // Not readable: refused, while one with no exec definition goes through.
+  s.sourceSettings.user = userSettings(SETTING)
+  s.sourceDeny = ['user']
+  expect(await set(SETTING)).toEqual(denied)
+  const ASK = JSON.stringify([{ id: 'ask', icon: 'A', label: 'Ask', kind: 'complete', model: 'haiku', prompt: 'p' }])
+  expect(await set(ASK)).toEqual({ value: ASK })
+})
+
+test('config.set: the customActions refusal in Japanese', { options: { ...OPTIONS, language: 'ja' } }, async ($, on) => {
+  on('config.set', (_$, e) => ({ value: e.value }))
+  setUp(on)
+  await start($)
+  const value = JSON.stringify([...DEFS, { ...UPPER, id: 'evil' }])
+  expect(await $.config.set({ key: `${PLUGIN}.customActions`, value, previous: SETTING, provider: { plugin: PLUGIN, tier: 'user' }, origin: { kind: 'bridge' } })).toEqual({
+    deny: MESSAGES.ja.customActionsConfigDenied,
+  })
+})
+
 /** Makes every exec run wait until released (oldest first): `release(n)` ends the first n waiting with exit 0. */
 function holdRuns(s: Stage) {
   const waiting: (() => void)[] = []

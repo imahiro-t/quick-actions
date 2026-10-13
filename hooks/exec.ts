@@ -457,6 +457,15 @@ export const EXEC_ORIGIN_TERMINAL = 'terminal'
 /** The `userConfig` field that sets it. */
 export const EXEC_ORIGIN_FIELD = 'execOrigin'
 
+/** A `/config` change (config.set) as the guards read it: the row's key, the new value and where it came from. */
+export type ConfigChange = { key: string; value: unknown; origin: { kind: string } }
+
+/** Whether a config.set `key` is this plugin's `field`: `<plugin>.<field>` or `<plugin>@<marketplace>.<field>` (isOwnPluginKey). */
+export function isOwnFieldKey(key: string, plugin: string, field: string): boolean {
+  const suffix = `.${field}`
+  return key.endsWith(suffix) && isOwnPluginKey(key.slice(0, -suffix.length), plugin)
+}
+
 /**
  * Whether a `/config` change (config.set) would take execOrigin off
  * `terminal` from other than the person in the menu (a plugin's
@@ -467,15 +476,6 @@ export const EXEC_ORIGIN_FIELD = 'execOrigin'
  */
 export function weakensExecOrigin(e: ConfigChange, plugin: string): boolean {
   return isOwnFieldKey(e.key, plugin, EXEC_ORIGIN_FIELD) && e.origin.kind !== 'composer' && e.value !== EXEC_ORIGIN_TERMINAL
-}
-
-/** A `/config` change (config.set) as the guards read it: the row's key, the new value and where it came from. */
-export type ConfigChange = { key: string; value: unknown; origin: { kind: string } }
-
-/** Whether a config.set `key` is this plugin's `field`: `<plugin>.<field>` or `<plugin>@<marketplace>.<field>` (isOwnPluginKey). */
-export function isOwnFieldKey(key: string, plugin: string, field: string): boolean {
-  const suffix = `.${field}`
-  return key.endsWith(suffix) && isOwnPluginKey(key.slice(0, -suffix.length), plugin)
 }
 
 /** The `userConfig` field that holds the custom definitions, exec ones among them. */

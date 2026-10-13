@@ -261,6 +261,7 @@ export type Messages = {
   execAdminNoneToRevoke: string
   /** Why a change of execOrigin away from terminal was refused: it came from other than the person in /config. */
   execOriginConfigDenied: string
+  /** Why a change to customActions that adds or alters an exec definition was refused: it came from other than the person in /config. */
   customActionsConfigDenied: string
 }
 

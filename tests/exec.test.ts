@@ -11,6 +11,7 @@ import {
   EXEC_FILE_MAX,
   EXEC_OUTPUT_MAX,
   EXEC_PATH,
+  EXEC_PATH_MAX,
   EXEC_STDERR_MAX,
   EXEC_STDIN_MAX,
   EXEC_TIMEOUT_DEFAULT_MS,
@@ -54,6 +55,51 @@ const UPPER = { id: 'upper', icon: '🔠', label: 'Upper', kind: 'exec', command
 
 // ---------------------------------------------------------------------------
 // The definition
+
+// Copied from the README's exec section (both languages show the same ones):
+// tests cannot read files, so keep these in step with it when it changes.
+const README_EXEC_EXAMPLES = [
+  { id: 'upper', icon: '🔠', label: { ja: '大文字にする', en: 'Upper case' }, kind: 'exec', command: '/Users/me/bin/upper.sh' },
+  {
+    id: 'save-chat',
+    icon: '💾',
+    label: { ja: '会話を保存', en: 'Save the chat' },
+    kind: 'exec',
+    target: 'context',
+    command: '/Users/me/bin/save-chat',
+    args: ['--format', 'markdown'],
+    timeoutMs: 10000,
+  },
+  { id: 'new-ticket', icon: '🎫', label: { ja: 'チケットを作る', en: 'New ticket' }, kind: 'exec', target: 'none', command: '/Users/me/bin/new-ticket' },
+]
+const README_ALLOWLIST = `{
+  "executables": [
+    { "path": "/Users/me/bin/upper.sh", "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" },
+    { "path": "/Users/me/bin/save-chat" }
+  ]
+}`
+
+test("exec: the README's examples, allowlist and limits are the ones the code has", () => {
+  const { specs, problems } = parseCustomActions(json(README_EXEC_EXAMPLES), RESERVED)
+  expect(problems).toEqual([])
+  expect(specs.map(sp => [sp.id, sp.kind, 'target' in sp ? sp.target : undefined])).toEqual([
+    ['upper', 'exec', undefined],
+    ['save-chat', 'exec', 'context'],
+    ['new-ticket', 'exec', 'none'],
+  ])
+  expect(parseAllowlist(README_ALLOWLIST)).toEqual({
+    entries: [
+      { path: '/Users/me/bin/upper.sh', sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08' },
+      { path: '/Users/me/bin/save-chat' },
+    ],
+    ignored: [],
+  })
+  expect(ALLOWLIST_RELATIVE).toBe('.claude/quick-actions/allowed-executables.json')
+  expect(EXEC_PATH).toBe('/usr/bin:/bin:/usr/sbin:/sbin')
+  expect([EXEC_TIMEOUT_MIN_MS, EXEC_TIMEOUT_DEFAULT_MS, EXEC_TIMEOUT_MAX_MS]).toEqual([1_000, 30_000, 120_000])
+  expect([EXEC_PATH_MAX, EXEC_ARGS_MAX, EXEC_ARG_MAX]).toEqual([4_096, 32, 4_096])
+  expect([EXEC_OUTPUT_MAX, EXEC_STDERR_MAX, EXEC_STDIN_MAX, EXEC_FILE_MAX]).toEqual([100_000, 4_000, 1_048_576, 4_194_304])
+})
 
 test('exec: valid on each of the three targets, with its defaults', () => {
   const { specs, problems } = parseCustomActions(

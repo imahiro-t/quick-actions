@@ -503,6 +503,32 @@ test('tidied: a long run of white space or blank lines in an output takes linear
   )
 })
 
+test('tidied: blank lines at the start gone with their breaks (\\r, \\r\\n or \\n), the first line with text keeping its leading spaces', () => {
+  const max = 100
+  expect(tidied('\r\r\n\n \t\r\nx', max)).toEqual({ text: 'x', cut: false })
+  expect(tidied('\n\t  x', max)).toEqual({ text: '\t  x', cut: false })
+  expect(tidied('  x', max)).toEqual({ text: '  x', cut: false })
+  expect(tidied(' \t\n\r\n  x\n', max)).toEqual({ text: '  x', cut: false })
+  expect(tidied('\n  ', max)).toEqual({ text: '', cut: false })
+  expect(tidied(' \t ', max)).toEqual({ text: '', cut: false })
+  expect(tidied('\n\r\n\r', max)).toEqual({ text: '', cut: false })
+  expect(tidied('', max)).toEqual({ text: '', cut: false })
+  // Only spaces, tabs and breaks are blank: a full-width space starts the text.
+  expect(tidied('\n\u3000x', max)).toEqual({ text: '\u3000x', cut: false })
+})
+
+test('tidied: millions of blank lines at the start of an output do not overflow the stack', () => {
+  const lines = 4_000_000
+  const outputs = [`${'\n'.repeat(lines)}hello`, `${'\r\n'.repeat(lines)}hello`, `${' \t\r'.repeat(lines)}hello`]
+  const started = Date.now()
+  for (const out of outputs) {
+    expect(tidied(out, EXEC_OUTPUT_MAX)).toEqual({ text: 'hello', cut: false })
+    expect(execOutputText(out, false, 'en')).toBe('hello')
+  }
+  // The old /^(?:[ \t]*(?:\r\n?|\n))+/ threw RangeError past about 3,350,000 lines.
+  expect(Date.now() - started).toBeLessThan(1000)
+})
+
 test('pathShown: hidden characters named, cut short at 200 code units', () => {
   expect(pathShown('/opt/tool')).toBe('/opt/tool')
   const long = `/${'d'.repeat(4000)}`

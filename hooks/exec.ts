@@ -251,9 +251,27 @@ export function cutText(text: string, max: number): { text: string; cut: boolean
   return { text: text.slice(0, end), cut: true }
 }
 
-// Blank lines at the start of an output, whatever its line breaks. Linear: a
-// line's spaces and its break never overlap.
-const LEADING_BLANK = /^(?:[ \t]*(?:\r\n?|\n))+/
+/**
+ * Where the blank lines at the start of `raw` end, whatever their line breaks
+ * (\r, \r\n or \n): just past the last break before anything but spaces,
+ * tabs and breaks, so the first line with text keeps its leading spaces and
+ * tabs. A loop, not a repeated regex group, which runs out of stack on a few
+ * million blank lines.
+ */
+function leadingBlankEnd(raw: string): number {
+  let end = 0
+  for (let i = 0; i < raw.length; ) {
+    const c = raw.charCodeAt(i)
+    if (c === 0x20 || c === 0x09) i++
+    else if (c === 0x0d) {
+      i++
+      if (raw.charCodeAt(i) === 0x0a) i++
+      end = i
+    } else if (c === 0x0a) end = ++i
+    else break
+  }
+  return end
+}
 
 /**
  * An output as shown, at most `max` code units: blank lines at its start and
@@ -265,7 +283,7 @@ const LEADING_BLANK = /^(?:[ \t]*(?:\r\n?|\n))+/
  * still longer than `max` whenever more follows.
  */
 export function tidied(raw: string, max: number, cutBefore = false): { text: string; cut: boolean } {
-  const start = raw.replace(LEADING_BLANK, '')
+  const start = raw.slice(leadingBlankEnd(raw))
   const head = cutText(start, 2 * max + 2)
   // Something but white space past the part kept: the output goes on, so the
   // part's end is not the output's end and keeps its white space.

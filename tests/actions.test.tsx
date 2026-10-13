@@ -15,6 +15,7 @@ import {
   SELECTED_IS_DATA,
   STYLE,
   TAG_CONFUSABLES,
+  TAG_ELLS,
   TAG_OPENERS,
   TIMER_DEFAULT_MS,
   WANT_CODE,
@@ -1939,6 +1940,80 @@ test('neutralizeTags: a candidate is never a character skipped or matched after 
   // SELM-00093: the Braille blank and the I and 1 read as an l are not candidates either.
   for (const ch of ['\u2800', 'I', '1', 'İ', '\uFF29', '\uFF11', '\u2160']) {
     expect(TAG_OPENERS.includes(ch)).toBe(false)
+  }
+  // SELM-00110: nor the other look-alikes read as an l.
+  for (const ch of TAG_ELLS) {
+    expect({ ch, opener: TAG_OPENERS.includes(ch) }).toEqual({ ch, opener: false })
+  }
+})
+
+// SELM-00110: the look-alikes of an l still left after SELM-00093.
+
+test('TAG_ELLS: the six look-alikes of an l, each one code unit long', () => {
+  expect([...TAG_ELLS].map(c => c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0'))).toEqual(['026A', '0130', 'A781', '2D4F', '16C1', '0660'])
+  for (const ch of TAG_ELLS) expect(ch.length).toBe(1)
+  // Neither a lower-case i nor | is one.
+  expect(TAG_ELLS.includes('i')).toBe(false)
+  expect(TAG_ELLS.includes('|')).toBe(false)
+})
+
+test('neutralizeSelectedTags: each of TAG_ELLS for the l makes a selected tag, closing or opening, harmless, only its `<` (SELM-00110)', () => {
+  const variants: string[] = []
+  for (const c of TAG_ELLS) {
+    for (const tag of [`</se${c}ected>`, `<se${c}ected>`, `</SE${c}ECTED>`, `< / se${c}ected >`]) {
+      variants.push(tag)
+      const got = neutralizeSelectedTags(`a ${tag} b`)
+      expect({ c, tag, got }).toEqual({ c, tag, got: `a &lt;${tag.slice(1)} b` })
+    }
+  }
+  // Each in a wrapped selection: the delimiters stay the only real pair.
+  const wrapped = wrap(variants.join('\n'))
+  expect(wrapped.match(/<\/selected>/g)).toHaveLength(1)
+  expect(wrapped.match(/<selected>/g)).toHaveLength(1)
+  expect(wrapped.split('&lt;').length - 1).toBe(variants.length)
+  expect(wrapped.startsWith(`${SELECTED_IS_DATA}\n<selected>\n`)).toBe(true)
+  expect(wrapped.endsWith('\n</selected>')).toBe(true)
+})
+
+test('neutralizeTags: each of TAG_ELLS is an l at the word\'s l only, in any word (SELM-00110)', () => {
+  for (const c of TAG_ELLS) {
+    // At an `l`, in a word other than `selected` too.
+    for (const [text, word] of [[`<fi${c}e>`, 'file'], [`</${c}ine>`, 'line'], [`<se${c}${c}s>`, 'sells']] as const) {
+      expect({ c, text, word, got: neutralizeTags(text, word) }).toEqual({ c, text, word, got: `&lt;${text.slice(1)}` })
+    }
+    // Where the word has another letter, none of them stands for that letter (ɪ and İ, an i, are checked below).
+    for (const s of [`<s${c}lected>`, `<${c}elected>`, `<selecte${c}>`]) {
+      expect({ c, s, got: neutralizeSelectedTags(s) }).toEqual({ c, s, got: s })
+    }
+    // The whole word still has to match, with nothing after it.
+    for (const s of [`<se${c}ection>`, `<se${c}ectedx>`, `<se${c}ected_x>`]) {
+      expect({ c, s, got: neutralizeSelectedTags(s) }).toEqual({ c, s, got: s })
+    }
+  }
+  // ɪ and İ are still an i where the word has one; the other four match no i.
+  for (const tag of ['<ɪnput>', '</İnput>', '<ɪɴᴘᴜᴛ>']) expect(neutralizeInputTags(tag)).toBe(`&lt;${tag.slice(1)}`)
+  for (const c of ['ꞁ', 'ⵏ', 'ᛁ', '٠']) {
+    for (const s of [`<${c}nput>`, `</${c}nput>`]) expect({ c, s, got: neutralizeInputTags(s) }).toEqual({ c, s, got: s })
+  }
+})
+
+test('neutralizeTags: a lower-case i and | at the l are still not taken for it (SELM-00110)', () => {
+  for (const s of ['</seiected>', '<seiected>', '</se|ected>', '<se|ected>', '<fiie>', '<fi|e>']) {
+    expect({ s, selected: neutralizeSelectedTags(s), file: neutralizeTags(s, 'file') }).toEqual({ s, selected: s, file: s })
+  }
+})
+
+test('neutralizeTags: TAG_ELLS leave ordinary text as it was (SELM-00110)', () => {
+  for (const s of [
+    'İstanbul <İzmir> and İ',
+    '٠١٢٣ <٠> x <٠١٢>',
+    'ᚠᛁᚱ ᛁᛋ <ᛁ> <ᚠᛁ>',
+    'ⵜⴰⵎⴰⵣⵉⵖⵜ ⵏ <ⵏ>',
+    'ꞁ <ꞁ> <ꞁꞁ>',
+    'ʀᴇᴀʟ ɪ <ɪ> <ɪᴛᴇᴍ>',
+    '<item> and <list> and <label>',
+  ]) {
+    expect({ s, selected: neutralizeSelectedTags(s), input: neutralizeInputTags(s) }).toEqual({ s, selected: s, input: s })
   }
 })
 

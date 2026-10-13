@@ -24,6 +24,13 @@ const TAKES_TEST: Array<[string, string]> = [
   ['a dynamic import', "const { test } = await import('claude-code/testing')"],
   ['a require', "const { test } = require('claude-code/testing')"],
   ['a second statement on a line', "import { expect } from './kit'; import { test } from 'claude-code/testing'"],
+  ['a default import named type beside test', "import type, { test } from 'claude-code/testing'"],
+  ['a default import named type', "import type from 'claude-code/testing'"],
+  ['a require after typeof', "const kind = typeof require('claude-code/testing')"],
+  [
+    'a statement after an unclosed backtick in JSX text',
+    "const el = <p>press ` to start</p>\nconst { test } = await import('claude-code/testing')",
+  ],
 ]
 
 const LEAVES_TEST: Array<[string, string]> = [
@@ -42,6 +49,10 @@ const LEAVES_TEST: Array<[string, string]> = [
   ['a string', "const text = \"import { test } from 'claude-code/testing'\""],
   ['a template', "const text = `import { test } from 'claude-code/testing'`"],
   ['a URL in a string before the import', "const url = 'https://example.com'\nimport { test } from './kit'"],
+  ['typeof import in a type alias', "type Kit = typeof import('claude-code/testing')"],
+  ['typeof import in an annotation', "let kit: typeof import('claude-code/testing')"],
+  ['typeof import across a line break', "type Kit = typeof\n  import(\n    'claude-code/testing'\n  )"],
+  ['typeof import with a comment between', "type Kit = typeof /* the kit */ import('claude-code/testing')"],
 ]
 
 for (const [what, source] of TAKES_TEST) {
@@ -88,4 +99,22 @@ test('names the line and the statement of each, in order', () => {
 test('a statement after a template with code in it is still found', () => {
   const source = "const label = `${{ a: 1 }.a} item`\nimport { test } from 'claude-code/testing'"
   expect(directTestImports(source)).toEqual(["line 2: import { test } from 'claude-code/testing'"])
+})
+
+test('a statement after a pair of backticks in JSX text is still found', () => {
+  const source = "const el = <p>use `x` here</p>\nimport { test } from 'claude-code/testing'"
+  expect(directTestImports(source)).toEqual(["line 2: import { test } from 'claude-code/testing'"])
+})
+
+test('a statement after an unclosed backtick in JSX text is found with its line', () => {
+  const source = [
+    'const el = <p>press ` to start</p>',
+    "const label = `${'a'} item`",
+    "import { test } from 'claude-code/testing'",
+  ].join('\n')
+  expect(directTestImports(source)).toEqual(["line 3: import { test } from 'claude-code/testing'"])
+})
+
+test('a name ending in typeof does not hide a dynamic import', () => {
+  expect(directTestImports("const x = notypeof\nimport('claude-code/testing')")).toHaveLength(1)
 })

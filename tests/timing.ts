@@ -132,3 +132,6 @@ export function expectLinear<T>(
       `a ratio of ${Number.isFinite(ratio) ? ratio.toFixed(1) : `more than ${limit}`} per call against at most ${limit} (${tries} tries, ${rounds} rounds in the last)`,
   )
 }
+
+/** A make for expectLinear: piece repeated k times (the size is how many times a piece repeats). */
+export const runOf = (piece: string) => (k: number): string => piece.repeat(k)

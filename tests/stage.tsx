@@ -256,6 +256,7 @@ export async function pickerKindButtons(picker: PickerView, muted?: string) {
       label: String(b.props['label']),
       drawn: b.children.map(drawnOf).join(''),
       bold: text?.props?.['bold'] === true,
+      underline: text?.props?.['underline'] === true,
       dim: b.props['dimColor'] === true || (muted !== undefined && color === muted),
       color: typeof color === 'string' ? color : undefined,
       dimColor: b.props['dimColor'] === true,

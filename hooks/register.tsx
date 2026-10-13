@@ -1654,8 +1654,9 @@ export const register: Register = (on, options) => {
     // dimColor as before. Inline nothing paints the background, so the others
     // keep the terminal's foreground (the theme's `inactive` falls to about
     // 2.9:1 where the theme and the terminal disagree), and the one listing
-    // is bold in HINT_ACCENT, as the hint line's kind shown is, so that it
-    // stands apart by more than bold.
+    // is bold and underlined, also in the foreground: it stands apart by more
+    // than bold without a colour of its own, as HINT_ACCENT would fall to
+    // about 1.8:1 there.
     const switchKind = (k: HintKind | 'all') =>
       update($, picking, p => {
         if (p === null) return p
@@ -1670,7 +1671,7 @@ export const register: Register = (on, options) => {
       if (listing) {
         return (
           <Button {...props}>
-            <Text bold {...(fixed ? { color: style.heading } : !style.dimMuted && { color: HINT_ACCENT })}>{drawn}</Text>
+            <Text bold {...(fixed ? { color: style.heading } : !style.dimMuted && { underline: true })}>{drawn}</Text>
           </Button>
         )
       }

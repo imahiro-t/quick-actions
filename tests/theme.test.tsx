@@ -90,19 +90,21 @@ type PickerMount = Parameters<typeof pickerKindButtons>[0]
  * others are dimColor, as before. Inline nothing paints the background, so
  * none is dimColor (the theme's `inactive` falls to about 2.9:1 there,
  * SELM-00109): the others keep the terminal's foreground, and the one listed
- * is bold in HINT_ACCENT, so that it stands apart by more than bold.
+ * is bold and underlined, also with no colour of its own, so that it stands
+ * apart by more than bold without HINT_ACCENT, which falls to about 1.8:1
+ * where the theme and the terminal disagree.
  */
 async function kindsLeftToCore(picker: PickerMount, placement: 'dock' | 'inline') {
   const docked = placement === 'dock'
-  const kindAs = (listing: boolean) => [listing, docked && !listing, listing && !docked ? HINT_ACCENT : undefined]
+  const kindAs = (listing: boolean) => [listing, docked && !listing, undefined, listing && !docked]
   const everyKind = [kindAs(true), kindAs(false), kindAs(false), kindAs(false)]
   const before = await pickerKindButtons(picker)
   expect(before.map(k => k.kind)).toEqual(['all', 'selection', 'context', 'standalone'])
-  expect(before.map(k => [k.bold, k.dimColor, k.color])).toEqual(everyKind)
+  expect(before.map(k => [k.bold, k.dimColor, k.color, k.underline])).toEqual(everyKind)
   expect(before.map(k => k.label)).toEqual([t.hintKindShown(t.allActions), t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
   await showPickerKind(picker, 'context')
   const after = await pickerKindButtons(picker)
-  expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color])).toEqual([
+  expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color, k.underline])).toEqual([
     ['all', ...kindAs(false)],
     ['selection', ...kindAs(false)],
     ['context', ...kindAs(true)],
@@ -111,7 +113,7 @@ async function kindsLeftToCore(picker: PickerMount, placement: 'dock' | 'inline'
   expect(after[2]?.label).toBe(t.hintKindShown(t.hintKindTips.context))
   // Pressed again: every kind, "all" standing out.
   await showPickerKind(picker, 'context')
-  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor, k.color])).toEqual(everyKind)
+  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor, k.color, k.underline])).toEqual(everyKind)
 }
 
 async function openPicker($: Engine, s: Stage, clock: Clock, surface: 'terminal' | 'desktop' | 'mobile') {
@@ -512,8 +514,9 @@ for (const theme of THEMES) {
 // nothing paints the background (the hint line, inline), dimColor (the
 // theme's `inactive`) falls to about 2.9:1 where the theme and the terminal
 // disagree, so they keep the terminal's foreground there; the kind shown
-// still stands apart, bold in HINT_ACCENT. Docked under auto they stay
-// dimColor, on the theme's own background (see the tests above).
+// still stands apart, bold in HINT_ACCENT on the hint line, bold and
+// underlined in the inline ⋯ dialog. Docked under auto they stay dimColor,
+// on the theme's own background (see the tests above).
 
 for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme: 'light' }, { ...JA, paneTheme: 'dark' }] as const) {
   const name = `${options.language}${'paneTheme' in options ? ` ${options.paneTheme}` : ''}`
@@ -547,7 +550,7 @@ for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme:
 }
 
 // Inline under auto, the default, as the light and dark tests above draw it.
-test('[auto] inline: the ⋯ dialog\'s kinds not listed and close in the terminal\'s foreground, the kind listed bold in the accent', { options: { ...JA, ...MIXED } }, async ($, on) => {
+test('[auto] inline: the ⋯ dialog\'s kinds not listed and close in the terminal\'s foreground, the kind listed bold and underlined', { options: { ...JA, ...MIXED } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)

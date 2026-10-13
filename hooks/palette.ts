@@ -55,7 +55,9 @@ export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
 // once drawn dimColor (the ⋯ dialog's close and the kinds not listed, the
 // hint line's kinds not shown and its ✕) split the same way: dimColor docked
 // under auto, the terminal's foreground inline and on the hint line, which
-// nothing paints either.
+// nothing paints either. The ⋯ dialog's kind listed, inline, keeps the
+// foreground too, bold and underlined rather than in HINT_ACCENT, which
+// would fall lower still there.
 export const PANE_COLORS = {
   dock: { heading: 'text', body: 'text', failed: 'error' },
   inline: { heading: undefined, body: undefined, failed: 'red' },
@@ -95,8 +97,7 @@ export function paneStyle(theme: PaneTheme, placement: 'dock' | 'inline'): PaneS
 
 /**
  * The colour of the hint line's accents: a kind button's label while it is
- * the kind shown, and the hover labels. Inline, the ⋯ dialog's kind button
- * listing now is drawn in it too, as the others there are no longer dim. The theme key Claude Code marks its
+ * the kind shown, and the hover labels. The theme key Claude Code marks its
  * own suggestions with, tuned to the theme as raw `cyan` (the terminal's
  * palette) is not: on the light theme #5769f7, 4.4:1 on white where `cyan`
  * falls to 1.9-3.4:1; on the dark theme #b1b9f9, 8.9:1 or more. `text` would

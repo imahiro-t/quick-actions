@@ -164,6 +164,69 @@ test('extractUrls: in the host, half-width ! , ; or . with Japanese straight aft
   expect(extractUrls('https://例え.テスト!を見て')).toEqual(['https://例え.テスト'])
 })
 
+test('extractUrls: in the host, any half-width symbol with Japanese straight after ends the URL before the symbol; an IDN host, an IPv6 literal and the path stay', () => {
+  // SELM-00104: one rule for every symbol, so no other host is read out of the Japanese.
+  for (const c of ['@', '-', '~', '_', '&', '+', '$', '*', '|', ':', '%', '=', '^', '{', '(']) {
+    expect({ c, urls: extractUrls(`https://example.com${c}を参照`) }).toEqual({ c, urls: ['https://example.com'] })
+  }
+  // A run of symbols is dropped whole, so no `https://example.com-` is left.
+  expect(extractUrls('https://example.com--を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com.-を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com@-を参照')).toEqual(['https://example.com'])
+  // `]`s between the symbols and the Japanese.
+  expect(extractUrls('https://a.example-]を参照')).toEqual(['https://a.example'])
+  expect(extractUrls('https://a.example@]]を参照')).toEqual(['https://a.example'])
+  // With a port and user info.
+  expect(extractUrls('https://user@example.com:8080@を参照')).toEqual(['https://user@example.com:8080'])
+  expect(extractUrls('https://example.com:8080-を参照')).toEqual(['https://example.com:8080'])
+  // An IPv6 literal keeps its `]`, and a symbol after it is cut.
+  expect(extractUrls('https://[::1]を参照')).toEqual(['https://[::1]'])
+  expect(extractUrls('https://[::1]:8080を参照')).toEqual(['https://[::1]:8080'])
+  expect(extractUrls('https://[::1]@を参照')).toEqual(['https://[::1]'])
+  expect(extractUrls('https://[::1].を参照')).toEqual(['https://[::1]'])
+  expect(extractUrls('https://[::1]:8080/')).toEqual(['https://[::1]:8080/'])
+  // A closing bracket or quote, as before.
+  expect(extractUrls('https://example.com)を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com]を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com}を参照')).toEqual(['https://example.com'])
+  expect(extractUrls("https://a.example@'を参照")).toEqual(['https://a.example'])
+  // The URL that follows in the same run is still found.
+  expect(extractUrls('https://a.example@を見てhttps://b.example')).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls('https://a.example-をhttps://b.example~を')).toEqual(['https://a.example', 'https://b.example'])
+  // Symbols at the very start of the host: nothing is left to take.
+  expect(extractUrls('https://@を参照')).toEqual([])
+  expect(extractUrls('https://-を参照')).toEqual([])
+  // An IDN host stays whole: `-` and `.` between non-ASCII characters.
+  expect(extractUrls('https://例え-テスト.jp')).toEqual(['https://例え-テスト.jp'])
+  expect(extractUrls('https://例え.テスト')).toEqual(['https://例え.テスト'])
+  expect(extractUrls('https://例え-テスト.jp/パス')).toEqual(['https://例え-テスト.jp/パス'])
+  expect(extractUrls('https://例え.テスト-日本')).toEqual(['https://例え.テスト-日本'])
+  expect(extractUrls('https://ü-テスト.de')).toEqual(['https://ü-テスト.de'])
+  // Any other symbol after non-ASCII is cut, `@` above all.
+  expect(extractUrls('https://例え.テスト@を参照')).toEqual(['https://例え.テスト'])
+  expect(extractUrls('https://例え.テスト~を参照')).toEqual(['https://例え.テスト'])
+  expect(extractUrls('https://例え.テスト-@を参照')).toEqual(['https://例え.テスト'])
+  // Only in the host: symbols and Japanese in the path, query or fragment are the URL's own.
+  expect(extractUrls('https://example.com/a@日本')).toEqual(['https://example.com/a@日本'])
+  expect(extractUrls('https://example.com/-日本')).toEqual(['https://example.com/-日本'])
+  expect(extractUrls('https://example.com/?q=a&東京')).toEqual(['https://example.com/?q=a&東京'])
+  expect(extractUrls('https://example.com/#a-見出し')).toEqual(['https://example.com/#a-見出し'])
+  expect(extractUrls('https://example.com?q=a@東京')).toEqual(['https://example.com?q=a@東京'])
+  expect(extractUrls('https://example.com-/を参照')).toEqual(['https://example.com-/を参照'])
+  // A symbol followed by ASCII is as before.
+  expect(extractUrls('https://example.com-a')).toEqual(['https://example.com-a'])
+  expect(extractUrls('https://user@example.com')).toEqual(['https://user@example.com'])
+  expect(extractUrls('https://example.com:8080')).toEqual(['https://example.com:8080'])
+})
+
+test('extractUrls: the known limits of the symbol rule in the host, as intended', () => {
+  // A symbol after ASCII cannot be told from the one in `https://example.com-を参照`,
+  // so a label mixing ASCII, a symbol and Japanese is cut before the symbol.
+  expect(extractUrls('https://abc-テスト.jp')).toEqual(['https://abc'])
+  // Nor `@` before a Japanese host from `https://example.com@を参照`.
+  expect(extractUrls('https://user@例え.jp')).toEqual(['https://user'])
+})
+
 test('extractUrls: the two known limits of the `.` rule in the host, as intended', () => {
   // A `.` after Japanese cannot be told from the dot between the labels of an
   // IDN host, so `.` and Japanese straight after an IDN host stay in it.
@@ -221,6 +284,18 @@ test('extractUrls: a run of URLs each cut by Japanese or a hidden character, wit
     expect(urls[19_999]).toBe('https://a19999.example')
   })
   linear('bracketed URLs joined', runOf('(https://a.example)'), 20_000, urls => expect(urls).toEqual(['https://a.example']))
+  // Cut in the host by any symbol and Japanese (SELM-00104), and long runs of symbols.
+  linear('host @ cuts', runOf('https://a.example@あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('host hyphen cuts', runOf('https://a.example-あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('host hyphen and ] cuts', runOf('https://a.example-]あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('a long run of hyphens', k => `https://a${'-'.repeat(k)}.example`, 400_000, urls => expect(urls.length).toBe(1))
+  linear('a long run of @ and -', k => `https://a${'@-'.repeat(k)}x`, 200_000, urls => expect(urls.length).toBe(1))
+  // `]` outside an IPv6 literal is no host URL reads, so nothing is taken; only the time counts.
+  linear('a long run of ]', k => `https://a-${']'.repeat(k)}x`, 400_000, urls => expect(urls).toEqual([]))
+  linear('a long run of - and ]', k => `https://a${'-]'.repeat(k)}x`, 200_000, urls => expect(urls).toEqual([]))
+  // Not cut before the run (a host this long is more than URL takes, so it is not taken either).
+  linear('a long IDN run of - and .', k => `https://例${'-.'.repeat(k)}テ`, 200_000, urls => expect(urls).not.toContain('https://例'))
+  linear('a long IDN run of - and . then @', k => `https://例${'-.'.repeat(k)}@を`, 200_000, urls => expect(urls).toEqual(['https://例']))
   // A long host with no path, then a cut, and a long path after one URL with no cut.
   linear('a long host before a cut', k => `https://${'a.'.repeat(k)}example,を`, 400_000, urls => expect(urls).toEqual([`https://${'a.'.repeat(400_000)}example`]))
   linear('a long run of hosts', k => `https://${'a,'.repeat(k)}`, 400_000, urls => expect(urls.length).toBe(1))
@@ -286,16 +361,27 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
       }
       const j = japanese.exec(cut)
       if (j !== null) cut = cut.slice(0, j.index + 1)
-      // In the host, the first half-width punctuation with Japanese after it,
-      // read off the whole candidate.
+      // In the host, the first run of half-width symbols (ASCII printable,
+      // not a letter or digit, not `/ ? # \` and not `]`, which closes an
+      // IPv6 literal) with Japanese after it, or after `]`s, read off the
+      // whole candidate: cut before the run, unless the run is only `-` and
+      // `.` after a non-ASCII character with Japanese straight after it.
       const scheme = m[0].slice(0, 8).toLowerCase() === 'https://' ? 8 : 7
       const host = m[0].slice(scheme).split(/[/?#\\]/)[0]!
+      const isSymbol = (c: string | undefined) =>
+        c !== undefined && c.length === 1 && c >= '!' && c <= '~' && !/[A-Za-z0-9]/.test(c) && !'/?#\\]'.includes(c)
+      const isJapanese = (s: string) => /^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆]/u.test(s)
       for (let i = 0; i < host.length; i++) {
-        const c = host[i]!
-        const after = host.slice(i + 1)
-        if (after === '' || !/^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〆]/u.test(after)) continue
-        if ('!,;'.includes(c) || (c === '.' && i > 0 && /[A-Za-z0-9]/.test(host[i - 1]!))) {
-          cut = cut.slice(0, Math.min(cut.length, scheme + i + 1))
+        if (!isSymbol(host[i]) || isSymbol(host[i - 1])) continue
+        let j = i
+        while (isSymbol(host[j])) j++
+        let k = j
+        while (host[k] === ']') k++
+        if (!isJapanese(host.slice(k))) continue
+        const afterNonAscii = i > 0 && host.charCodeAt(i - 1) > 0x7f
+        const idn = afterNonAscii && /^[-.]+$/.test(host.slice(i, j)) && k === j
+        if (!idn) {
+          cut = cut.slice(0, Math.min(cut.length, scheme + i))
           break
         }
       }
@@ -305,7 +391,7 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
     }
     return urls
   }
-  const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007', '!', ';', '(https://']
+  const pieces = ['https://', 'http://', 'HTTPS://', 'a', 'b9', '.', '/', 'x', 'あ', '漢', 'カ', 'ー', '(', ')', '[', ']', '{', '}', "'", '](', ',', ' ', '、', '…', '=', '?', '@', ':', '\u200b', '\u202e', '\u200d', '\ufe0f', '👍', '\u{e0041}', '\u0007', '!', ';', '(https://', '[::1]', '-', '~', '_', '&', '+', '$', '*', '|', '%', 'ü']
   let seed = 12345
   const next = (n: number) => {
     seed = (seed * 1103515245 + 12345) % 2147483648

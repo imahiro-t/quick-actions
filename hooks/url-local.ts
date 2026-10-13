@@ -295,12 +295,15 @@ export function extractUrls(text: string): string[] {
   // So does a comma right before the next URL's scheme: `https://a.example,https://b.example`
   // is two (a comma elsewhere in a path is the URL's own). So does a closing
   // bracket right before `(` and the next URL's scheme: `(https://a.example)(https://b.example)`
-  // is two, each then trimmed of its unpaired `)`. Only white space is put in,
-  // so each URL is still taken as written.
+  // is two, each then trimmed of its unpaired `)`, and so does a closing quote
+  // right before it: `'https://a.example'(https://b.example)` is two, the first
+  // trimmed of its unpaired `'` (one in a path, `it's(https://b.example)`, splits
+  // the same way). Only white space is put in, so each URL is still taken as
+  // written.
   const split = text
     .replaceAll('](', '] (')
     .replace(/,(?=https?:\/\/)/giu, ', ')
-    .replace(/([)}])(?=\(https?:\/\/)/giu, '$1 ')
+    .replace(/([)}'])(?=\(https?:\/\/)/giu, '$1 ')
   for (const m of split.matchAll(CANDIDATE)) {
     for (const cut of urlsInRun(m[0])) {
       const url = trimEnd(cut)
@@ -327,11 +330,21 @@ function urlsOf(input: LocalInput): string[] | { error: string } {
   return urls.length === 0 ? { error: NO_URL[input.lang] } : urls
 }
 
-/** open-urls: the first OPEN_URL_LIMIT URLs of the selection to open, the rest listed as skipped. */
+/**
+ * open-urls: the first OPEN_URL_LIMIT URLs of the selection with no user info
+ * to open, the rest of them listed as skipped; those with user info (see
+ * userInfoHost) are never opened, but listed as withheld with the host they
+ * would actually open, and not counted toward the limit. A selection whose
+ * URLs all carry user info answers the withheld list as an error, so nothing
+ * is run.
+ */
 export function openUrls(input: LocalInput): LocalOutput {
   const urls = urlsOf(input)
   if (!Array.isArray(urls)) return urls
-  return { effect: { kind: 'open', urls: urls.slice(0, OPEN_URL_LIMIT), skipped: urls.slice(OPEN_URL_LIMIT) } }
+  const plain = urls.filter(u => userInfoHost(u) === undefined)
+  const withheld = urls.filter(u => userInfoHost(u) !== undefined)
+  if (plain.length === 0) return { error: withheldText(input.lang, withheld) }
+  return { effect: { kind: 'open', urls: plain.slice(0, OPEN_URL_LIMIT), skipped: plain.slice(OPEN_URL_LIMIT), withheld } }
 }
 
 /** copy-urls: every URL of the selection, to copy one per line. */
@@ -351,12 +364,9 @@ export const copyTextOf = (effect: Extract<LocalEffect, { kind: 'copy' }>) => ef
  * results is masked.
  */
 export function shownUrl(url: string): string {
-  const slashes = url.indexOf('//')
-  if (slashes < 0) return url
-  const start = slashes + 2
-  const rest = url.slice(start)
-  const authorityEnd = rest.search(/[/?#\\]/u)
-  const authority = authorityEnd < 0 ? rest : rest.slice(0, authorityEnd)
+  const a = authorityOf(url)
+  if (a === undefined) return url
+  const { start, authority } = a
   const at = authority.lastIndexOf('@')
   if (at < 0) return url
   const colon = authority.indexOf(':')
@@ -364,8 +374,66 @@ export function shownUrl(url: string): string {
   return `${url.slice(0, start)}${authority.slice(0, colon)}:***${url.slice(start + at)}`
 }
 
+/**
+ * A URL's authority (user info, host and port) as written, and where it
+ * starts: from right after the first `//` up to the first of `/ ? # \`, the
+ * characters URL reads as starting the path, query or fragment of an http(s)
+ * URL. Undefined when there is no `//`.
+ */
+function authorityOf(url: string): { start: number; authority: string } | undefined {
+  const slashes = url.indexOf('//')
+  if (slashes < 0) return undefined
+  const start = slashes + 2
+  const rest = url.slice(start)
+  const authorityEnd = rest.search(/[/?#\\]/u)
+  return { start, authority: authorityEnd < 0 ? rest : rest.slice(0, authorityEnd) }
+}
+
+/**
+ * The host (and port) `url` would actually open when it carries user info
+ * (anything before an `@` in its authority, empty included), as written after
+ * the authority's last `@`, as URL reads it: `https://good.com@evil.com` and
+ * `https://good.com]@evil.com` give `evil.com`. Undefined when there is no
+ * user info (an `@` in the path, query or fragment is not one). User info is
+ * how a URL shows one host and opens another, so open-urls never opens such a
+ * URL, and both actions name the host it would open.
+ */
+export function userInfoHost(url: string): string | undefined {
+  const a = authorityOf(url)
+  if (a === undefined) return undefined
+  const at = a.authority.lastIndexOf('@')
+  return at < 0 ? undefined : a.authority.slice(at + 1)
+}
+
 const items = (lines: readonly string[]) => lines.map(l => `- ${l}`).join('\n')
 const list = (urls: readonly string[]) => items(urls.map(shownUrl))
+
+/** One URL with user info as a result lists it: shown (password hidden), with the host it would actually open. */
+function userInfoItem(lang: Lang, url: string): string {
+  const host = userInfoHost(url) ?? ''
+  return `${shownUrl(url)} — ${lang === 'ja' ? `実際に開かれるホスト: ${host}` : `the host it would actually open: ${host}`}`
+}
+
+const userInfoList = (lang: Lang, urls: readonly string[]) => items(urls.map(u => userInfoItem(lang, u)))
+
+/** open-urls' section on the URLs not opened for their user info (`withheld`, not empty). */
+function withheldText(lang: Lang, withheld: readonly string[]): string {
+  const n = withheld.length
+  const head = lang === 'ja' ? `ユーザー情報（@ より前の部分）付きのため開かなかった URL（${n} 件）:` : `Not opened, as they carry user info (the part before @) (${n}):`
+  return `${head}\n${userInfoList(lang, withheld)}`
+}
+
+/** copy-urls' warning on the URLs with user info among those found, put first in its result; empty when there are none. */
+function userInfoWarning(lang: Lang, urls: readonly string[]): string {
+  const flagged = urls.filter(u => userInfoHost(u) !== undefined)
+  if (flagged.length === 0) return ''
+  const n = flagged.length
+  const head =
+    lang === 'ja'
+      ? `注意: ユーザー情報（@ より前の部分）付きの URL があります。開くと @ の後のホストに接続します（${n} 件）:`
+      : `Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (${n}):`
+  return `${head}\n${userInfoList(lang, flagged)}\n\n`
+}
 
 /** The most code points of an engine's message (a rejection's, an exception's) a result shows. */
 export const MESSAGE_LIMIT = 500
@@ -389,19 +457,23 @@ const COPY_REASONS: Record<'no-surface' | 'no-clipboard' | 'refused', Texts> = {
 /**
  * The text of a copy-urls run: how many URLs were copied and which, or, when
  * the copy did not take (`failure`), why, with the URLs listed to copy by hand.
+ * URLs with user info are copied all the same (`user@host` has its honest
+ * uses), but a warning naming the host each would actually open comes first,
+ * so a result cut at its limit still holds it.
  */
 export function copyResultText(lang: Lang, urls: readonly string[], failure?: CopyFailure): string {
   const n = urls.length
+  const warning = userInfoWarning(lang, urls)
   if (failure === undefined) {
     const head = lang === 'ja' ? `${n} 件の URL をクリップボードにコピーしました（改行区切り）:` : `Copied ${n} ${n === 1 ? 'URL' : 'URLs'} to the clipboard, one per line:`
-    return `${head}\n${list(urls)}`
+    return `${warning}${head}\n${list(urls)}`
   }
   const why = 'reason' in failure ? COPY_REASONS[failure.reason][lang] : messageShown(failure.thrown)
   const head =
     lang === 'ja'
       ? `URL をクリップボードにコピーできませんでした: ${why}\n見つかった URL（${n} 件）:`
       : `Could not copy the URLs to the clipboard: ${why}\nThe URLs found (${n}):`
-  return `${head}\n${list(urls)}`
+  return `${warning}${head}\n${list(urls)}`
 }
 
 /**
@@ -449,11 +521,12 @@ export const openSucceeded = (attempts: readonly OpenAttempt[]) => attempts.some
 
 /**
  * The text of an open-urls run: the URLs asked of the OS's handler, those not
- * opened (with why), those started with no word of their end, and those past
- * OPEN_URL_LIMIT that were not tried, each under its own heading, empty ones
- * left out. Never says a URL "opened": the handler was asked to.
+ * opened (with why), those started with no word of their end, those not
+ * opened for their user info (`withheld`, with the host each would open), and
+ * those past OPEN_URL_LIMIT that were not tried, each under its own heading,
+ * empty ones left out. Never says a URL "opened": the handler was asked to.
  */
-export function openResultText(lang: Lang, attempts: readonly OpenAttempt[], skipped: readonly string[]): string {
+export function openResultText(lang: Lang, attempts: readonly OpenAttempt[], skipped: readonly string[], withheld: readonly string[] = []): string {
   const ja = lang === 'ja'
   const requested = attempts.filter(a => a.status === 'requested').map(a => a.url)
   const failed = attempts.flatMap(a => (a.status === 'failed' ? [`${shownUrl(a.url)} — ${failureText(lang, a.reason)}`] : []))
@@ -471,6 +544,7 @@ export function openResultText(lang: Lang, attempts: readonly OpenAttempt[], ski
       : `Started, but could not confirm it finished (${unconfirmed.length}; the browser may have opened it):`
     sections.push(`${head}\n${list(unconfirmed)}`)
   }
+  if (withheld.length > 0) sections.push(withheldText(lang, withheld))
   if (skipped.length > 0) {
     const head = ja
       ? `上限の ${OPEN_URL_LIMIT} 件を超えたため開かなかった URL（${skipped.length} 件）:`

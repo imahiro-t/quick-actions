@@ -11,7 +11,7 @@ import type { ArgValue } from './args'
 import { MESSAGES } from './i18n'
 import { RandomUnavailableError } from './random'
 import type { Lang } from './i18n'
-import { OPEN_URL_LIMIT, isHttpUrl } from './url-local'
+import { OPEN_URL_LIMIT, isHttpUrl, userInfoHost } from './url-local'
 
 /** What register.tsx gathers for one run: the text or the argument, and the environment's values. */
 export type LocalSource = {
@@ -85,10 +85,14 @@ const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typ
 
 const isUrlList = (v: unknown): v is string[] => Array.isArray(v) && v.every(u => typeof u === 'string' && isHttpUrl(u))
 
+const hasUserInfo = (u: string) => userInfoHost(u) !== undefined
+
 /**
  * `v` as an effect when it is one of a known shape, copied (so a getter on it
  * is read once, here): URLs that are all http(s), at least one to act on, and
- * no more than OPEN_URL_LIMIT to open. Anything else: undefined.
+ * no more than OPEN_URL_LIMIT to open; to open, none with user info among
+ * those opened or skipped, and all of the withheld with it. Anything else:
+ * undefined.
  */
 function effectOf(v: unknown): LocalEffect | undefined {
   if (!isRecord(v)) return undefined
@@ -97,8 +101,11 @@ function effectOf(v: unknown): LocalEffect | undefined {
   if (v['kind'] === 'copy') return { kind: 'copy', urls: [...urls] }
   if (v['kind'] !== 'open') return undefined
   const skipped = v['skipped']
-  if (urls.length > OPEN_URL_LIMIT || !isUrlList(skipped)) return undefined
-  return { kind: 'open', urls: [...urls], skipped: [...skipped] }
+  const withheld = v['withheld']
+  if (urls.length > OPEN_URL_LIMIT || !isUrlList(skipped) || !isUrlList(withheld)) return undefined
+  const [opened, passed, held] = [[...urls], [...skipped], [...withheld]]
+  if (opened.some(hasUserInfo) || passed.some(hasUserInfo) || !held.every(hasUserInfo)) return undefined
+  return { kind: 'open', urls: opened, skipped: passed, withheld: held }
 }
 
 /**

@@ -516,7 +516,7 @@ async function runEffect($: EngineInterface, lang: Lang, id: number, effect: Loc
     const attempts: OpenAttempt[] = []
     // One at a time, so the browser's tabs come in the order of the selection.
     for (const url of effect.urls) attempts.push(await openOne($, platform, url))
-    await settle($, id, openSucceeded(attempts), truncate(openResultText(lang, attempts, effect.skipped), lang))
+    await settle($, id, openSucceeded(attempts), truncate(openResultText(lang, attempts, effect.skipped, effect.withheld), lang))
   } catch (err) {
     await settle($, id, false, MESSAGES[lang].failed(messageOf(err)))
   }

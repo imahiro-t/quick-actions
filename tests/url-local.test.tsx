@@ -1,7 +1,7 @@
 import type { Engine } from 'claude-code/testing'
 
 import { expect, mock, test } from './kit'
-import { LINEAR_TIMEOUT_MS, expectLinear } from './timing'
+import { LINEAR_TIMEOUT_MS, expectLinear, runOf } from './timing'
 
 import { ACTIONS } from '../hooks/actions'
 import type { LocalInput, LocalOutput } from '../hooks/actions'
@@ -209,19 +209,18 @@ test('extractUrls: a run of URLs each cut by Japanese or a hidden character, wit
     check(extractUrls(text(n)))
     expectLinear(label, text, extractUrls, { n })
   }
-  const repeat = (unit: string) => (k: number) => unit.repeat(k)
   // The same URL over and over: one URL, each cut found once.
-  linear('kana cuts', repeat('https://aあ'), 20_000, urls => expect(urls).toEqual(['https://a']))
-  linear('zero-width cuts', repeat('https://a\u200b'), 40_000, urls => expect(urls).toEqual(['https://a']))
-  linear('bracketed, kana cuts', repeat('(https://a.example)を'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('kana cuts', runOf('https://aあ'), 20_000, urls => expect(urls).toEqual(['https://a']))
+  linear('zero-width cuts', runOf('https://a\u200b'), 40_000, urls => expect(urls).toEqual(['https://a']))
+  linear('bracketed, kana cuts', runOf('(https://a.example)を'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
   // Cut in the host by punctuation and Japanese (SELM-00101), and URLs in brackets joined with no space.
-  linear('host punctuation cuts', repeat('https://a.example,あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
-  linear('host period cuts', repeat('https://a.example.あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('host punctuation cuts', runOf('https://a.example,あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('host period cuts', runOf('https://a.example.あ'), 10_000, urls => expect(urls).toEqual(['https://a.example']))
   linear('different URLs, host punctuation cuts', k => Array.from({ length: k }, (_, i) => `https://a${i}.example;を`).join(''), 20_000, urls => {
     expect(urls.length).toBe(20_000)
     expect(urls[19_999]).toBe('https://a19999.example')
   })
-  linear('bracketed URLs joined', repeat('(https://a.example)'), 20_000, urls => expect(urls).toEqual(['https://a.example']))
+  linear('bracketed URLs joined', runOf('(https://a.example)'), 20_000, urls => expect(urls).toEqual(['https://a.example']))
   // A long host with no path, then a cut, and a long path after one URL with no cut.
   linear('a long host before a cut', k => `https://${'a.'.repeat(k)}example,を`, 400_000, urls => expect(urls).toEqual([`https://${'a.'.repeat(400_000)}example`]))
   linear('a long run of hosts', k => `https://${'a,'.repeat(k)}`, 400_000, urls => expect(urls.length).toBe(1))

@@ -1,5 +1,5 @@
 import { expect, mock, test } from './kit'
-import { LINEAR_TIMEOUT_MS, expectLinear } from './timing'
+import { LINEAR_TIMEOUT_MS, expectLinear, runOf } from './timing'
 
 import {
   ACTIONS,
@@ -1756,8 +1756,6 @@ const scalesLinearly = (f: (s: string) => string, cases: readonly ScaledCase[]) 
     expectLinear(label, text, f, { n })
   }
 }
-
-const runOf = (piece: string) => (k: number) => piece.repeat(k)
 
 test('neutralizeSelectedTags scales linearly on long runs of white space or format characters: one way to match each character', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
   const k = 200_000

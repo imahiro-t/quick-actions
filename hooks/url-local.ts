@@ -84,27 +84,91 @@ const JAPANESE = '[\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Han}ー々
 // `https://en.wikipedia.org/wiki/Foo_(bar)を参照` keeps its paired one.
 // Japanese right after `//`, `/`, `=` and the like is kept, so a Japanese path
 // or query (`https://ja.wikipedia.org/wiki/日本`, `?q=東京`) stays whole.
-// Japanese after `.` is kept too, except in the host (HOST_PUNCT_JAPANESE),
-// where it is kept only when the `.` follows Japanese, so an IDN host
-// (`https://例え.テスト`) stays whole. The price: a Japanese path segment
-// written straight after ASCII (`/wiki/Python入門`) is cut before the
-// Japanese; a `.` and Japanese written straight after an IDN host
-// (`https://例え.テスト.を参照`) stay in it, read as one longer IDN host, since
-// that `.` cannot be told from the one between its labels; and an ASCII label
-// followed by a Japanese top-level label (`https://example.みんな`) is cut at
-// the `.` and gives `https://example`, since that `.` cannot be told from the
-// one in `https://example.com.を参照`.
+// In the host, Japanese after any half-width symbol ends the URL before the
+// symbol (HOST_SYMBOL_JAPANESE), except after a `-` or `.` that follows a
+// non-ASCII character, so an IDN host (`https://例え.テスト`) stays whole. The
+// price: a Japanese path segment written straight after ASCII
+// (`/wiki/Python入門`) is cut before the Japanese; a `.` and Japanese written
+// straight after an IDN host (`https://例え.テスト.を参照`) stay in it, read as
+// one longer IDN host, since that `.` cannot be told from the one between its
+// labels; and an ASCII label followed by a Japanese top-level label
+// (`https://example.みんな`) is cut at the `.` and gives `https://example`,
+// since that `.` cannot be told from the one in `https://example.com.を参照`.
 // Global: it is searched forward from a position (see nextMatchFrom).
 const JAPANESE_AFTER = new RegExp(`[A-Za-z0-9)\\]}'](?=${JAPANESE})`, 'gu')
 
-// Half-width sentence punctuation in a URL's host with Japanese straight after
-// it (`https://example.com,を参照`), where the URL ends, so the Japanese is not
-// read as part of an IDN host: `!`, `,` or `;` (never written between the
-// labels of a host), and `.` after an ASCII letter or digit (`example.com.を参照`;
-// after Japanese, as in `例え.テスト`, it is the dot between two labels and
-// stays). Only searched in the host (urlsInRun): in the path, query or fragment
+// A half-width symbol that may run on in a URL's host: an ASCII printable
+// character that is not a letter or digit, except the characters that end the
+// authority (`/ ? # \`, AUTHORITY_END) and `]`, which closes an IPv6 literal
+// (`https://[::1]を参照` must keep its `]`; JAPANESE_AFTER and trimEnd deal
+// with it). Spelled out it is !"$%&'()*+,-.:;<=>@[^_`{|}~ (the range `:->`
+// and `@` are kept apart, since `:-@` would take in `?`).
+const HOST_SYMBOL = '[!"$-.:->@\\[^_`{-~]'
+
+// Half-width symbols in a URL's host with Japanese straight after them, or
+// after `]`s (`https://example.com@を参照`, `https://example.com-を参照`,
+// `https://a.example-]を参照`), where the URL ends before the run of symbols,
+// so neither the Japanese nor what is left of the host is read as another
+// host: after `@` the Japanese would be the host itself, the ASCII host its
+// user info, and a symbol kept at the end (`https://example.com-`) could
+// still name a host of its own. One rule for every symbol, with one
+// exception: a run of only `-` and `.` that follows a non-ASCII character and
+// has Japanese straight after it stays, being the hyphen inside or the dot
+// between the labels of an IDN host (`https://例え-テスト.jp`,
+// `https://例え.テスト`, `https://ü-テスト.de`). Any other run after
+// non-ASCII (`https://例え.テスト@を参照`) is cut too. The price, besides
+// JAPANESE_AFTER's: a label mixing ASCII, a symbol and Japanese
+// (`https://abc-テスト.jp`) gives `https://abc`, and Japanese after user info
+// (`https://user@例え.jp`) gives `https://user`, since neither can be told
+// from `https://example.com-を参照` or `https://example.com@を参照`. A `]`
+// that splits a run (`https://example.com-]-を参照`) is not part of it, so the
+// cut before the last run leaves symbols and `]`s at the end; backOverBrackets
+// drops them too. A match only starts at the start of a run of symbols (the
+// leading lookbehind), so a long run with no Japanese after it is read a
+// bounded number of times, not once from each of its characters: linear.
+// Only searched in the host (urlsInRun): in the path, query or fragment
 // (`/a,日本`) such Japanese is the URL's own. Global: searched forward.
-const HOST_PUNCT_JAPANESE = new RegExp(`(?:[!,;]|(?<=[A-Za-z0-9])\\.)(?=${JAPANESE})`, 'gu')
+const HOST_SYMBOL_JAPANESE = new RegExp(
+  `(?<!${HOST_SYMBOL})(?:(?<![^\\x00-\\x7F])|(?![-.]+${JAPANESE}))${HOST_SYMBOL}+(?=\\]*${JAPANESE})`,
+  'gu',
+)
+
+// One character of HOST_SYMBOL (tested on one UTF-16 unit).
+const HOST_SYMBOL_CHAR = new RegExp(`^${HOST_SYMBOL}$`)
+
+/**
+ * Where a URL cut before a run of symbols in its host (HOST_SYMBOL_JAPANESE,
+ * at `cut`, at or after `hostFrom`, where the host starts) ends, once no
+ * symbols are left before it behind `]`s. HOST_SYMBOL leaves out `]`, so in
+ * `https://example.com-]-を参照` only the last `-` is cut off, and trimEnd
+ * would then drop the unpaired `]` and leave `https://example.com-`, another
+ * host. So while the URL ends with `]`s right after a symbol, those `]`s and
+ * the run of symbols before them are dropped too, giving `https://example.com`.
+ * The `]` that closes an IPv6 literal (the first `]` after a `[` in the host)
+ * is kept, with all before it: `https://[::1]-を参照` gives `https://[::1]`,
+ * and so does `https://[::]]-を参照` (after trimEnd), though `:` is a symbol.
+ * Only the stretch of the host before `cut` is read, a bounded number of
+ * times, and the next URL starts past `cut` (what is dropped holds only
+ * symbols and `]`s, never a scheme), so urlsInRun stays linear.
+ */
+function backOverBrackets(run: string, hostFrom: number, cut: number): number {
+  if (run[cut - 1] !== ']') return cut
+  // Searched only up to `cut`: a `]` lies right before it, so the second
+  // search ends there too.
+  let open = hostFrom
+  while (open < cut && run[open] !== '[') open++
+  const closer = open < cut ? run.indexOf(']', open) : -1
+  let end = cut
+  for (;;) {
+    let brackets = end
+    while (brackets > hostFrom && run[brackets - 1] === ']') brackets--
+    if (brackets === end || (closer >= brackets && closer < end)) return end
+    let symbols = brackets
+    while (symbols > hostFrom && HOST_SYMBOL_CHAR.test(run[symbols - 1]!)) symbols--
+    if (symbols === brackets) return end
+    end = symbols
+  }
+}
 
 // Where a URL's authority (user info, host and port) ends: the characters URL
 // reads as starting the path, query or fragment of an http(s) URL (shownUrl
@@ -167,9 +231,9 @@ function trimEnd(s: string): string {
  * The URLs written in one candidate (`run`: a match of CANDIDATE, so it starts
  * with a scheme), before trimEnd: from its start up to its first hidden
  * character (a control, a bidirectional or zero-width one), Japanese run
- * straight on (JAPANESE_AFTER) or, in the host, half-width punctuation with
- * Japanese straight after it (HOST_PUNCT_JAPANESE, cut after the punctuation,
- * which trimEnd then drops), whichever comes first, or to its end. What is
+ * straight on (JAPANESE_AFTER) or, in the host, half-width symbols with
+ * Japanese straight after them (HOST_SYMBOL_JAPANESE, cut before the symbols),
+ * whichever comes first, or to its end. What is
  * cut off may hold another URL (`https://a.exampleを見てhttps://b.example`),
  * so the next one starts at the next `http://` or `https://` after the cut,
  * and is cut the same way. A candidate with no cut is one URL, whatever it
@@ -181,7 +245,7 @@ function urlsInRun(run: string): string[] {
   const nextHidden = nextMatchFrom(hiddenCharPattern(), run)
   const nextJapanese = nextMatchFrom(JAPANESE_AFTER, run)
   const nextAuthorityEnd = nextMatchFrom(AUTHORITY_END, run)
-  const nextHostPunct = nextMatchFrom(HOST_PUNCT_JAPANESE, run)
+  const nextHostSymbol = nextMatchFrom(HOST_SYMBOL_JAPANESE, run)
   const nextScheme = nextMatchFrom(SCHEME, run)
   const found: string[] = []
   let start = 0
@@ -193,18 +257,21 @@ function urlsInRun(run: string): string[] {
     // nextMatchFrom needs: the next URL starts at or after this one's end,
     // and the end is never before `hostFrom` (see below).
     const hostFrom = start + (run[start + 4] === ':' ? 7 : 8)
-    const hostPunct = nextHostPunct(hostFrom)
+    const hostSymbol = nextHostSymbol(hostFrom)
     // The cut goes after the ASCII character or closer, before the Japanese;
-    // after the punctuation in the host.
+    // before the run of symbols in the host, and before any symbols and `]`s
+    // left in front of it (backOverBrackets).
     const end = Math.min(
       nextHidden(start),
       japanese < run.length ? japanese + 1 : run.length,
-      hostPunct < nextAuthorityEnd(hostFrom) ? hostPunct + 1 : run.length,
+      hostSymbol < nextAuthorityEnd(hostFrom) ? backOverBrackets(run, hostFrom, hostSymbol) : run.length,
     )
     found.push(run.slice(start, end))
     // `end` is past `start`, at `hostFrom` at least: the scheme holds no
     // hidden character, no Japanese can follow a character of it, and the
-    // host search starts after it. So a URL is never empty.
+    // host search starts after it. So a URL is never empty (a cut right at
+    // `hostFrom`, as in `https://@を`, leaves `https://`, which isHttpUrl
+    // drops).
     start = end < run.length ? nextScheme(end) : run.length
   }
   return found
@@ -214,7 +281,7 @@ function urlsInRun(run: string): string[] {
  * The http(s) URLs in `text`, in the order they first appear, each once, as
  * written: a URL is `http://` or `https://` (any case) and what follows up to
  * white space (CANDIDATE), cut at a hidden character, where Japanese runs
- * on, or at half-width punctuation with Japanese after it in the host
+ * on, or before half-width symbols with Japanese after them in the host
  * (urlsInRun) and trimmed of what follows it (trimEnd), kept when `URL`
  * reads it as http(s) with a host. Other schemes (javascript:, file:, ftp:)
  * and bare `www.` are not taken. Linear in the length of `text`: each

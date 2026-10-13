@@ -67,6 +67,15 @@ export type ArgInput = { action: ActionId; value: string; invalid?: string }
  */
 export type HintState = { text: string | null; requestId?: string; armed: boolean }
 
+/**
+ * A slot an exec action's run holds while it runs (see hooks/exec.ts
+ * takeSlot): who took it (`token`, the run's own) and until when at the latest
+ * (ms since the epoch): the time it was taken, its timeout and
+ * EXEC_SLOT_GRACE_MS. 0 when it was taken with the clock unreadable: let go
+ * as soon as the time can be read again.
+ */
+export type ExecSlot = { token: string; until: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'quick-actions': {
@@ -102,6 +111,15 @@ declare module 'claude-code' {
        * running nothing), since the dialog holds the keys.
        */
       asking: number
+      /**
+       * The exec actions running now in this session, a slot each (at most
+       * EXEC_CONCURRENT_MAX): taken once a run's checks and approval are
+       * through, given back as it ends. A slot never given back (its run
+       * dropped by a reload before it ended) is let go once its `until` is
+       * past, so the limit heals by itself within the run's timeout and
+       * EXEC_SLOT_GRACE_MS.
+       */
+      execSlots: ExecSlot[]
     }
   }
 }

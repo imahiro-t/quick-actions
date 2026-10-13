@@ -223,6 +223,44 @@ export type Messages = {
   execCancel: string
   /** The toast when an exec action was not run: its label and why. */
   execRefusedToast: (label: string, reason: string) => string
+  /** `/quick-actions exec-approvals`: its first line, whether execOrigin keeps exec actions to the person's own hand. */
+  execAdminOrigin: (restricted: boolean) => string
+  /** Heads the approvals kept: how many. */
+  execAdminApprovals: (count: number) => string
+  /** Stands for the approvals when none is kept. */
+  execAdminNoApprovals: string
+  /** One approval: the action ID, the executable's path, its fixed arguments (JSON) and the start of its SHA-256. */
+  execAdminApprovalLine: (id: string, path: string, args: string, sha: string) => string
+  /** Heads the runs listed: how many shown, of how many kept. */
+  execAdminHistory: (shown: number, kept: number) => string
+  /** Stands for the runs when none is kept. */
+  execAdminNoHistory: string
+  /** One run: when, the action ID, the executable's path, how it ended and where it was asked from. */
+  execAdminHistoryLine: (when: string, id: string, path: string, outcome: string, from: string) => string
+  /** Stands for when a run started, the clock not read then. */
+  execAdminUnknownTime: string
+  /** How a run ended, in words (the exit code with `exit`). */
+  execAdminOutcome: (result: 'ok' | 'exit' | 'timeout' | 'notStarted', exitCode?: number) => string
+  /** How to revoke, after the list. */
+  execAdminUsage: string
+  /** `revoke <id>`: the approval removed. */
+  execAdminRevoked: (id: string) => string
+  /** `revoke <id>`: no approval kept for it. */
+  execAdminNotApproved: (id: string) => string
+  /** `revoke --all`: how many approvals were removed. */
+  execAdminRevokedAll: (count: number) => string
+  /** An argument `exec-approvals` does not take: how to write it, nothing changed. */
+  execAdminBadArgs: (given: string) => string
+  /** The approvals could not be read or written: nothing (more) changed. */
+  execAdminFailed: string
+  /** Stands for the approvals in the list when $.store could not be read (not the same as none kept). */
+  execAdminApprovalsUnreadable: string
+  /** Stands for the runs in the list when $.store could not be read (not the same as none kept). */
+  execAdminHistoryUnreadable: string
+  /** `revoke --all` with no approval kept: nothing to revoke. */
+  execAdminNoneToRevoke: string
+  /** Why a change of execOrigin away from terminal was refused: it came from other than the person in /config. */
+  execOriginConfigDenied: string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -326,6 +364,8 @@ export const MESSAGES: Record<Lang, Messages> = {
               return 'exec の定義はユーザー設定（~/.claude/settings.json）に書いたものだけが使えます（プロジェクトなどの設定が customActions を上書きしています）'
             case 'home':
               return 'プロジェクト・ローカル・--settings の設定の env が HOME を変えているため、exec の定義を無効にしました'
+            case 'loader':
+              return `プロジェクト・ローカル・--settings の設定の env にローダー系の変数${r.name === undefined ? '' : ` ${r.name}`} があるため、exec の定義を無効にしました`
           }
           return 'exec の定義を無効にしました'
         case 'execAllowlist':
@@ -364,6 +404,14 @@ export const MESSAGES: Record<Lang, Messages> = {
           return '確認のあとで実行ファイルが変わったため実行しませんでした'
         case 'execInputTooLarge':
           return `渡す内容が大きすぎます（${grouped(r.max)} バイトまで）`
+        case 'execOrigin':
+          return r.unreadable
+            ? 'ユーザー設定（~/.claude/settings.json）を読めず execOrigin を確かめられないため、この起動元からは exec のアクションを実行しません。ローカルの端末で押すか /quick-actions <id> と入力してください'
+            : 'この起動元からは exec のアクションを実行しない設定です（execOrigin: terminal）。ローカルの端末で押すか /quick-actions <id> と入力してください'
+        case 'execBusy':
+          return `exec のアクションがすでに ${r.max} つ実行中のため実行しませんでした`
+        case 'execSlotFailed':
+          return '実行中の exec のアクションの数を確かめられなかったため実行しませんでした'
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
@@ -374,7 +422,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     customWarningToast: (count, first) =>
       `Quick Actions: customActions に注意が ${count} 件あります（${first}）。全件は /quick-actions を実行すると結果に表示されます`,
     customIgnoredId: (id, reason) => `${id} は customActions の定義が無効なため使えません: ${reason}`,
-    argumentHint: '[action-id [引数] | hint]',
+    argumentHint: '[action-id [引数] | hint | exec-approvals]',
     standalone: '単独',
     argsNotAccepted: (id, arg) => `${id} は引数を受け付けません: ${arg}`,
     invalidArg: (id, arg, hint) => `${id} の引数が正しくありません: ${arg}（${hint}）`,
@@ -426,6 +474,36 @@ export const MESSAGES: Record<Lang, Messages> = {
     execApprove: '承認して実行',
     execCancel: 'キャンセル',
     execRefusedToast: (label, reason) => `Quick Actions: ${label} を実行しませんでした（${reason}）`,
+    execAdminOrigin: restricted =>
+      restricted
+        ? '起動元の制限（execOrigin）: 有効。exec のアクションはターミナルでの押下か /quick-actions <id> の入力からだけ実行します'
+        : '起動元の制限（execOrigin）: 無効。承認済みの exec のアクションはどの起動元からも実行します',
+    execAdminApprovals: count => `exec の承認（${count} 件）:`,
+    execAdminNoApprovals: 'exec の承認はありません。',
+    execAdminApprovalLine: (id, path, args, sha) => `${id}: ${path} 固定引数 ${args} SHA-256 ${sha}…`,
+    execAdminHistory: (shown, kept) => `exec の実行履歴（新しい順に ${shown} 件。保存は ${kept} 件）:`,
+    execAdminNoHistory: 'exec の実行履歴はありません。',
+    execAdminHistoryLine: (when, id, path, outcome, from) => `${when} ${id} ${path} ${outcome}（起動元: ${from}）`,
+    execAdminUnknownTime: '時刻不明',
+    execAdminOutcome: (result, exitCode) =>
+      result === 'ok'
+        ? '成功'
+        : result === 'exit'
+          ? `終了コード ${exitCode ?? '?'}`
+          : result === 'timeout'
+            ? '時間切れ'
+            : '起動失敗',
+    execAdminUsage: '承認を取り消すには /quick-actions exec-approvals revoke <id>（全件は revoke --all）。取り消した後の実行では再び承認を求めます。',
+    execAdminRevoked: id => `${id} の承認を取り消しました。次に実行するときに再び承認を求めます。`,
+    execAdminNotApproved: id => `${id} の承認はありません。`,
+    execAdminRevokedAll: count => `exec の承認を ${count} 件すべて取り消しました。`,
+    execAdminBadArgs: given =>
+      `exec-approvals の引数が正しくありません: ${given}（使い方: /quick-actions exec-approvals、revoke <id>、revoke --all）。何も変更していません。`,
+    execAdminFailed: 'exec の承認を読み書きできませんでした。何も変更していません。',
+    execAdminApprovalsUnreadable: 'exec の承認を読み込めませんでした（保存されている承認がないという意味ではありません）。',
+    execAdminHistoryUnreadable: 'exec の実行履歴を読み込めませんでした（記録がないという意味ではありません）。',
+    execAdminNoneToRevoke: '取り消す exec の承認はありません。',
+    execOriginConfigDenied: 'Quick Actions の execOrigin を terminal から外せるのは、本人が /config で変更したときだけです',
   },
   en: {
     thinking: 'Thinking…',
@@ -512,6 +590,8 @@ export const MESSAGES: Record<Lang, Messages> = {
               return 'exec definitions work only as written in your user settings (~/.claude/settings.json); other settings (a project\'s, say) override customActions'
             case 'home':
               return 'exec definitions are off: the env of the project, local or --settings settings changes HOME'
+            case 'loader':
+              return `exec definitions are off: the env of the project, local or --settings settings sets a variable of the dynamic loader${r.name === undefined ? '' : ` (${r.name})`}`
           }
           return 'exec definitions are off'
         case 'execAllowlist':
@@ -550,6 +630,14 @@ export const MESSAGES: Record<Lang, Messages> = {
           return 'not run: the executable changed after it was checked'
         case 'execInputTooLarge':
           return `what it would be given is too large (up to ${grouped(r.max)} bytes)`
+        case 'execOrigin':
+          return r.unreadable
+            ? 'exec actions do not run from here: the user settings (~/.claude/settings.json) could not be read to check execOrigin. Press it at your own terminal or type /quick-actions <id>'
+            : 'exec actions are set not to run from here (execOrigin: terminal): press it at your own terminal or type /quick-actions <id>'
+        case 'execBusy':
+          return `not run: ${r.max} exec actions are running already`
+        case 'execSlotFailed':
+          return 'not run: how many exec actions are running could not be checked'
       }
     },
     customProblemsHeading: 'Ignored in customActions:',
@@ -561,7 +649,7 @@ export const MESSAGES: Record<Lang, Messages> = {
     customWarningToast: (count, first) =>
       `Quick Actions: ${count} warning(s) in customActions (${first}). Run /quick-actions to see them all in its result`,
     customIgnoredId: (id, reason) => `${id} cannot be used: its definition in customActions is invalid: ${reason}`,
-    argumentHint: '[action-id [argument] | hint]',
+    argumentHint: '[action-id [argument] | hint | exec-approvals]',
     standalone: 'standalone',
     argsNotAccepted: (id, arg) => `${id} takes no argument: ${arg}`,
     invalidArg: (id, arg, hint) => `Invalid argument for ${id}: ${arg} (${hint})`,
@@ -613,6 +701,36 @@ export const MESSAGES: Record<Lang, Messages> = {
     execApprove: 'Approve and run',
     execCancel: 'Cancel',
     execRefusedToast: (label, reason) => `Quick Actions: ${label} was not run (${reason})`,
+    execAdminOrigin: restricted =>
+      restricted
+        ? 'Origin limit (execOrigin): on. Exec actions run only from a press at the terminal or /quick-actions <id> typed at the prompt'
+        : 'Origin limit (execOrigin): off. Approved exec actions run from anywhere',
+    execAdminApprovals: count => `Exec approvals (${count}):`,
+    execAdminNoApprovals: 'No exec approvals.',
+    execAdminApprovalLine: (id, path, args, sha) => `${id}: ${path} fixed arguments ${args} SHA-256 ${sha}…`,
+    execAdminHistory: (shown, kept) => `Exec runs (newest first, ${shown} of ${kept} kept):`,
+    execAdminNoHistory: 'No exec runs recorded.',
+    execAdminHistoryLine: (when, id, path, outcome, from) => `${when} ${id} ${path} ${outcome} (from: ${from})`,
+    execAdminUnknownTime: 'unknown time',
+    execAdminOutcome: (result, exitCode) =>
+      result === 'ok'
+        ? 'succeeded'
+        : result === 'exit'
+          ? `exit code ${exitCode ?? '?'}`
+          : result === 'timeout'
+            ? 'timed out'
+            : 'not started',
+    execAdminUsage: 'To revoke an approval: /quick-actions exec-approvals revoke <id> (all of them: revoke --all). A run after that asks for approval again.',
+    execAdminRevoked: id => `The approval of ${id} is revoked. Its next run asks for approval again.`,
+    execAdminNotApproved: id => `${id} has no approval.`,
+    execAdminRevokedAll: count => `All ${count} exec approval(s) revoked.`,
+    execAdminBadArgs: given =>
+      `Invalid argument for exec-approvals: ${given} (use /quick-actions exec-approvals, revoke <id> or revoke --all). Nothing changed.`,
+    execAdminFailed: 'The exec approvals could not be read or written. Nothing changed.',
+    execAdminApprovalsUnreadable: 'The exec approvals could not be read (this does not mean none is kept).',
+    execAdminHistoryUnreadable: 'The exec run history could not be read (this does not mean none is recorded).',
+    execAdminNoneToRevoke: 'No exec approval to revoke.',
+    execOriginConfigDenied: 'Quick Actions execOrigin can be moved off terminal only by you, in /config',
   },
 }
 

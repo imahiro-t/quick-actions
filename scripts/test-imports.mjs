@@ -14,15 +14,25 @@
 // - Counted: a value import or re-export of test (`import { test }`,
 //   `import { expect, test as t }`, `export { test } from`), a namespace
 //   import or star export (`import * as t`, `export * from`, either of which
-//   reaches test), a default import, and a dynamic `import(...)` or
-//   `require(...)` of the module.
-// - Not counted: `import type` / `export type`, a `type` specifier
-//   (`import { type test }`), any other name (`import { expect }`), a
-//   side-effect-only `import 'claude-code/testing'`, other modules, and
-//   anything inside a comment or a string.
+//   reaches test), a default import (including one named `type`:
+//   `import type from`, `import type, { test } from`), and a dynamic
+//   `import(...)` or `require(...)` of the module.
+// - Not counted: `import type` / `export type` (`type` followed by a clause,
+//   not by `,` or `from`), a `type` specifier (`import { type test }`), any
+//   other name (`import { expect }`), a side-effect-only
+//   `import 'claude-code/testing'`, an `import(...)` right after `typeof`
+//   (`typeof import('claude-code/testing')`, a type, even across a line
+//   break), other modules, and anything inside a comment or a string.
 // - Not handled: a regular expression literal holding a quote can throw the
 //   string scanning off for the rest of the file; a string-named specifier
-//   (`import { "test" as t }`) is not recognized.
+//   (`import { "test" as t }`) is not recognized; an `import(...)` in a type
+//   position without `typeof` (`let e: import('claude-code/testing').Engine`)
+//   is counted, as the text alone does not tell it from a value import; JSX
+//   text is read as code, so a backtick in it opens a template: a pair of them
+//   (`<p>use `x` here</p>`) only blanks what lies between, and an odd one that
+//   never closes is skipped, but an odd one followed by a real template pairs
+//   with that template's backtick, so the code between them is read as a
+//   string and what it takes is missed (as is code after a `${` in JSX text).
 
 const MODULE = 'claude-code/testing'
 
@@ -50,6 +60,7 @@ const blankCommentsAndStrings = source => {
   const scanContents = (quote, opening) => {
     const from = i
     let stop = source.length
+    let closed = false
     let resumeCode = false
     while (i < source.length) {
       const c = source[i]
@@ -60,6 +71,7 @@ const blankCommentsAndStrings = source => {
       if (c === quote || (quote !== '`' && c === '\n')) {
         // (an unterminated quote ends at the line)
         stop = i
+        closed = true
         break
       }
       if (quote === '`' && c === '$' && source[i + 1] === '{') {
@@ -68,6 +80,12 @@ const blankCommentsAndStrings = source => {
         break
       }
       i++
+    }
+    if (quote === '`' && opening !== undefined && !closed && !resumeCode) {
+      // A backtick that never closes is no template in a valid file (it is,
+      // say, in JSX text): read on from just past it as code.
+      i = opening + 1
+      return
     }
     stop = Math.min(stop, source.length)
     if (opening !== undefined) strings.set(opening, source.slice(from, stop))
@@ -118,13 +136,15 @@ const blankCommentsAndStrings = source => {
 // whitespace only, never running into a later statement), `from` and the
 // opening quote of the module name.
 const STATIC = /(?<![\w$.])(import|export)(?![\w$])((?:(?!(?<![\w$])(?:import|export)(?![\w$]))[\w$\s{},*])*?)(?<![\w$])from\s*(['"])/g
-// `import(` or `require(` and the opening quote of the module name.
-const DYNAMIC = /(?<![\w$.])(import|require)\s*\(\s*(['"`])/g
+// `import(` (not right after `typeof`, which makes it a type) or `require(`
+// and the opening quote of the module name.
+const DYNAMIC = /(?<![\w$.])((?<!(?<![\w$.])typeof\s*)import|require)\s*\(\s*(['"`])/g
 
 /** Whether an import / export clause brings in the value test (or what reaches it). */
 const clauseTakesTest = (keyword, clause) => {
   const text = clause.trim()
-  if (/^type(?![\w$])/.test(text)) return false // import type / export type
+  // import type / export type; `type` alone or before `,` is a default import named type
+  if (/^type(?![\w$])\s*[^\s,]/.test(text)) return false
   if (text.includes('*')) return true // import * as t / export * (as t)
   const brace = text.indexOf('{')
   const head = (brace === -1 ? text : text.slice(0, brace)).replace(/,\s*$/, '').trim()

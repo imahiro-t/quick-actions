@@ -51,7 +51,13 @@ export const PALETTES: Readonly<Record<'light' | 'dark', Palette>> = {
 // not the terminal's, and falls to about 2.9:1 where the two disagree (the
 // light theme's #666666 on a #1e1e1e terminal, the dark theme's #999999 on a
 // white one). ANSI `gray` would not do instead: some terminals' default
-// palettes draw it at 3-3.8:1 on their own dark background.
+// palettes draw it at 3-3.8:1 on their own dark background. The buttons
+// once drawn dimColor (the ⋯ dialog's close and the kinds not listed, the
+// hint line's kinds not shown and its ✕) split the same way: dimColor docked
+// under auto, the terminal's foreground inline and on the hint line, which
+// nothing paints either. The ⋯ dialog's kind listed, inline, keeps the
+// foreground too, bold and underlined rather than in HINT_ACCENT, which
+// would fall lower still there.
 export const PANE_COLORS = {
   dock: { heading: 'text', body: 'text', failed: 'error' },
   inline: { heading: undefined, body: undefined, failed: 'red' },

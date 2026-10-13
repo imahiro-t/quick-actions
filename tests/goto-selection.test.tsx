@@ -2,6 +2,8 @@ import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 
 import type { Result } from '../types'
+import { actionsFor, emojiIcon } from '../hooks/actions'
+import type { Lang } from '../hooks/i18n'
 import { nextEntryId } from '../hooks/entries'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
@@ -41,6 +43,13 @@ import type { Clock, Stage } from './stage'
 // picked; see hooks/entries.ts).
 
 const GOTO = (id: number) => `_goto-${id}`
+
+/** What an entry of built-in `id` in `lang` is named by on its buttons: as its heading says it, the icon and the label. */
+const entryOf = (id: string, lang: Lang) => {
+  const def = actionsFor(lang).find(a => a.id === id)
+  if (def === undefined) throw new Error(`no built-in ${id}`)
+  return `${emojiIcon(def.icon)} ${def.label}`
+}
 
 type Row =
   | typeof USER_ROW
@@ -146,7 +155,11 @@ for (const surface of SURFACES) {
     for (const row of [ASSISTANT_ROW, OTHER_ASSISTANT_ROW, USER_ROW]) expect(await drawnAsEngine($, row, surface)).toBe(true)
 
     const pane = await $.ui.mount({ ...PANE, surface })
-    expect((await pane.find({ key: GOTO(1) }))?.props.label).toBe(MESSAGES.en.gotoSelection)
+    const goto = await pane.find({ key: GOTO(1) })
+    expect([goto?.text, goto?.props.label]).toEqual([
+      MESSAGES.en.gotoSelection,
+      MESSAGES.en.entryButtonName(MESSAGES.en.gotoSelection, entryOf('explain', 'en')),
+    ])
     expect((await pane.findAll({ type: 'Button' })).map(b => b.key).filter(k => k?.startsWith('_unmark'))).toEqual([])
     // The result itself as ever.
     expect(await pane.find({ text: 'answer from sonnet' })).toBeDefined()
@@ -436,9 +449,31 @@ for (const surface of SURFACES) {
       await select(s, clock, 'exit 137', ASSISTANT_ROW.requestId)
       await pressIcon($, 'explain')
       const pane = await $.ui.mount({ ...PANE, surface })
-      const labels = (await pane.findAll({ type: 'Button' })).map(b => b.props.label)
-      expect(labels).toEqual([t.gotoSelection])
+      const buttons = await pane.findAll({ type: 'Button' })
+      // Drawn the words alone; named with them and the entry's action (SELM-00109).
+      expect(buttons.map(b => b.text)).toEqual([t.gotoSelection])
+      const labels = buttons.map(b => b.props.label)
+      expect(labels).toEqual([t.entryButtonName(t.gotoSelection, entryOf('explain', options.language))])
       if (options.language === 'en') for (const label of labels) expect(String(label)).not.toMatch(JAPANESE)
+      await pane.unmount()
+    })
+
+    test(`[${surface}] [${options.language}] two entries' buttons are drawn alike and named apart by their actions`, { options }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      await select(s, clock, 'exit 137', ASSISTANT_ROW.requestId)
+      await pressIcon($, 'explain')
+      await reselect(s, clock)
+      await pressIcon($, 'translate-ja')
+      const pane = await $.ui.mount({ ...PANE, surface })
+      const buttons = await Promise.all([GOTO(2), GOTO(1)].map(key => pane.find({ key })))
+      expect(buttons.map(b => b?.text)).toEqual([t.gotoSelection, t.gotoSelection])
+      expect(buttons.map(b => b?.props.label)).toEqual([
+        t.entryButtonName(t.gotoSelection, entryOf('translate-ja', options.language)),
+        t.entryButtonName(t.gotoSelection, entryOf('explain', options.language)),
+      ])
+      expect(buttons[0]?.props.label).not.toBe(buttons[1]?.props.label)
       await pane.unmount()
     })
   }
@@ -454,6 +489,8 @@ for (const paneTheme of ['light', 'dark'] as const) {
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
     const label = (await pane.findAll({ text: MESSAGES.en.gotoSelection })).filter(f => f.type === 'Text')
     expect(label.map(f => f.props.color)).toEqual([paneStyle(paneTheme, 'dock').muted])
+    // Named with the entry's action all the same.
+    expect((await pane.find({ key: GOTO(1) }))?.props.label).toBe(MESSAGES.en.entryButtonName(MESSAGES.en.gotoSelection, entryOf('explain', 'en')))
     await pane.unmount()
   })
 }

@@ -3,8 +3,8 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, JA, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
+import { HINT_ACCENT, PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
+import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -85,27 +85,35 @@ type PickerMount = Parameters<typeof pickerKindButtons>[0]
 /**
  * The ⋯ dialog's kind buttons where the style leaves the colours to core (auto
  * docked, and inline whatever the setting): every kind listed, "all" stands
- * out; one listed, it is bold with no colour of its own, the others dimColor.
+ * out; one listed, it is bold, the others not. Docked under auto (core paints
+ * the theme's background) the one listed has no colour of its own and the
+ * others are dimColor, as before. Inline nothing paints the background, so
+ * none is dimColor (the theme's `inactive` falls to about 2.9:1 there,
+ * SELM-00109): the others keep the terminal's foreground, and the one listed
+ * is bold and underlined, also with no colour of its own, so that it stands
+ * apart by more than bold without HINT_ACCENT, which falls to about 1.8:1
+ * where the theme and the terminal disagree.
  */
-async function kindsLeftToCore(picker: PickerMount) {
-  const everyKind = [[true, false], [false, true], [false, true], [false, true]]
+async function kindsLeftToCore(picker: PickerMount, placement: 'dock' | 'inline') {
+  const docked = placement === 'dock'
+  const kindAs = (listing: boolean) => [listing, docked && !listing, undefined, listing && !docked]
+  const everyKind = [kindAs(true), kindAs(false), kindAs(false), kindAs(false)]
   const before = await pickerKindButtons(picker)
   expect(before.map(k => k.kind)).toEqual(['all', 'selection', 'context', 'standalone'])
-  expect(before.map(k => [k.bold, k.dimColor])).toEqual(everyKind)
-  expect(before.map(k => k.color)).toEqual(before.map(() => undefined))
+  expect(before.map(k => [k.bold, k.dimColor, k.color, k.underline])).toEqual(everyKind)
   expect(before.map(k => k.label)).toEqual([t.hintKindShown(t.allActions), t.hintKindTips.selection, t.hintKindTips.context, t.hintKindTips.standalone])
   await showPickerKind(picker, 'context')
   const after = await pickerKindButtons(picker)
-  expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color])).toEqual([
-    ['all', false, true, undefined],
-    ['selection', false, true, undefined],
-    ['context', true, false, undefined],
-    ['standalone', false, true, undefined],
+  expect(after.map(k => [k.kind, k.bold, k.dimColor, k.color, k.underline])).toEqual([
+    ['all', ...kindAs(false)],
+    ['selection', ...kindAs(false)],
+    ['context', ...kindAs(true)],
+    ['standalone', ...kindAs(false)],
   ])
   expect(after[2]?.label).toBe(t.hintKindShown(t.hintKindTips.context))
   // Pressed again: every kind, "all" standing out.
   await showPickerKind(picker, 'context')
-  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor])).toEqual(everyKind)
+  expect((await pickerKindButtons(picker)).map(k => [k.bold, k.dimColor, k.color, k.underline])).toEqual(everyKind)
 }
 
 async function openPicker($: Engine, s: Stage, clock: Clock, surface: 'terminal' | 'desktop' | 'mobile') {
@@ -257,7 +265,7 @@ for (const options of [{ ...JA }, { ...JA, paneTheme: 'auto' }, { ...JA, paneThe
     }
     // No notice without the keyboard (SELM-00068).
     expect(await texts(picker, NOTICE)).toEqual([])
-    await kindsLeftToCore(picker)
+    await kindsLeftToCore(picker, 'dock')
     const close = await picker.find({ key: PICKER_CLOSE })
     expect(close?.props.dimColor).toBe(true)
     await picker.unmount()
@@ -478,8 +486,13 @@ for (const theme of THEMES) {
       expect(b?.props.dimColor).toBeUndefined()
     }
     expect(await texts(picker, NOTICE)).toEqual([])
-    await kindsLeftToCore(picker)
-    expect((await picker.find({ key: PICKER_CLOSE }))?.props.dimColor).toBe(true)
+    await kindsLeftToCore(picker, 'inline')
+    // Close, too, in the terminal's foreground rather than dimColor (SELM-00109).
+    const close = await picker.find({ key: PICKER_CLOSE })
+    expect([close?.text, close?.props.dimColor, close?.props.color]).toEqual([t.pickerClose, undefined, undefined])
+    // No button or text of the dialog is left to dimColor, the theme's `inactive`.
+    expect((await picker.findAll({ type: 'Button' })).filter(f => f.props.dimColor === true)).toEqual([])
+    expect((await picker.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
     // The page shown between the page buttons, and "no match", in the terminal's foreground.
     const page = (await texts(picker, /\d+ \/ \d+/)).filter(f => /^ \d+ \/ \d+/.test(f.text))
     expect(plain(page)).toEqual([[undefined, undefined]])
@@ -494,3 +507,59 @@ for (const theme of THEMES) {
     await again.unmount()
   })
 }
+
+// ---------------------------------------------------------------------------
+// The buttons once drawn dimColor (SELM-00109): the hint line's kinds not
+// shown and its ✕, the ⋯ dialog's kinds not listed and its close. Where
+// nothing paints the background (the hint line, inline), dimColor (the
+// theme's `inactive`) falls to about 2.9:1 where the theme and the terminal
+// disagree, so they keep the terminal's foreground there; the kind shown
+// still stands apart, bold in HINT_ACCENT on the hint line, bold and
+// underlined in the inline ⋯ dialog. Docked under auto they stay dimColor,
+// on the theme's own background (see the tests above).
+
+for (const options of [JA, EN, { ...JA, paneTheme: 'auto' }, { ...JA, paneTheme: 'light' }, { ...JA, paneTheme: 'dark' }] as const) {
+  const name = `${options.language}${'paneTheme' in options ? ` ${options.paneTheme}` : ''}`
+  for (const surface of SURFACES) {
+    test(`[${name}] [${surface}] the hint line: the kinds not shown and ✕ in the terminal's foreground, the kind shown bold in the accent`, { options: { ...options, ...MIXED } }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'ECONNREFUSED 127.0.0.1:3306'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
+      for (const shown of ['selection', 'context', 'standalone'] as const) {
+        await band.press({ key: `${KIND_KEY}${shown}` })
+        const kinds = (await band.findAll({ type: 'Button' })).filter(b => String(b.key).startsWith(KIND_KEY))
+        expect(kinds.length).toBeGreaterThan(1)
+        for (const b of kinds) {
+          const listing = String(b.key) === `${KIND_KEY}${shown}`
+          const text = b.children.find(c => typeof c === 'object' && c !== null) as { props?: Record<string, unknown> } | undefined
+          expect([b.key, b.props.dimColor, b.props.color]).toEqual([b.key, undefined, undefined])
+          if (listing) expect([text?.props?.['bold'], text?.props?.['color']]).toEqual([true, HINT_ACCENT])
+          else expect(text).toBeUndefined()
+        }
+      }
+      const close = await band.find({ key: 'close' })
+      expect([close?.text, close?.props.dimColor, close?.props.color]).toEqual(['✕', undefined, undefined])
+      expect((await band.findAll({ type: 'Button' })).filter(f => f.props.dimColor === true)).toEqual([])
+      expect((await band.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
+      await band.unmount()
+    })
+  }
+}
+
+// Inline under auto, the default, as the light and dark tests above draw it.
+test('[auto] inline: the ⋯ dialog\'s kinds not listed and close in the terminal\'s foreground, the kind listed bold and underlined', { options: { ...JA, ...MIXED } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await openPicker($, s, clock, 'terminal')
+  const picker = await $.ui.mount({ ...PICKER_PANE, surface: 'terminal', props: { ...PICKER_PANE.props, placement: 'inline', isFocused: false } })
+  await kindsLeftToCore(picker, 'inline')
+  const close = await picker.find({ key: PICKER_CLOSE })
+  expect([close?.text, close?.props.dimColor, close?.props.color]).toEqual([t.pickerClose, undefined, undefined])
+  expect((await picker.findAll({ type: 'Button' })).filter(f => f.props.dimColor === true)).toEqual([])
+  expect((await picker.findAll({ type: 'Text' })).filter(f => f.props.dimColor === true)).toEqual([])
+  await picker.unmount()
+})

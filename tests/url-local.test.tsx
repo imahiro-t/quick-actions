@@ -24,6 +24,7 @@ import {
   openUrls,
   MESSAGE_LIMIT,
   shownUrl,
+  userInfoHost,
 } from '../hooks/url-local'
 import type { OpenAttempt } from '../hooks/url-local'
 import { hasHidden, hiddenCharPattern } from '../hooks/selection-local'
@@ -265,6 +266,26 @@ test('extractUrls: URLs in brackets joined with no space are two; a bracket pair
   expect(extractUrls('https://a.example/f(x)(y)')).toEqual(['https://a.example/f(x)(y)'])
 })
 
+test('extractUrls: a closing quote right before `(` and the next URL\'s scheme ends the URL too, as `)(` and `}(` do', () => {
+  expect(extractUrls("'https://a.example'(https://b.example)")).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls("'http://a.example/x'(HTTPS://b.example/y)")).toEqual(['http://a.example/x', 'HTTPS://b.example/y'])
+  expect(extractUrls("see 'https://a.example'(https://b.example)を参照")).toEqual(['https://a.example', 'https://b.example'])
+  expect(extractUrls("'https://a.example'(https://b.example)'(https://c.example)")).toEqual(['https://a.example', 'https://b.example', 'https://c.example'])
+  // A quote in a path splits the same way, as the rule says.
+  expect(extractUrls("https://a.example/x'(https://b.example)")).toEqual(['https://a.example/x', 'https://b.example'])
+  // A quote not followed by `(` and a scheme is left as it was.
+  expect(extractUrls("'https://a.example'(x)")).toEqual(["https://a.example'(x)"])
+  expect(extractUrls("'https://a.example'")).toEqual(['https://a.example'])
+})
+
+test('extractUrls: a half-width `:` and Japanese right after the host end the URL before the `:`; a port stays', () => {
+  expect(extractUrls('https://example.com:を参照')).toEqual(['https://example.com'])
+  expect(extractUrls('詳細は https://example.com:を参照してください')).toEqual(['https://example.com'])
+  expect(extractUrls('https://example.com:8080/')).toEqual(['https://example.com:8080/'])
+  expect(extractUrls('https://example.com:8080/を参照')).toEqual(['https://example.com:8080/を参照'])
+  expect(extractUrls('https://example.com:8080を参照')).toEqual(['https://example.com:8080'])
+})
+
 test('extractUrls: a long run of closing brackets (or of brackets and periods) is trimmed in linear time', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
   for (const [label, piece, n] of [['closing parentheses', ')', 200_000], ['parentheses and periods', ').', 100_000], ['closing square brackets', ']', 200_000], ['braces and punctuation', '}.,;', 50_000]] as const) {
     const text = (k: number) => `https://a.example/${piece.repeat(k)}`
@@ -369,6 +390,7 @@ test('extractUrls: the same URLs as reading again from each cut (the rule before
       .replace(/,(?=https?:\/\/)/giu, ', ')
       .replace(/\)\(http(s?):\/\//giu, ') (http$1://')
       .replace(/\}\(http(s?):\/\//giu, '} (http$1://')
+      .replace(/'\(http(s?):\/\//giu, "' (http$1://")
     const urls: string[] = []
     for (let m = candidate.exec(split); m !== null; m = candidate.exec(split)) {
       let cut = ''
@@ -454,9 +476,40 @@ test('shownUrl: the password of the user info is hidden, as parse-url hides it; 
   expect(shownUrl('https://example.com')).toBe('https://example.com')
 })
 
+test('userInfoHost: the host after the authority\'s last `@` when there is user info; undefined otherwise', () => {
+  expect(userInfoHost('https://good.com@evil.com')).toBe('evil.com')
+  expect(userInfoHost('https://good.com]@evil.com')).toBe('evil.com')
+  expect(userInfoHost('https://user:pass@host.example/x')).toBe('host.example')
+  expect(userInfoHost('https://a@b@evil.com:8080/p')).toBe('evil.com:8080')
+  expect(userInfoHost('https://@evil.com')).toBe('evil.com')
+  expect(userInfoHost('https://user@[::1]/')).toBe('[::1]')
+  expect(userInfoHost('https://user@[::1]:8080')).toBe('[::1]:8080')
+  expect(userInfoHost('https://good.com@evil.com?q=1')).toBe('evil.com')
+  expect(userInfoHost('https://good.com@evil.com#f')).toBe('evil.com')
+  expect(userInfoHost('https://good.com@evil.com\\x')).toBe('evil.com')
+  for (const url of ['https://example.com/a@b', 'https://example.com/?u=a@b', 'https://example.com#a@b', 'https://example.com', 'https://example.com:8080/a@b', 'https://例え.テスト']) {
+    expect(userInfoHost(url)).toBeUndefined()
+  }
+  // A `\` before the `@`: URL (WHATWG) ends the authority there, but macOS
+  // `open` (NSURL, RFC 3986) does not, and opens the host after the `@`.
+  expect(userInfoHost('https://good.com\\@evil.com')).toBe('evil.com')
+  expect(userInfoHost('https://good.com\\@evil.com/x')).toBe('evil.com')
+  expect(userInfoHost('https://good.com\\x@evil.com:8080/p?q#f')).toBe('evil.com:8080')
+  expect(userInfoHost('https://a@good.com\\@evil.com')).toBe('evil.com')
+  for (const url of ['https://good.com\\evil.com', 'https://good.com\\?@evil.com', 'https://good.com\\/@evil.com', 'https://good.com\\#@evil.com']) {
+    expect(userInfoHost(url)).toBeUndefined()
+  }
+  // As URL reads it: the host after the last `@`.
+  for (const url of ['https://good.com@evil.com', 'https://good.com]@evil.com', 'https://a@b@evil.com:8080/p', 'https://user:pass@host.example/x']) {
+    expect(userInfoHost(url)).toBe(new URL(url).host)
+  }
+})
+
 test('copyResultText / openResultText: a URL\'s password is hidden in the result; an engine message is cut at MESSAGE_LIMIT', () => {
   const u = 'https://me:hunter2@example.com/x'
-  expect(copyResultText('en', [u])).toBe('Copied 1 URL to the clipboard, one per line:\n- https://me:***@example.com/x')
+  expect(copyResultText('en', [u])).toBe(
+    'Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (1):\n- https://me:***@example.com/x — the host it would actually open: example.com\n\nCopied 1 URL to the clipboard, one per line:\n- https://me:***@example.com/x',
+  )
   const open = openResultText('en', [{ url: u, status: 'requested' }, { url: u, status: 'failed', reason: { exitCode: 1 } }, { url: u, status: 'unconfirmed' }], [u])
   expect(open).not.toContain('hunter2')
   expect(open).toContain('- https://me:***@example.com/x — exit code 1')
@@ -536,9 +589,122 @@ test('no URL: both actions answer the guidance as an error, in both languages; n
 test('open-urls: the first five to open, the rest skipped; copy-urls: every URL', () => {
   const seven = Array.from({ length: 7 }, (_, i) => `https://e${i}.example/`)
   expect(OPEN_URL_LIMIT).toBe(5)
-  expect(run(openUrls, seven.join(' '))).toEqual({ effect: { kind: 'open', urls: seven.slice(0, 5), skipped: seven.slice(5) } })
-  expect(run(openUrls, 'a https://a.example b https://a.example')).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [] } })
+  expect(run(openUrls, seven.join(' '))).toEqual({ effect: { kind: 'open', urls: seven.slice(0, 5), skipped: seven.slice(5), withheld: [] } })
+  expect(run(openUrls, 'a https://a.example b https://a.example')).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: [] } })
   expect(run(copyUrls, seven.join('\n'))).toEqual({ effect: { kind: 'copy', urls: seven } })
+})
+
+test('open-urls: a URL with user info is never opened, but withheld with the host it would open, and not counted toward the limit', () => {
+  expect(run(openUrls, 'https://good.com@evil.com https://a.example')).toEqual({
+    effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['https://good.com@evil.com'] },
+  })
+  const five = Array.from({ length: 5 }, (_, i) => `https://e${i}.example/`)
+  const held = ['https://x@h1.example', 'https://y:pw@h2.example/p']
+  expect(run(openUrls, [held[0], ...five, held[1], 'https://e5.example/'].join(' '))).toEqual({
+    effect: { kind: 'open', urls: five, skipped: ['https://e5.example/'], withheld: held },
+  })
+  // `]` before `@`: neither the shown host alone nor the real one is opened.
+  for (const text of ['https://good.com]@evil.com https://a.example', '[https://good.com]@evil.com https://a.example', 'https://good.com]@evil.comを参照 https://a.example']) {
+    const out = run(openUrls, text)
+    expect(out).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['https://good.com]@evil.com'] } })
+  }
+  // `\` before `@`: what macOS `open` reads as user info is withheld too, with or without a path.
+  for (const held of ['https://good.com\\@evil.com', 'https://good.com\\@evil.com/x']) {
+    expect(extractUrls(`${held} https://a.example`)).toEqual([held, 'https://a.example'])
+    expect(run(openUrls, `${held} https://a.example`)).toEqual({ effect: { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: [held] } })
+  }
+})
+
+test('open-urls / copy-urls: `\\` before `@` names the host after `@`, and the host the URL standard reads too', () => {
+  expect(run(openUrls, 'https://good.com\\@evil.com/x', 'ja')).toEqual({
+    error: 'ユーザー情報（@ より前の部分）付きのため開かなかった URL（1 件）:\n- https://good.com\\@evil.com/x — 実際に開かれるホスト: evil.com（URL 標準での解釈: good.com）',
+  })
+  expect(run(openUrls, 'https://good.com\\@evil.com', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com\\@evil.com — the host it would actually open: evil.com (as the URL standard reads it: good.com)',
+  })
+  const urls = ['https://a.example', 'https://good.com\\@evil.com/x']
+  expect(run(copyUrls, urls.join(' '))).toEqual({ effect: { kind: 'copy', urls } })
+  expect(copyResultText('en', urls)).toBe(
+    'Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (1):\n- https://good.com\\@evil.com/x — the host it would actually open: evil.com (as the URL standard reads it: good.com)\n\nCopied 2 URLs to the clipboard, one per line:\n- https://a.example\n- https://good.com\\@evil.com/x',
+  )
+  // A host written otherwise than URL normalizes it: the normalized one is named too; none when they match.
+  expect(run(openUrls, 'https://good.com@0x7f.1', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com@0x7f.1 — the host it would actually open: 0x7f.1 (as the URL standard reads it: 127.0.0.1)',
+  })
+  expect(run(openUrls, 'https://good.com@EVIL.COM', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com@EVIL.COM — the host it would actually open: EVIL.COM',
+  })
+})
+
+test('open-urls: a selection whose URLs all carry user info opens nothing, and says why with the host each would open, in both languages', () => {
+  expect(run(openUrls, 'https://good.com@evil.com', 'en')).toEqual({
+    error: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com@evil.com — the host it would actually open: evil.com',
+  })
+  expect(run(openUrls, 'https://good.com]@evil.com と https://me:hunter2@evil2.example:8443/x', 'ja')).toEqual({
+    error:
+      'ユーザー情報（@ より前の部分）付きのため開かなかった URL（2 件）:\n- https://good.com]@evil.com — 実際に開かれるホスト: evil.com\n- https://me:***@evil2.example:8443/x — 実際に開かれるホスト: evil2.example:8443',
+  })
+})
+
+test('copy-urls: a URL with user info is copied, with a warning first naming the host it would open; none without user info', () => {
+  const urls = ['https://a.example', 'https://good.com]@evil.com']
+  expect(run(copyUrls, urls.join(' '))).toEqual({ effect: { kind: 'copy', urls } })
+  expect(copyResultText('ja', urls)).toBe(
+    '注意: ユーザー情報（@ より前の部分）付きの URL があります。開くと @ の後のホストに接続します（1 件）:\n- https://good.com]@evil.com — 実際に開かれるホスト: evil.com\n\n2 件の URL をクリップボードにコピーしました（改行区切り）:\n- https://a.example\n- https://good.com]@evil.com',
+  )
+  expect(copyResultText('en', urls, { reason: 'refused' })).toBe(
+    'Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (1):\n- https://good.com]@evil.com — the host it would actually open: evil.com\n\nCould not copy the URLs to the clipboard: the copy was refused\nThe URLs found (2):\n- https://a.example\n- https://good.com]@evil.com',
+  )
+  expect(copyResultText('en', ['https://a.example/u@b'])).not.toContain('Warning')
+})
+
+test('openResultText: the URLs withheld for their user info, after the outcomes and before the skipped, password hidden', () => {
+  const text = openResultText('en', [{ url: 'https://a.example', status: 'requested' }], ['https://s.example'], ['https://me:hunter2@evil.com/x'])
+  expect(text).toBe(
+    'Asked the system to open in the browser (1):\n- https://a.example\n\nNot opened, as they carry user info (the part before @) (1):\n- https://me:***@evil.com/x — the host it would actually open: evil.com\n\nNot opened, past the limit of 5 a run (1):\n- https://s.example',
+  )
+  expect(openResultText('ja', [{ url: 'https://a.example', status: 'requested' }], [], ['https://good.com@evil.com'])).toContain(
+    'ユーザー情報（@ より前の部分）付きのため開かなかった URL（1 件）:\n- https://good.com@evil.com — 実際に開かれるホスト: evil.com',
+  )
+})
+
+test('open-urls: no URL with user info is ever among those opened or skipped, on random text', () => {
+  const pieces = ['https://', 'http://', 'a.b', 'good.com', 'evil.com', '@', ']', '[', ':', 'pw', '/', '?', '#', '\\', '\\@', ' ', 'あ', "'", '(', ')', '-', '.']
+  let seed = 98765
+  const next = (n: number) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed % n
+  }
+  let held = 0
+  for (let i = 0; i < 5_000; i++) {
+    let text = ''
+    for (let k = 1 + next(20); k > 0; k--) text += pieces[next(pieces.length)]
+    const out = run(openUrls, text)
+    const found = extractUrls(text)
+    const withUserInfo = found.filter(u => userInfoHost(u) !== undefined)
+    held += withUserInfo.length
+    if ('effect' in out && out.effect.kind === 'open') {
+      for (const u of [...out.effect.urls, ...out.effect.skipped]) expect({ text, u, host: userInfoHost(u) }).toEqual({ text, u, host: undefined })
+      expect(out.effect.withheld).toEqual(withUserInfo)
+      // Each withheld URL names the host it would actually connect to (as
+      // written: read back by URL, it is the URL's host once each `\` in its
+      // user info is taken as part of it, as macOS `open` does).
+      for (const u of out.effect.withheld) {
+        const start = u.indexOf('//') + 2
+        const end = u.slice(start).search(/[/?#]|$/u) + start
+        const at = u.lastIndexOf('@', end - 1)
+        const asOpen = `${u.slice(0, start)}${u.slice(start, at).replaceAll('\\', '%5C')}${u.slice(at)}`
+        // (Undefined on both sides when what follows the `@` is no host at all.)
+        const hostOf = (s: string) => (URL.canParse(s) ? new URL(s).host : undefined)
+        expect({ u, host: hostOf(`${u.slice(0, start)}${userInfoHost(u)}`) }).toEqual({ u, host: hostOf(asOpen) })
+      }
+    } else if (found.length > 0) {
+      // Only when every URL carries user info: nothing opened, all withheld.
+      expect(withUserInfo).toEqual(found)
+      expect(out).toMatchObject({ error: expect.stringContaining('Not opened, as they carry user info') })
+    }
+  }
+  expect(held).toBeGreaterThan(100)
 })
 
 test('runLocal: an effect of an action on the selection is handed on; of a standalone one, or of an unknown shape, a failure', () => {
@@ -547,7 +713,7 @@ test('runLocal: an effect of an action on the selection is handed on; of a stand
   const input = { ...INPUT, text: 'https://a.example https://b.example' }
   expect(runLocal(def(openUrls), input, { selection: true, lang: 'en' })).toEqual({
     kind: 'effect',
-    effect: { kind: 'open', urls: ['https://a.example', 'https://b.example'], skipped: [] },
+    effect: { kind: 'open', urls: ['https://a.example', 'https://b.example'], skipped: [], withheld: [] },
   })
   expect(runLocal(def(copyUrls), input, { selection: true, lang: 'en' })).toEqual({
     kind: 'effect',
@@ -561,8 +727,21 @@ test('runLocal: an effect of an action on the selection is handed on; of a stand
     { kind: 'copy', urls: ['javascript:alert(1)'] },
     { kind: 'copy', urls: ['file:///etc/passwd'] },
     { kind: 'open', urls: ['https://a.example'] },
+    { kind: 'open', urls: ['https://a.example'], withheld: [] },
     { kind: 'open', urls: Array.from({ length: 6 }, (_, i) => `https://e${i}.example`), skipped: [] },
+    { kind: 'open', urls: Array.from({ length: 6 }, (_, i) => `https://e${i}.example`), skipped: [], withheld: [] },
     { kind: 'open', urls: ['https://a.example'], skipped: ['ftp://x.example'] },
+    { kind: 'open', urls: ['https://a.example'], skipped: ['ftp://x.example'], withheld: [] },
+    // User info: never among the URLs opened or skipped, and only it among the withheld.
+    { kind: 'open', urls: ['https://a.example'], skipped: [] },
+    { kind: 'open', urls: ['https://good.com@evil.com'], skipped: [], withheld: [] },
+    { kind: 'open', urls: ['https://a.example'], skipped: ['https://good.com@evil.com'], withheld: [] },
+    { kind: 'open', urls: ['https://good.com\\@evil.com'], skipped: [], withheld: [] },
+    { kind: 'open', urls: ['https://good.com\\@evil.com/x'], skipped: [], withheld: [] },
+    { kind: 'open', urls: ['https://a.example'], skipped: ['https://good.com\\@evil.com/x'], withheld: [] },
+    { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['https://b.example'] },
+    { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: ['javascript:alert(1)'] },
+    { kind: 'open', urls: ['https://a.example'], skipped: [], withheld: 'https://good.com@evil.com' },
     { kind: 'run', urls: ['https://a.example'] },
   ]) {
     expect(odd(effect)).toMatchObject({ kind: 'settle', ok: false })
@@ -665,11 +844,11 @@ test('openResultText: each outcome under its own heading, empty ones left out; d
 // Through register.tsx: what reaches $.process.run and $.ui.copy, and the entry.
 
 /** The entry's Text in the pane starting with `head`, with whether it is drawn as a failure. */
-async function entry($: Engine, head: string): Promise<{ text: string; failed: boolean } | undefined> {
+async function entry($: Engine, head: string, holding?: string): Promise<{ text: string; failed: boolean } | undefined> {
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const texts = await pane.findAll({ type: 'Text' })
   await pane.unmount()
-  const t = texts.find(x => typeof x.text === 'string' && x.text.startsWith(head))
+  const t = texts.find(x => typeof x.text === 'string' && x.text.startsWith(head) && (holding === undefined || x.text.includes(holding)))
   return t === undefined || typeof t.text !== 'string' ? undefined : { text: t.text, failed: t.props.color === 'error' }
 }
 
@@ -822,9 +1001,13 @@ test('copy-urls: every URL is copied, but the result shown is cut at the result 
   await select(s, clock, urls.join(' '))
   await runCommand($, 'copy-urls')
   expect(s.copies).toEqual([{ text: urls.join('\n') }])
-  const r = await entry($, 'Copied 2001 URLs')
+  const r = await entry($, 'Warning: some URLs', 'Copied 2001 URLs')
   expect(r?.failed).toBe(false)
-  expect(r?.text.startsWith('Copied 2001 URLs to the clipboard, one per line:\n- https://me:***@example.com/x\n')).toBe(true)
+  expect(
+    r?.text.startsWith(
+      'Warning: some URLs carry user info (the part before @); opening one connects to the host after @ (1):\n- https://me:***@example.com/x — the host it would actually open: example.com\n\nCopied 2001 URLs to the clipboard, one per line:\n- https://me:***@example.com/x\n',
+    ),
+  ).toBe(true)
   expect(r?.text).not.toContain('hunter2')
   expect(r?.text.endsWith(`\n${MESSAGES.en.truncated}`)).toBe(true)
   expect(Array.from(r?.text ?? '').length).toBeLessThanOrEqual(LOCAL_TEXT_LIMIT + 1 + MESSAGES.en.truncated.length)
@@ -833,7 +1016,7 @@ test('copy-urls: every URL is copied, but the result shown is cut at the result 
   s.copyAnswer = { isCopied: false, reason: 'refused' }
   await select(s, clock, urls.join(' '))
   await runCommand($, 'copy-urls')
-  const f = await entry($, 'Could not copy')
+  const f = await entry($, 'Warning: some URLs', 'Could not copy')
   expect(f?.failed).toBe(true)
   expect(f?.text.endsWith(`\n${MESSAGES.en.truncated}`)).toBe(true)
 })
@@ -896,4 +1079,42 @@ test('no URL in the selection: neither $.process.run nor $.ui.copy is called, an
   }
   expect(s.processRuns).toEqual([])
   expect(s.copies).toEqual([])
+})
+
+test('open-urls: a URL with user info is not opened, and the rest are; all with user info: nothing run, not even uname, failed', { options: { language: 'en', pinActions: 'open-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+
+  await select(s, clock, 'https://good.com]@evil.com')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns).toEqual([])
+  expect(await entry($, 'Not opened, as they carry user info')).toEqual({
+    text: 'Not opened, as they carry user info (the part before @) (1):\n- https://good.com]@evil.com — the host it would actually open: evil.com',
+    failed: true,
+  })
+
+  await select(s, clock, 'https://good.com@evil.com https://a.example')
+  await runCommand($, 'open-urls')
+  expect(s.processRuns).toEqual([
+    { argv: ['uname', '-s'], timeoutMs: OPEN_TIMEOUT_MS },
+    { argv: ['open', 'https://a.example'], timeoutMs: OPEN_TIMEOUT_MS },
+  ])
+  expect(await entry($, 'Asked the system')).toEqual({
+    text: 'Asked the system to open in the browser (1):\n- https://a.example\n\nNot opened, as they carry user info (the part before @) (1):\n- https://good.com@evil.com — the host it would actually open: evil.com',
+    failed: false,
+  })
+})
+
+test('copy-urls: a URL with user info is copied, and the result warns first with the host it would open', { options: { language: 'ja', pinActions: 'copy-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  await select(s, clock, 'https://good.com@evil.com https://a.example')
+  await runCommand($, 'copy-urls')
+  expect(s.copies).toEqual([{ text: 'https://good.com@evil.com\nhttps://a.example' }])
+  expect(await entry($, '注意:')).toEqual({
+    text: '注意: ユーザー情報（@ より前の部分）付きの URL があります。開くと @ の後のホストに接続します（1 件）:\n- https://good.com@evil.com — 実際に開かれるホスト: evil.com\n\n2 件の URL をクリップボードにコピーしました（改行区切り）:\n- https://good.com@evil.com\n- https://a.example',
+    failed: false,
+  })
 })

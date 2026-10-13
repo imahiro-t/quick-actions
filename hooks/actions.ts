@@ -201,12 +201,13 @@ export type LocalOutput =
  * What an action on the selection may ask register.tsx to do through `$`, its
  * compute staying pure (an action on the selection's only): open http(s) URLs
  * with the OS's default handler (`open`, at most OPEN_URL_LIMIT of them;
- * `skipped`, those past it, listed and not opened) or copy URLs to the
+ * `skipped`, those past it, listed and not opened; `withheld`, those with user
+ * info, never opened but listed with the host each would open) or copy URLs to the
  * clipboard, one per line (`copy`). register.tsx carries it out and settles
  * the entry with what came of it (./url-local words it).
  */
 export type LocalEffect =
-  | { kind: 'open'; urls: string[]; skipped: string[] }
+  | { kind: 'open'; urls: string[]; skipped: string[]; withheld: string[] }
   | { kind: 'copy'; urls: string[] }
 
 /**

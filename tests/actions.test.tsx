@@ -2077,8 +2077,8 @@ test('neutralizeSelectedTags: a decomposed İ (I and U+0307) for the l makes a s
   expect(wrapped.split('&lt;').length - 1).toBe(tags.length)
 })
 
-test('neutralizeTags: U+0307 is passed over after an l look-alike only, once (SELM-00113)', () => {
-  // Elsewhere it is compared as itself, as before: these stay as they are.
+test('neutralizeTags: U+0307 is passed over after an l look-alike once, and not after the other letters of selected (SELM-00113)', () => {
+  // After the other letters of selected it is compared as itself, as before: these stay as they are.
   for (const s of [
     '<se\u0307lected>',
     '<s\u0307elected>',
@@ -2095,10 +2095,7 @@ test('neutralizeTags: U+0307 is passed over after an l look-alike only, once (SE
   for (const s of ['<selected\u0307>', '<selected\u200B\u0307>', '<seI\u0307ected\u0307>']) {
     expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: `&lt;${s.slice(1)}` })
   }
-  // A decomposed İ where the word has an i is not taken for an i (unchanged from before).
-  for (const s of ['<I\u0307nput>', '</I\u0307nput>']) {
-    expect({ s, got: neutralizeInputTags(s) }).toEqual({ s, got: s })
-  }
+  // (Where the word has an i, a decomposed İ is taken for an i since SELM-00115: see below.)
 })
 
 test('neutralizeTags: Ι, ı, ۱ and a decomposed İ leave ordinary text as it was (SELM-00113)', () => {
@@ -2111,6 +2108,71 @@ test('neutralizeTags: Ι, ı, ۱ and a decomposed İ leave ordinary text as it w
   ]) {
     expect({ s, selected: neutralizeSelectedTags(s), input: neutralizeInputTags(s) }).toEqual({ s, selected: s, input: s })
   }
+})
+
+// SELM-00115: a decomposed İ (a form of i and U+0307) where the word has an i.
+
+test('neutralizeInputTags: a decomposed İ (or i, ı with U+0307) for the i makes an input tag harmless (SELM-00115)', () => {
+  const tags = [
+    '<I\u0307nput>',
+    '</I\u0307nput>',
+    '<i\u0307nput>',
+    '<\u0131\u0307nput>',
+    '</I\u0307NPUT>',
+    '< / I\u0307nput >',
+    '<I\u200B\u0307nput>',
+    '<I\u0307\u200Bnput>',
+    '<\u0399\u0307nput>',
+    '<\u026A\u0307\u0274\u1D18\u1D1C\u1D1B>',
+    '<\uFF49\u0307nput>',
+    '<\u0130\u0307nput>',
+  ]
+  for (const tag of tags) {
+    expect({ tag, got: neutralizeInputTags(`a ${tag} b`) }).toEqual({ tag, got: `a &lt;${tag.slice(1)} b` })
+  }
+  // In another word too, at its i.
+  for (const [text, word] of [['<fI\u0307le>', 'file'], ['</fi\u0307le>', 'file'], ['<sI\u0307I\u0307>', 'sii']] as const) {
+    expect({ text, word, got: neutralizeTags(text, word) }).toEqual({ text, word, got: `&lt;${text.slice(1)}` })
+  }
+  // Wrapped: the delimiters stay the only real pair.
+  const wrapped = wrapInput(tags.join('\n'))
+  expect(wrapped.match(/<\/input>/g)).toHaveLength(1)
+  expect(wrapped.match(/<input>/g)).toHaveLength(1)
+  expect(wrapped.split('&lt;').length - 1).toBe(tags.length)
+})
+
+test('neutralizeTags: U+0307 is passed over after an i once, and not anywhere it was not before (SELM-00115)', () => {
+  // A second dot, a dot after another letter or before the i, a longer word: these stay as they are.
+  for (const s of [
+    '<I\u0307\u0307nput>',
+    '<\u0130\u0307\u0307nput>',
+    '<in\u0307put>',
+    '<inp\u0307ut>',
+    '<\u0307input>',
+    '<I\u0307nputs>',
+    '<I\u0307nput_x>',
+    '<I\u0307np>',
+  ]) {
+    expect({ s, got: neutralizeInputTags(s) }).toEqual({ s, got: s })
+  }
+  // At selected, as before: an ASCII l with the dot and a dot after another letter are no tag.
+  for (const s of ['<sel\u0307ected>', '<se\u0307lected>', '<selecte\u1E0B>']) {
+    expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: s })
+  }
+  // A dot after the word still ends it; the rest reads as it did.
+  for (const s of ['<input\u0307>', '<I\u0307nput\u0307>', '<I\u0307nput\u200B\u0307>', '<INPUT>', '<\u026A\u0274\u1D18\u1D1C\u1D1B>']) {
+    expect({ s, got: neutralizeInputTags(s) }).toEqual({ s, got: `&lt;${s.slice(1)}` })
+  }
+  for (const s of ['</se\u0130ected>', '</seI\u0307ected>']) {
+    expect({ s, got: neutralizeSelectedTags(s) }).toEqual({ s, got: `&lt;${s.slice(1)}` })
+  }
+})
+
+test('neutralizeInputTags scales linearly on decomposed İ tags and near ones (SELM-00115)', { timeoutMs: LINEAR_TIMEOUT_MS }, () => {
+  scalesLinearly(neutralizeInputTags, [
+    ['decomposed İnput tags', runOf('</I\u0307nput>'), runOf('&lt;/I\u0307nput>'), 160_000],
+    ['near decomposed İnput tags', runOf('<I\u0307np'), runOf('<I\u0307np'), 300_000],
+  ])
 })
 
 test('neutralizeTags: multi-character NFKC forms are compared as consecutive letters', () => {

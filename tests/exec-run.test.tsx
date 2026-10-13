@@ -198,6 +198,21 @@ test('an exit code other than 0 is a failure: the code and the standard error sh
   expect(texts).not.toContain('\u001b')
 })
 
+test('an exit code other than 0 with its output cut by $.process.run: said so under each heading', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.processAnswer = argv =>
+    argv[0] === ENV_BIN
+      ? { exitCode: 1, stdout: 'partial out', stderr: 'partial err', isStdoutTruncated: true, isStderrTruncated: true }
+      : defaultProcessAnswer(argv)
+  await start($)
+  await runCommand($, 'free')
+  await clock.settle()
+  const texts = (await paneTexts($)).join('\n')
+  expect(texts).toContain(`${t.execStderr}\npartial err\n${t.execTruncated}`)
+  expect(texts).toContain(`${t.execStdout}\npartial out\n${t.execTruncated}`)
+})
+
 test('the timeout is a failure that says so', { options: OPTIONS }, async ($, on) => {
   const clock = mock.clock(on)
   const { s } = setUp(on)

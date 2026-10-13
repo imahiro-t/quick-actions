@@ -371,18 +371,26 @@ export type Stage = {
 }
 
 /** How the stage answers one $.process.run: what the command came to, or a refusal (the call rejects). */
-export type ProcessAnswer = { exitCode: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | { deny: string }
+export type ProcessAnswer =
+  | { exitCode: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean; isStderrTruncated?: boolean }
+  | { deny: string }
 
 /** The default answer to $.process.run: `uname -s` reads Darwin, any other command exits 0. */
 export const defaultProcessAnswer = (argv: readonly string[]): ProcessAnswer =>
   argv[0] === 'uname' ? { exitCode: 0, stdout: 'Darwin\n' } : { exitCode: 0 }
 
-const processResult = (a: { exitCode: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean }): ProcessRunResult => ({
+const processResult = (a: {
+  exitCode: number
+  stdout?: string
+  stderr?: string
+  isStdoutTruncated?: boolean
+  isStderrTruncated?: boolean
+}): ProcessRunResult => ({
   exitCode: a.exitCode,
   stdout: a.stdout ?? '',
   stderr: a.stderr ?? '',
   isStdoutTruncated: a.isStdoutTruncated ?? false,
-  isStderrTruncated: false,
+  isStderrTruncated: a.isStderrTruncated ?? false,
 })
 
 const reply = (s: Stage, text: string) => {

@@ -31,8 +31,10 @@ import {
   matchAllowlist,
   parseAllowlist,
   parseApprovals,
+  pathShown,
   sameApproval,
   scopeVerdict,
+  tidied,
   usableHome,
   utf8Length,
 } from '../hooks/exec'
@@ -393,6 +395,73 @@ test('execFailureText: the exit code, then the standard error and output under t
   const long = execFailureText(1, '', 'e'.repeat(EXEC_STDERR_MAX + 5), 'en')
   expect(long).toContain(`${'e'.repeat(EXEC_STDERR_MAX)}\n${MESSAGES.en.execTruncated}`)
   expect(long).not.toContain('e'.repeat(EXEC_STDERR_MAX + 1))
+})
+
+test('execFailureText: what $.process.run cut is said to be cut, even when nothing of it is left to show', () => {
+  const text = execFailureText(1, 'out', 'err', 'en', { stdoutCut: true, stderrCut: true })
+  expect(text).toBe(
+    [
+      MESSAGES.en.failed(MESSAGES.en.execExit(1)),
+      `${MESSAGES.en.execStderr}\nerr\n${MESSAGES.en.execTruncated}`,
+      `${MESSAGES.en.execStdout}\nout\n${MESSAGES.en.execTruncated}`,
+    ].join('\n\n'),
+  )
+  expect(execFailureText(1, '', '', 'en', { stdoutCut: true })).toBe(
+    [MESSAGES.en.failed(MESSAGES.en.execExit(1)), `${MESSAGES.en.execStdout}\n${MESSAGES.en.execTruncated}`].join('\n\n'),
+  )
+  // Not cut: no note, as before.
+  expect(execFailureText(1, 'out', '', 'en', { stdoutCut: false })).toBe(
+    [MESSAGES.en.failed(MESSAGES.en.execExit(1)), `${MESSAGES.en.execStdout}\nout`].join('\n\n'),
+  )
+})
+
+test('tidied: the same as trimming the whole output, and cut only when something but white space is left out', () => {
+  const max = 10
+  expect(tidied(' \r\n\t\n\rab \r\n', max)).toEqual({ text: 'ab', cut: false })
+  expect(tidied('a\r\nb', max)).toEqual({ text: 'a\nb', cut: false })
+  // Longer than kept before tidying, but only white space past it: not cut.
+  expect(tidied(`abc${' '.repeat(100)}`, max)).toEqual({ text: 'abc', cut: false })
+  expect(tidied(`abc${'\r\n'.repeat(100)}`, max)).toEqual({ text: 'abc', cut: false })
+  // Something after a long run of white space: cut, and the white space kept up to `max`.
+  expect(tidied(`abc${' '.repeat(100)}z`, max)).toEqual({ text: `abc${' '.repeat(7)}`, cut: true })
+  // \r\n made \n: the first `max` of the tidied output, as if it all were tidied.
+  expect(tidied(`${'a\r\n'.repeat(20)}`, max)).toEqual({ text: 'a\na\na\na\na\n', cut: true })
+  expect(tidied(`${'\r\n'.repeat(max)}x${'\r\n'.repeat(max)}y`, max)).toEqual({ text: `x${'\n'.repeat(9)}`, cut: true })
+  // Leading blank lines, however many, are gone before anything is cut.
+  expect(tidied(`${'\n'.repeat(1000)}hello`, max)).toEqual({ text: 'hello', cut: false })
+  // Cut by $.process.run: said so.
+  expect(tidied('ab', max, true)).toEqual({ text: 'ab', cut: true })
+})
+
+test('tidied: a long run of white space or blank lines in an output takes linear time, not quadratic', () => {
+  const n = 100_000
+  const outputs = [
+    `a${' '.repeat(n)}b`,
+    `a${'\n'.repeat(n)}b`,
+    `a${' \t\r\n'.repeat(n / 4)}b`,
+    `a${' '.repeat(n)}`,
+    `${'\n'.repeat(n)}`,
+    `a${' '.repeat(4_000_000)}b`,
+  ]
+  const started = Date.now()
+  for (const out of outputs) {
+    execOutputText(out, false, 'en')
+    execFailureText(1, out, out, 'en')
+  }
+  // The old /\s+$/ took seconds for the 100,000 runs alone (and hours for 4,000,000).
+  expect(Date.now() - started).toBeLessThan(1000)
+  expect(execOutputText(`a${' '.repeat(n)}b`, false, 'en')).toBe(`a${' '.repeat(EXEC_OUTPUT_MAX - 1)}\n\n${MESSAGES.en.execTruncated}`)
+  expect(execOutputText(`a${'\n'.repeat(n)}`, false, 'en')).toBe('a')
+  expect(execFailureText(1, '', `e${' '.repeat(n)}f`, 'en')).toBe(
+    [MESSAGES.en.failed(MESSAGES.en.execExit(1)), `${MESSAGES.en.execStderr}\ne${' '.repeat(EXEC_STDERR_MAX - 1)}\n${MESSAGES.en.execTruncated}`].join('\n\n'),
+  )
+})
+
+test('pathShown: hidden characters named, cut short at 200 code units', () => {
+  expect(pathShown('/opt/tool')).toBe('/opt/tool')
+  const long = `/${'d'.repeat(4000)}`
+  expect(pathShown(long).length).toBe(200)
+  expect(pathShown(long).endsWith('...')).toBe(true)
 })
 
 test('isTimeout: the message says so, or it ran about as long as allowed', () => {

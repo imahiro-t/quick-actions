@@ -48,6 +48,7 @@ import {
   isTimeout,
   locate,
   parseApprovals,
+  pathShown,
   sameApproval,
   scopeVerdict,
   unexpected,
@@ -839,7 +840,7 @@ type ExecReady = { realPath: string; size: number; sha256: string }
  * that SHA-256 (asked now, at the person's terminal alone, when it is not).
  */
 async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from: RunFrom): Promise<ExecReady | CustomReason> {
-  if ((await platformOf($)) === 'win32') return { code: 'execUnsupported' }
+  if (await isWindows($)) return { code: 'execUnsupported' }
   const gated = (await ensureExecGate($, currentExecLoad)).rejected.get(def.id)
   if (gated !== undefined) return gated
   const list = await loadAllowlist($)
@@ -848,7 +849,7 @@ async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from
   if ('code' in located) return located
   const hash = await hashExec($, located.realPath, located.size)
   if (typeof hash !== 'string') return hash
-  if (located.entry.sha256 !== undefined && located.entry.sha256 !== hash) return { code: 'execHashMismatch', path: located.realPath }
+  if (located.entry.sha256 !== undefined && located.entry.sha256 !== hash) return { code: 'execHashMismatch', path: pathShown(located.realPath) }
   const wanted: ExecApproval = { path: located.realPath, args: [...def.args], sha256: hash }
   const kept = parseApprovals(await readQuietly($.store.get(APPROVALS_KEY)))[def.id]
   if (!sameApproval(kept, wanted)) {
@@ -927,7 +928,7 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
     const env = await hostEnv($)
     if (env === undefined) return await refuse({ code: 'execAllowlist', why: 'noHome' }, id)
     const invocation = buildInvocation({ realPath: ready.realPath, args: def.args, env, target: input.target, lang, stdin })
-    if (invocation === undefined) return await refuse({ code: 'execPath', field: 'realPath', path: displaySafe(ready.realPath) }, id)
+    if (invocation === undefined) return await refuse({ code: 'execPath', field: 'realPath', path: pathShown(ready.realPath) }, id)
     const startedAt = await readQuietly($.clock.now())
     let r: Awaited<ReturnType<EngineInterface['process']['run']>>
     try {
@@ -941,7 +942,7 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
       return
     }
     const ok = r.exitCode === 0
-    await settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang))
+    await settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang, { stdoutCut: r.isStdoutTruncated, stderrCut: r.isStderrTruncated }))
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(displaySafe(messageOf(err))))

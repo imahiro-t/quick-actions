@@ -251,8 +251,29 @@ export function cutText(text: string, max: number): { text: string; cut: boolean
   return { text: text.slice(0, end), cut: true }
 }
 
-/** An output as shown: line breaks made \n, blank lines at either end and trailing spaces gone. */
-const tidy = (s: string) => s.replace(/\r\n?/g, '\n').replace(/\s+$/u, '').replace(/^(?:[ \t]*\n)+/, '')
+// Blank lines at the start of an output, whatever its line breaks. Linear: a
+// line's spaces and its break never overlap.
+const LEADING_BLANK = /^(?:[ \t]*(?:\r\n?|\n))+/
+
+/**
+ * An output as shown, at most `max` code units: blank lines at its start and
+ * white space at its end gone, line breaks made \n; whether it was cut (by
+ * this or, `cutBefore`, by $.process.run). Linear in the output's length
+ * however it is made (no /\s+$/, which is quadratic in a run of white space
+ * that something follows), and past its start only about twice `max` of it is
+ * ever tidied: a \r\n made \n halves it at most, so what is kept of that is
+ * still longer than `max` whenever more follows.
+ */
+export function tidied(raw: string, max: number, cutBefore = false): { text: string; cut: boolean } {
+  const start = raw.replace(LEADING_BLANK, '')
+  const head = cutText(start, 2 * max + 2)
+  // Something but white space past the part kept: the output goes on, so the
+  // part's end is not the output's end and keeps its white space.
+  const more = head.cut && /\S/u.test(start.slice(head.text.length))
+  const lines = head.text.replace(/\r\n?/g, '\n')
+  const { text, cut } = cutText(more ? lines : lines.trimEnd(), max)
+  return { text, cut: cut || more || cutBefore }
+}
 
 /**
  * What an exec action that exited 0 shows: its standard output, cut at
@@ -262,24 +283,35 @@ const tidy = (s: string) => s.replace(/\r\n?/g, '\n').replace(/\s+$/u, '').repla
  */
 export function execOutputText(stdout: string, cutBefore: boolean, lang: Lang): string {
   const t = MESSAGES[lang]
-  const { text, cut } = cutText(tidy(stdout), EXEC_OUTPUT_MAX)
-  if (text === '') return cutBefore ? t.execTruncated : t.execNoOutput
+  const { text, cut } = tidied(stdout, EXEC_OUTPUT_MAX, cutBefore)
+  if (text === '') return cut ? t.execTruncated : t.execNoOutput
   const shown = showHiddenNoted(text, lang)
-  return cut || cutBefore ? `${shown}\n\n${t.execTruncated}` : shown
+  return cut ? `${shown}\n\n${t.execTruncated}` : shown
 }
 
 /**
  * What an exec action that exited with another code shows: the code, then
  * its standard error (cut at EXEC_STDERR_MAX) and its standard output (cut at
- * EXEC_OUTPUT_MAX), each under its heading when there is any, escaped as above.
+ * EXEC_OUTPUT_MAX), each under its heading when there is any, escaped as
+ * above, and said to be cut when it was (by this, or by $.process.run:
+ * `stderrCut` / `stdoutCut`).
  */
-export function execFailureText(exitCode: number, stdout: string, stderr: string, lang: Lang): string {
+export function execFailureText(
+  exitCode: number,
+  stdout: string,
+  stderr: string,
+  lang: Lang,
+  cutBefore: { stdoutCut?: boolean; stderrCut?: boolean } = {},
+): string {
   const t = MESSAGES[lang]
   const parts = [t.failed(t.execExit(exitCode))]
-  const err = cutText(tidy(stderr), EXEC_STDERR_MAX)
-  if (err.text !== '') parts.push(`${t.execStderr}\n${showHiddenNoted(err.text, lang)}${err.cut ? `\n${t.execTruncated}` : ''}`)
-  const out = cutText(tidy(stdout), EXEC_OUTPUT_MAX)
-  if (out.text !== '') parts.push(`${t.execStdout}\n${showHiddenNoted(out.text, lang)}${out.cut ? `\n${t.execTruncated}` : ''}`)
+  const section = (heading: string, part: { text: string; cut: boolean }) => {
+    if (part.text === '' && !part.cut) return
+    const body = [part.text === '' ? undefined : showHiddenNoted(part.text, lang), part.cut ? t.execTruncated : undefined]
+    parts.push([heading, ...body.filter(line => line !== undefined)].join('\n'))
+  }
+  section(t.execStderr, tidied(stderr, EXEC_STDERR_MAX, cutBefore.stderrCut))
+  section(t.execStdout, tidied(stdout, EXEC_OUTPUT_MAX, cutBefore.stdoutCut))
   return parts.join('\n\n')
 }
 

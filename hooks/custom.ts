@@ -99,9 +99,9 @@ export type CustomReason =
   | { code: 'execPath'; field: 'command' | 'realPath'; path: string }
   /** A field of another kind (NOT_EXEC_FIELDS) in an exec definition. */
   | { code: 'execField'; field: string }
-  /** Not the person's own: see ./exec scopeReason. */
+  /** Not the person's own: see ./exec scopeVerdict. */
   | { code: 'execScope'; why: 'unreadable' | 'keys' | 'mismatch' | 'home' }
-  /** The allowlist cannot be used: see ./exec loadAllowlist. */
+  /** The allowlist cannot be used: see ./exec allowlistPlace and allowlistOf (read by ./register loadAllowlist). */
   | { code: 'execAllowlist'; why: 'noHome' | 'missing' | 'unreadable' | 'invalid' | 'inProject' }
   /** An entry of the allowlist left out (its place, from 1). */
   | { code: 'execAllowlistEntry'; entry: number }

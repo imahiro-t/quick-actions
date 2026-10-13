@@ -126,10 +126,16 @@ export type CustomReason =
   | { code: 'execChanged' }
   /** What it would be given on its standard input is past the limit (bytes). */
   | { code: 'execInputTooLarge'; max: number }
-  /** Asked from other than the person's own hand while execOrigin is terminal (./exec originRestricted). */
-  | { code: 'execOrigin' }
+  /**
+   * Asked from other than the person's own hand while execOrigin is terminal
+   * (./exec originRestricted); `unreadable`: the user settings could not be
+   * read to tell, which counts as terminal.
+   */
+  | { code: 'execOrigin'; unreadable?: true }
   /** Already `max` exec actions running in the session (./exec EXEC_CONCURRENT_MAX). */
   | { code: 'execBusy'; max: number }
+  /** The running exec actions could not be counted (the slots not written): not run, the safe side. */
+  | { code: 'execSlotFailed' }
 
 /**
  * One problem with the setting: `index` is the definition's place in the array

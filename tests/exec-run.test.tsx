@@ -949,3 +949,140 @@ test('exec-approvals is reserved: a custom definition with that ID is left out, 
   expect(r).toContain(JSON.stringify(t.customReason({ code: 'idReserved' })).slice(1, -1))
   expect(execRuns(s)).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// The edges the first reviews found (SELM-00120 rework)
+
+test('execOrigin: the user settings unreadable mid-session count as terminal; from afar refused saying why, at the prompt still run', { options: { ...OPTIONS, execOrigin: 'anywhere' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.sourceSettings.user = userWithOrigin('terminal')
+  s.sourceSettings.project = { pluginConfigs: { [`${PLUGIN}@market`]: { options: { execOrigin: 'anywhere' } } } }
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  // The gate reads them once, at the first run; after that they cannot be read (being edited, broken).
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+  s.sourceDeny.push('user')
+  const reason = t.customReason({ code: 'execOrigin', unreadable: true })
+  for (const kind of ['bridge', 'sdk'] as const) {
+    s.toasts = []
+    await $.command.run(fromAfar(kind, 'free'))
+    await clock.settle()
+    expect(execRuns(s)).toHaveLength(1)
+    expect(s.toasts.some(x => x.includes(reason))).toBe(true)
+  }
+  // The list is kept from afar the same way.
+  const listed = JSON.stringify(await $.command.run(fromAfar('bridge', 'exec-approvals')))
+  expect(listed).toContain(JSON.stringify(reason).slice(1, -1))
+  expect(listed).not.toContain(TOOL)
+  // The person's own hand needs no user settings to run.
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(2)
+})
+
+test('execOrigin terminal merged, the user settings unreadable: the plain execOrigin reason', { options: { ...OPTIONS, execOrigin: 'terminal' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  await runCommand($, 'free')
+  await clock.settle()
+  s.sourceDeny.push('user')
+  await $.command.run(fromAfar('bridge', 'free'))
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+  expect(s.toasts.some(x => x.includes(t.customReason({ code: 'execOrigin' })))).toBe(true)
+})
+
+test('/quick-actions exec-approvals: $.store not readable is said so, never as no approvals or no runs', { options: OPTIONS }, async ($, on) => {
+  let failReads = false
+  const { s } = setUp(on)
+  // $.store.get fails for these two keys while failReads holds (the stage's store.get throws reading them).
+  for (const [key, value] of [
+    [APPROVALS_KEY, { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }],
+    [HISTORY_KEY, []],
+  ] as const) {
+    Object.defineProperty(s.stored, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        if (failReads) throw new Error('store down')
+        return value
+      },
+    })
+  }
+  await start($)
+  failReads = true
+  const r = JSON.stringify(await runCommand($, 'exec-approvals'))
+  expect(r).toContain(JSON.stringify(t.execAdminApprovalsUnreadable).slice(1, -1))
+  expect(r).toContain(JSON.stringify(t.execAdminHistoryUnreadable).slice(1, -1))
+  expect(r).not.toContain(t.execAdminNoApprovals)
+  expect(r).not.toContain(t.execAdminNoHistory)
+  failReads = false
+  expect(JSON.stringify(await runCommand($, 'exec-approvals'))).toContain(t.execAdminApprovals(1))
+})
+
+test('/quick-actions exec-approvals revoke: --all in any case; another flag a bad argument; none to revoke said so', { options: OPTIONS }, async ($, on) => {
+  const { s } = setUp(on)
+  const kept = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  s.stored[APPROVALS_KEY] = kept
+  await start($)
+  for (const bad of ['revoke --everything', 'revoke -a']) {
+    expect(JSON.stringify(await runCommand($, `exec-approvals ${bad}`))).toContain(JSON.stringify(t.execAdminBadArgs(bad)).slice(1, -1))
+  }
+  expect(s.stored[APPROVALS_KEY]).toEqual(kept)
+  expect(JSON.stringify(await runCommand($, 'exec-approvals revoke --ALL'))).toContain(t.execAdminRevokedAll(1))
+  expect(s.stored[APPROVALS_KEY]).toEqual({})
+  const none = JSON.stringify(await runCommand($, 'exec-approvals Revoke --All'))
+  expect(none).toContain(t.execAdminNoneToRevoke)
+  expect(none).not.toContain(t.execAdminRevokedAll(0))
+})
+
+test('the history keeps a run that started even when its entry cannot be settled', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  let failSettle = false
+  on('state.set', (_$, e, next) => (failSettle && e.key === 'results' ? { deny: 'state down' } : next(e)))
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  s.processAnswer = argv => {
+    if (argv[0] !== ENV_BIN) return defaultProcessAnswer(argv)
+    failSettle = true
+    return { exitCode: 3 }
+  }
+  await start($)
+  await runCommand($, 'free').catch(() => undefined)
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+  const history = s.stored[HISTORY_KEY] as { id: string; result: string; exitCode?: number }[]
+  expect(history.map(e => [e.id, e.result, e.exitCode])).toEqual([['free', 'exit', 3]])
+  // Its slot was given back all the same.
+  failSettle = false
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? { exitCode: 0 } : defaultProcessAnswer(argv))
+  for (let i = 0; i < EXEC_CONCURRENT_MAX; i++) {
+    await runCommand($, 'free')
+    await clock.settle()
+  }
+  expect(execRuns(s)).toHaveLength(EXEC_CONCURRENT_MAX + 1)
+})
+
+test('the slots not writable: refused as such, not said to be busy, nothing run', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  let failSlots = false
+  on('state.set', (_$, e, next) => (failSlots && e.key === 'execSlots' ? { deny: 'state down' } : next(e)))
+  const { s } = setUp(on)
+  s.stored[APPROVALS_KEY] = { free: { path: TOOL, args: [], sha256: hashOf(SCRIPT) } }
+  await start($)
+  failSlots = true
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toEqual([])
+  expect(s.toasts.some(x => x.includes(t.customReason({ code: 'execSlotFailed' })))).toBe(true)
+  expect(s.toasts.some(x => x.includes(t.customReason({ code: 'execBusy', max: EXEC_CONCURRENT_MAX })))).toBe(false)
+  failSlots = false
+  await runCommand($, 'free')
+  await clock.settle()
+  expect(execRuns(s)).toHaveLength(1)
+})

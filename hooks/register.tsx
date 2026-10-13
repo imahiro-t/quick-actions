@@ -37,6 +37,7 @@ import {
   EXEC_SLOT_GRACE_MS,
   EXEC_STDIN_MAX,
   HISTORY_KEY,
+  EXEC_ORIGIN_TERMINAL,
   HOME_SOURCES,
   NO_GATE,
   allowlistOf,
@@ -884,9 +885,16 @@ async function execOriginGuard($: EngineInterface, e: { key: string; value: unkn
   return { deny: MESSAGES[await ensureLanguage($)].execOriginConfigDenied }
 }
 
-/** Whether exec actions are kept to the person's own hand now (./exec originRestricted), the user settings read afresh. */
-async function execOriginRestricted($: EngineInterface, load: ExecLoad): Promise<boolean> {
-  return originRestricted(await settingsOf($, 'user'), load.execOrigin, PLUGIN)
+/**
+ * Whether exec actions are kept to the person's own hand now (./exec
+ * originRestricted), the user settings read afresh: undefined when not, else
+ * the reason a run from elsewhere is refused (`unreadable` when it is only
+ * because the user settings could not be read, the safe side).
+ */
+async function execOriginLimit($: EngineInterface, load: ExecLoad): Promise<Extract<CustomReason, { code: 'execOrigin' }> | undefined> {
+  const user = await settingsOf($, 'user')
+  if (!originRestricted(user, load.execOrigin, PLUGIN)) return undefined
+  return user === undefined && load.execOrigin !== EXEC_ORIGIN_TERMINAL ? { code: 'execOrigin', unreadable: true } : { code: 'execOrigin' }
 }
 
 /**
@@ -899,21 +907,27 @@ async function execOriginRestricted($: EngineInterface, load: ExecLoad): Promise
 async function execAdmin($: EngineInterface, l: Lang, arg: string | undefined, from: RunFrom, load: ExecLoad): Promise<string> {
   const t = MESSAGES[l]
   if (arg === undefined) {
-    const restricted = await execOriginRestricted($, load)
-    if (restricted && !canApprove(from)) return reasonText({ code: 'execOrigin' }, l)
-    const approvals = parseApprovals(await readQuietly($.store.get(APPROVALS_KEY)))
-    const history = parseHistory(await readQuietly($.store.get(HISTORY_KEY)))
-    return approvalsListText(l, approvals, history, restricted, utcOffsetMinutes)
+    const limit = await execOriginLimit($, load)
+    if (limit !== undefined && !canApprove(from)) return reasonText(limit, l)
+    // A read that failed is told apart from nothing kept (undefined, not {}
+    // or []): the list must never pass for "nothing approved" when it is not known.
+    const [approvals, history] = await Promise.all([
+      $.store.get(APPROVALS_KEY).then(parseApprovals, () => undefined),
+      $.store.get(HISTORY_KEY).then(parseHistory, () => undefined),
+    ])
+    return approvalsListText(l, approvals, history, limit !== undefined, utcOffsetMinutes)
   }
   const words = arg.split(/\s+/)
   if (words.length !== 2 || words[0]!.toLowerCase() !== 'revoke') return t.execAdminBadArgs(displaySafe(arg))
-  const target = words[1]!
+  const target = words[1]!.toLowerCase()
   if (target === '--all') {
     const count = await revokeApprovals($, null)
-    return count === undefined ? t.execAdminFailed : t.execAdminRevokedAll(count)
+    return count === undefined ? t.execAdminFailed : count === 0 ? t.execAdminNoneToRevoke : t.execAdminRevokedAll(count)
   }
+  // No action ID starts with "-" (ID_FORMAT): any other flag is a mistake, not an ID.
+  if (target.startsWith('-')) return t.execAdminBadArgs(displaySafe(arg))
   // Action IDs are lowercase, as the command takes them.
-  const id = target.toLowerCase()
+  const id = target
   const shown = displaySafe(id)
   const count = await revokeApprovals($, id)
   if (count === undefined) return t.execAdminFailed
@@ -940,7 +954,10 @@ async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from
   if (gated !== undefined) return gated
   // Approved or not, only from the person's own hand while execOrigin is on;
   // read each run, so a change of the user settings counts from the next one.
-  if (!canApprove(from) && (await execOriginRestricted($, currentExecLoad))) return { code: 'execOrigin' }
+  if (!canApprove(from)) {
+    const limit = await execOriginLimit($, currentExecLoad)
+    if (limit !== undefined) return limit
+  }
   const list = await loadAllowlist($)
   if ('code' in list) return list
   const located = await locateExec($, def.command, list.entries)
@@ -1019,15 +1036,15 @@ async function runExec($: EngineInterface, def: ExecAction, lang: Lang, head: En
   }
   // A slot of EXEC_CONCURRENT_MAX, taken once the checks and the approval are
   // through (a dialog waiting holds none) and given back however the run ends.
-  const token = await takeExecSlot($, def.timeoutMs)
-  if (token === undefined) {
-    await refuse({ code: 'execBusy', max: EXEC_CONCURRENT_MAX })
+  const slot = await takeExecSlot($, def.timeoutMs)
+  if (typeof slot !== 'string') {
+    await refuse(slot)
     return
   }
   try {
     await runExecReady($, def, lang, head, picked, input, from, ready, refuse)
   } finally {
-    await giveExecSlotBack($, token)
+    await giveExecSlotBack($, slot)
   }
 }
 
@@ -1037,10 +1054,11 @@ let slotCount = 0
 
 /**
  * Takes a slot for a run of at most `timeoutMs` (./exec takeSlot), those past
- * their time let go first: its token, or undefined when EXEC_CONCURRENT_MAX
- * are held (or the slots could not be read: the safe side).
+ * their time let go first: its token; else why not, `execBusy` when
+ * EXEC_CONCURRENT_MAX are held, `execSlotFailed` when the slots could not be
+ * read or written (not run either: the safe side, but not said to be busy).
  */
-async function takeExecSlot($: EngineInterface, timeoutMs: number): Promise<string | undefined> {
+async function takeExecSlot($: EngineInterface, timeoutMs: number): Promise<string | CustomReason> {
   const now = await readQuietly($.clock.now())
   const token = `${now ?? 0}-${++slotCount}-${Math.random()}`
   let taken = false
@@ -1053,9 +1071,9 @@ async function takeExecSlot($: EngineInterface, timeoutMs: number): Promise<stri
       return r.slots
     })
   } catch {
-    return undefined
+    return { code: 'execSlotFailed' }
   }
-  return taken ? token : undefined
+  return taken ? token : { code: 'execBusy', max: EXEC_CONCURRENT_MAX }
 }
 
 /** Gives the slot `token` took back. Never rejects: one not given back is let go at its time (./exec takeSlot). */
@@ -1064,6 +1082,21 @@ async function giveExecSlotBack($: EngineInterface, token: string): Promise<void
     await update($, execSlots, slots => releaseSlot(slots ?? [], token))
   } catch {
     // Let go at its time.
+  }
+}
+
+/**
+ * Settles a started run's entry (`settle`) with its history entry already
+ * queued (`recorded`, recordRun, which never rejects): the record goes in
+ * even when settling throws, and the result is shown without waiting for
+ * $.store; the record is waited for after, so the slot is given back once
+ * it is in.
+ */
+async function settledAfterRecord(recorded: Promise<void>, settle: () => Promise<void>): Promise<void> {
+  try {
+    await settle()
+  } finally {
+    await recorded
   }
 }
 
@@ -1108,13 +1141,13 @@ async function runExecReady(
       const message = messageOf(err)
       const timedOut = isTimeout(message, elapsed, def.timeoutMs)
       const why = timedOut ? t.execTimeout(Math.round(def.timeoutMs / 1000)) : t.execNotStarted(displaySafe(message))
-      await settle($, id, false, t.failed(why))
-      await record(timedOut ? 'timeout' : 'notStarted')
+      await settledAfterRecord(record(timedOut ? 'timeout' : 'notStarted'), () => settle($, id, false, t.failed(why)))
       return
     }
     const ok = r.exitCode === 0
-    await settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang, { stdoutCut: r.isStdoutTruncated, stderrCut: r.isStderrTruncated }))
-    await record(ok ? 'ok' : 'exit', ok ? undefined : r.exitCode)
+    await settledAfterRecord(record(ok ? 'ok' : 'exit', ok ? undefined : r.exitCode), () =>
+      settle($, id, ok, ok ? execOutputText(r.stdout, r.isStdoutTruncated, lang) : execFailureText(r.exitCode, r.stdout, r.stderr, lang, { stdoutCut: r.isStdoutTruncated, stderrCut: r.isStderrTruncated })),
+    )
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(displaySafe(messageOf(err))))

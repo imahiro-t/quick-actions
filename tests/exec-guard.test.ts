@@ -12,10 +12,12 @@ import {
   approvalsListText,
   fromName,
   historyEntry,
+  isOwnPluginKey,
   liveSlots,
   loaderVariable,
   localStamp,
   originRestricted,
+  ownOptions,
   parseHistory,
   releaseSlot,
   scopeVerdict,
@@ -85,9 +87,27 @@ test('originRestricted: the user settings turn it on, and nothing else turns it 
   expect(originRestricted(user({}), 'anywhere', PLUGIN)).toBe(false)
   expect(originRestricted(user({ [`${PLUGIN}@market`]: { options: { execOrigin: 'anywhere' } } }), undefined, PLUGIN)).toBe(false)
   expect(originRestricted({}, undefined, PLUGIN)).toBe(false)
-  expect(originRestricted(undefined, undefined, PLUGIN)).toBe(false)
+  // The user settings not readable: on (the safe side), whatever the merge says.
+  expect(originRestricted(undefined, undefined, PLUGIN)).toBe(true)
+  expect(originRestricted(undefined, 'anywhere', PLUGIN)).toBe(true)
   // Another plugin's entry does not count.
   expect(originRestricted(user({ [`${PLUGIN}-x@market`]: terminal }), 'anywhere', PLUGIN)).toBe(false)
+})
+
+test('isOwnPluginKey / ownOptions: the plugin by its name alone or with a marketplace, nothing else', () => {
+  expect(isOwnPluginKey(PLUGIN, PLUGIN)).toBe(true)
+  expect(isOwnPluginKey(`${PLUGIN}@market`, PLUGIN)).toBe(true)
+  for (const other of [`${PLUGIN}-x`, `${PLUGIN}-x@market`, `x${PLUGIN}`, `x@${PLUGIN}`, '']) expect(isOwnPluginKey(other, PLUGIN)).toBe(false)
+  const settings = user({
+    [PLUGIN]: { options: { a: 1 } },
+    [`${PLUGIN}@market`]: { options: { b: 2 } },
+    [`${PLUGIN}@bare`]: { enabled: true },
+    [`${PLUGIN}@odd`]: { options: 'text' },
+    [`${PLUGIN}-x`]: { options: { c: 3 } },
+  })
+  expect(ownOptions(settings, PLUGIN)).toEqual([{ a: 1 }, { b: 2 }])
+  expect(ownOptions({}, PLUGIN)).toEqual([])
+  expect(ownOptions({ pluginConfigs: 'x' }, PLUGIN)).toEqual([])
 })
 
 test('weakensExecOrigin: execOrigin off terminal from other than the person in /config', () => {
@@ -218,6 +238,25 @@ test('approvalsListText: nothing kept, said so, with the origin limit and how to
     expect(text).toContain(t.execAdminNoHistory)
     expect(text).toContain(t.execAdminUsage)
     expect(approvalsListText(lang, {}, [], true, UTC)).toContain(t.execAdminOrigin(true))
+  }
+})
+
+test('approvalsListText: a store that could not be read is said so, never passed off as nothing kept', () => {
+  for (const lang of ['ja', 'en'] as const) {
+    const t = MESSAGES[lang]
+    const neither = approvalsListText(lang, undefined, undefined, false, UTC)
+    expect(neither).toContain(t.execAdminApprovalsUnreadable)
+    expect(neither).toContain(t.execAdminHistoryUnreadable)
+    expect(neither).not.toContain(t.execAdminNoApprovals)
+    expect(neither).not.toContain(t.execAdminNoHistory)
+    expect(neither).toContain(t.execAdminUsage)
+    // One read, the other not: each said as it is.
+    const approvalsOnly = approvalsListText(lang, { free: APPROVAL }, undefined, false, UTC)
+    expect(approvalsOnly).toContain(t.execAdminApprovals(1))
+    expect(approvalsOnly).toContain(t.execAdminHistoryUnreadable)
+    const historyOnly = approvalsListText(lang, undefined, [], false, UTC)
+    expect(historyOnly).toContain(t.execAdminApprovalsUnreadable)
+    expect(historyOnly).toContain(t.execAdminNoHistory)
   }
 })
 

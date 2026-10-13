@@ -399,6 +399,21 @@ export const usableHome = (home: unknown): string | undefined => (isSafeExecPath
 export const allowlistPath = (home: string) => `${home}/${ALLOWLIST_RELATIVE}`
 
 /**
+ * Whether `key` names this plugin (`plugin`) in settings: the plugin's name
+ * alone, or with its marketplace (`plugin@marketplace`). The one rule every
+ * check of the plugin's own settings goes by (scopeVerdict,
+ * originRestricted, weakensExecOrigin).
+ */
+export const isOwnPluginKey = (key: string, plugin: string) => key === plugin || key.startsWith(`${plugin}@`)
+
+/** The `options` of every entry of this plugin (isOwnPluginKey) in the settings' `pluginConfigs`, in their order. */
+export function ownOptions(settings: Readonly<Record<string, unknown>>, plugin: string): Record<string, unknown>[] {
+  const configs = settings['pluginConfigs']
+  if (!isRecord(configs)) return []
+  return Object.entries(configs).flatMap(([key, v]) => (isOwnPluginKey(key, plugin) && isRecord(v) && isRecord(v['options']) ? [v['options']] : []))
+}
+
+/**
  * Whether exec definitions are the person's own, by the settings: undefined
  * when they are. Their user settings (`user`; undefined: not readable) must
  * have exactly one entry of `plugin` in `pluginConfigs` with
@@ -413,13 +428,9 @@ export function scopeVerdict(
   plugin: string,
 ): CustomReason | undefined {
   if (user === undefined) return { code: 'execScope', why: 'unreadable' }
-  const configs = isRecord(user['pluginConfigs']) ? user['pluginConfigs'] : {}
-  const holders = Object.entries(configs).filter(
-    ([key, v]) =>
-      (key === plugin || key.startsWith(`${plugin}@`)) && isRecord(v) && isRecord(v['options']) && v['options']['customActions'] !== undefined,
-  )
+  const holders = ownOptions(user, plugin).filter(options => options['customActions'] !== undefined)
   if (holders.length !== 1) return { code: 'execScope', why: 'keys' }
-  const own = (holders[0]![1] as { options: Record<string, unknown> }).options['customActions']
+  const own = holders[0]!['customActions']
   if (typeof own !== 'string' || own !== merged) return { code: 'execScope', why: 'mismatch' }
   for (const settings of others) {
     if (settings === undefined) return { code: 'execScope', why: 'unreadable' }
@@ -449,8 +460,7 @@ export const EXEC_ORIGIN_FIELD = 'execOrigin'
 export function weakensExecOrigin(e: { key: string; value: unknown; origin: { kind: string } }, plugin: string): boolean {
   const suffix = `.${EXEC_ORIGIN_FIELD}`
   if (!e.key.endsWith(suffix)) return false
-  const owner = e.key.slice(0, -suffix.length)
-  if (owner !== plugin && !owner.startsWith(`${plugin}@`)) return false
+  if (!isOwnPluginKey(e.key.slice(0, -suffix.length), plugin)) return false
   return e.origin.kind !== 'composer' && e.value !== EXEC_ORIGIN_TERMINAL
 }
 
@@ -464,16 +474,13 @@ export const EXEC_ADMIN_ARG = 'exec-approvals'
  * (`user`; undefined: not readable), or in the merged options (`merged`). The
  * user settings decide it, so no project, local or flag settings can turn it
  * off; any of them may still turn it on. User settings that cannot be read
- * leave the merged value alone to decide (the exec gate refuses every exec
- * definition then in any case).
+ * count as on (the safe side): they are read again at each run, after the
+ * exec gate's one read at load, so a file being edited or broken mid-session
+ * must not let a run through that the person meant to keep to their hand.
  */
 export function originRestricted(user: Readonly<Record<string, unknown>> | undefined, merged: unknown, plugin: string): boolean {
-  if (merged === EXEC_ORIGIN_TERMINAL) return true
-  if (user === undefined || !isRecord(user['pluginConfigs'])) return false
-  return Object.entries(user['pluginConfigs']).some(
-    ([key, v]) =>
-      (key === plugin || key.startsWith(`${plugin}@`)) && isRecord(v) && isRecord(v['options']) && v['options']['execOrigin'] === EXEC_ORIGIN_TERMINAL,
-  )
+  if (merged === EXEC_ORIGIN_TERMINAL || user === undefined) return true
+  return ownOptions(user, plugin).some(options => options[EXEC_ORIGIN_FIELD] === EXEC_ORIGIN_TERMINAL)
 }
 
 /** Whether `path` is `dir` or lies under it. */
@@ -689,33 +696,40 @@ export function localStamp(ms: number, utcOffsetMinutes: (ms: number) => number)
  * What `/quick-actions exec-approvals` shows: whether execOrigin keeps exec
  * actions to the person's own hand (`restricted`), every approval kept (by
  * ID), then the newest HISTORY_LISTED runs, newest first, and how to revoke.
- * Every value from $.store has its hidden characters named.
+ * Either list undefined: $.store could not be read, said so (never as none
+ * kept, which would pass for nothing approved). Every value from $.store has
+ * its hidden characters named.
  */
 export function approvalsListText(
   lang: Lang,
-  approvals: Readonly<Record<string, ExecApproval>>,
-  history: readonly ExecHistoryEntry[],
+  approvals: Readonly<Record<string, ExecApproval>> | undefined,
+  history: readonly ExecHistoryEntry[] | undefined,
   restricted: boolean,
   utcOffsetMinutes: (ms: number) => number,
 ): string {
   const t = MESSAGES[lang]
   const lines = [t.execAdminOrigin(restricted), '']
-  const ids = Object.keys(approvals).sort()
-  if (ids.length === 0) lines.push(t.execAdminNoApprovals)
+  const ids = approvals === undefined ? [] : Object.keys(approvals).sort()
+  if (approvals === undefined) lines.push(t.execAdminApprovalsUnreadable)
+  else if (ids.length === 0) lines.push(t.execAdminNoApprovals)
   else {
     lines.push(t.execAdminApprovals(ids.length))
     for (const id of ids) {
-      const a = approvals[id]!
+      const a = approvals![id]!
       lines.push(`- ${t.execAdminApprovalLine(cutText(named(id), 100).text, pathShown(a.path), cutText(shownArgs(a.args), HISTORY_ARGS_MAX).text, named(a.sha256.slice(0, 12)))}`)
     }
   }
   lines.push('')
-  if (history.length === 0) lines.push(t.execAdminNoHistory)
+  if (history === undefined) lines.push(t.execAdminHistoryUnreadable)
+  else if (history.length === 0) lines.push(t.execAdminNoHistory)
   else {
     const shown = history.slice(-HISTORY_LISTED).reverse()
     lines.push(t.execAdminHistory(shown.length, history.length))
     for (const e of shown) {
       const when = localStamp(e.at, utcOffsetMinutes) ?? t.execAdminUnknownTime
+      // e.path was named (pathShown) when it was recorded; it is named again
+      // here because $.store is read back as found, and a value put there by
+      // other than historyEntry must not reach the terminal raw.
       lines.push(`- ${t.execAdminHistoryLine(when, named(e.id), named(e.path), t.execAdminOutcome(e.result, e.exitCode), named(e.from))}`)
     }
   }

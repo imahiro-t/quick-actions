@@ -253,6 +253,12 @@ export type Messages = {
   execAdminBadArgs: (given: string) => string
   /** The approvals could not be read or written: nothing (more) changed. */
   execAdminFailed: string
+  /** Stands for the approvals in the list when $.store could not be read (not the same as none kept). */
+  execAdminApprovalsUnreadable: string
+  /** Stands for the runs in the list when $.store could not be read (not the same as none kept). */
+  execAdminHistoryUnreadable: string
+  /** `revoke --all` with no approval kept: nothing to revoke. */
+  execAdminNoneToRevoke: string
   /** Why a change of execOrigin away from terminal was refused: it came from other than the person in /config. */
   execOriginConfigDenied: string
 }
@@ -399,9 +405,13 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'execInputTooLarge':
           return `渡す内容が大きすぎます（${grouped(r.max)} バイトまで）`
         case 'execOrigin':
-          return 'この起動元からは exec のアクションを実行しない設定です（execOrigin: terminal）。ローカルの端末で押すか /quick-actions <id> と入力してください'
+          return r.unreadable
+            ? 'ユーザー設定（~/.claude/settings.json）を読めず execOrigin を確かめられないため、この起動元からは exec のアクションを実行しません。ローカルの端末で押すか /quick-actions <id> と入力してください'
+            : 'この起動元からは exec のアクションを実行しない設定です（execOrigin: terminal）。ローカルの端末で押すか /quick-actions <id> と入力してください'
         case 'execBusy':
           return `exec のアクションがすでに ${r.max} つ実行中のため実行しませんでした`
+        case 'execSlotFailed':
+          return '実行中の exec のアクションの数を確かめられなかったため実行しませんでした'
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
@@ -490,6 +500,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminBadArgs: given =>
       `exec-approvals の引数が正しくありません: ${given}（使い方: /quick-actions exec-approvals、revoke <id>、revoke --all）。何も変更していません。`,
     execAdminFailed: 'exec の承認を読み書きできませんでした。何も変更していません。',
+    execAdminApprovalsUnreadable: 'exec の承認を読み込めませんでした（保存されている承認がないという意味ではありません）。',
+    execAdminHistoryUnreadable: 'exec の実行履歴を読み込めませんでした（記録がないという意味ではありません）。',
+    execAdminNoneToRevoke: '取り消す exec の承認はありません。',
     execOriginConfigDenied: 'Quick Actions の execOrigin を terminal から外せるのは、本人が /config で変更したときだけです',
   },
   en: {
@@ -618,9 +631,13 @@ export const MESSAGES: Record<Lang, Messages> = {
         case 'execInputTooLarge':
           return `what it would be given is too large (up to ${grouped(r.max)} bytes)`
         case 'execOrigin':
-          return 'exec actions are set not to run from here (execOrigin: terminal): press it at your own terminal or type /quick-actions <id>'
+          return r.unreadable
+            ? 'exec actions do not run from here: the user settings (~/.claude/settings.json) could not be read to check execOrigin. Press it at your own terminal or type /quick-actions <id>'
+            : 'exec actions are set not to run from here (execOrigin: terminal): press it at your own terminal or type /quick-actions <id>'
         case 'execBusy':
           return `not run: ${r.max} exec actions are running already`
+        case 'execSlotFailed':
+          return 'not run: how many exec actions are running could not be checked'
       }
     },
     customProblemsHeading: 'Ignored in customActions:',
@@ -710,6 +727,9 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminBadArgs: given =>
       `Invalid argument for exec-approvals: ${given} (use /quick-actions exec-approvals, revoke <id> or revoke --all). Nothing changed.`,
     execAdminFailed: 'The exec approvals could not be read or written. Nothing changed.',
+    execAdminApprovalsUnreadable: 'The exec approvals could not be read (this does not mean none is kept).',
+    execAdminHistoryUnreadable: 'The exec run history could not be read (this does not mean none is recorded).',
+    execAdminNoneToRevoke: 'No exec approval to revoke.',
     execOriginConfigDenied: 'Quick Actions execOrigin can be moved off terminal only by you, in /config',
   },
 }

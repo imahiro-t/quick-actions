@@ -82,7 +82,7 @@ import type { Allowlist, ChainExecStep, ConfigChange, ExecApproval, ExecGateResu
 import { filterActions } from './filter'
 import { MESSAGES, answerStyle, explicitLanguage, resolveLanguage } from './i18n'
 import type { Lang } from './i18n'
-import { localInputFor, runLocal, tickerStep, truncate } from './local'
+import { codePointPrefix, localInputFor, runLocal, tickerStep, truncate } from './local'
 import { quoteLine, showHiddenNoted } from './selection-local'
 import type { Frame } from './local'
 import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
@@ -1517,17 +1517,10 @@ function chainShown(earlier: readonly ChainSection[], tail: string, lang: Lang):
   let left = LOCAL_TEXT_LIMIT
   const parts = earlier.map(({ heading, body }) => {
     const shown = left > 0 ? truncate(body, lang, left) : MESSAGES[lang].truncated
-    left -= codePointsUpTo(body, left)
+    left -= codePointPrefix(body, left).count
     return `${heading}\n${shown}`
   })
   return [...parts, tail].join('\n\n')
-}
-
-/** The code points in `text`, counted up to `max` at most. */
-function codePointsUpTo(text: string, max: number): number {
-  let count = 0
-  for (let at = 0; at < text.length && count < max; count++) at += (text.codePointAt(at) ?? 0) > 0xffff ? 2 : 1
-  return count
 }
 
 /** A failure's text without the "Failed: " it starts with, as chainStepFailed says that itself. */

@@ -65,6 +65,19 @@ export const clampInterval = (ms: number) =>
   Number.isFinite(ms) && ms > TICKER_MIN_INTERVAL_MS ? ms : TICKER_MIN_INTERVAL_MS
 
 /**
+ * The first `max` code points of `text` (all of it when it has fewer):
+ * `end`, the code unit they end at, and `count`, how many they are. An
+ * emoji (a surrogate pair) is one code point and is never split in half;
+ * a `max` of 0 or less takes none.
+ */
+export function codePointPrefix(text: string, max: number): { end: number; count: number } {
+  let end = 0
+  let count = 0
+  for (; end < text.length && count < max; count++) end += (text.codePointAt(end) ?? 0) > 0xffff ? 2 : 1
+  return { end, count }
+}
+
+/**
  * A result past the limit (`limit` code points, LOCAL_TEXT_LIMIT unless said),
  * cut there and marked as cut. Characters are counted as code points, as a
  * text argument's are, so an emoji is one and is never split in half.
@@ -72,12 +85,7 @@ export const clampInterval = (ms: number) =>
 export function truncate(text: string, lang: Lang, limit: number = LOCAL_TEXT_LIMIT): string {
   // No more code points than code units: a text this short is within the limit.
   if (text.length <= limit) return text
-  let end = 0
-  for (let count = 0; count < limit; count++) {
-    if (end >= text.length) return text
-    const code = text.codePointAt(end) ?? 0
-    end += code > 0xffff ? 2 : 1
-  }
+  const { end } = codePointPrefix(text, limit)
   return end >= text.length ? text : `${text.slice(0, end)}\n${MESSAGES[lang].truncated}`
 }
 

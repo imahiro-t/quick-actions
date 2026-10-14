@@ -30,6 +30,12 @@ export type Result = {
    * stopped, and offered again.
    */
   timed?: true
+  /**
+   * A chain's entry (kind `chain`): the step it is running, from 1, which the
+   * pane shows with that step's label (looked up as drawn, in the language of
+   * the moment). Left out before the first step and on every other entry.
+   */
+  step?: number
   status: 'running' | 'done' | 'failed'
   text: string
   /**

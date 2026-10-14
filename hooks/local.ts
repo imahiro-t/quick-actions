@@ -65,19 +65,27 @@ export const clampInterval = (ms: number) =>
   Number.isFinite(ms) && ms > TICKER_MIN_INTERVAL_MS ? ms : TICKER_MIN_INTERVAL_MS
 
 /**
- * A result past the limit, cut there and marked as cut. Characters are counted
- * as code points, as a text argument's are, so an emoji is one and is never
- * split in half.
+ * The first `max` code points of `text` (all of it when it has fewer):
+ * `end`, the code unit they end at, and `count`, how many they are. An
+ * emoji (a surrogate pair) is one code point and is never split in half;
+ * a `max` of 0 or less takes none.
  */
-export function truncate(text: string, lang: Lang): string {
-  // No more code points than code units: a text this short is within the limit.
-  if (text.length <= LOCAL_TEXT_LIMIT) return text
+export function codePointPrefix(text: string, max: number): { end: number; count: number } {
   let end = 0
-  for (let count = 0; count < LOCAL_TEXT_LIMIT; count++) {
-    if (end >= text.length) return text
-    const code = text.codePointAt(end) ?? 0
-    end += code > 0xffff ? 2 : 1
-  }
+  let count = 0
+  for (; end < text.length && count < max; count++) end += (text.codePointAt(end) ?? 0) > 0xffff ? 2 : 1
+  return { end, count }
+}
+
+/**
+ * A result past the limit (`limit` code points, LOCAL_TEXT_LIMIT unless said),
+ * cut there and marked as cut. Characters are counted as code points, as a
+ * text argument's are, so an emoji is one and is never split in half.
+ */
+export function truncate(text: string, lang: Lang, limit: number = LOCAL_TEXT_LIMIT): string {
+  // No more code points than code units: a text this short is within the limit.
+  if (text.length <= limit) return text
+  const { end } = codePointPrefix(text, limit)
   return end >= text.length ? text : `${text.slice(0, end)}\n${MESSAGES[lang].truncated}`
 }
 
@@ -115,9 +123,15 @@ function effectOf(v: unknown): LocalEffect | undefined {
  * only answer at once, and an effect asked for by a standalone one (or one of
  * no known shape: see effectOf). A selection longer than LOCAL_SELECTION_LIMIT (code
  * units of `input.text`, as the caller passes it) is refused before the compute is called, saying
- * how long it is and the limit. Never throws.
+ * how long it is and the limit. `whole`: a text answered is kept whole, not
+ * cut at LOCAL_TEXT_LIMIT (a chain's step, whose output is passed on: it cuts
+ * only what it shows). Never throws.
  */
-export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, opts: { selection: boolean; lang: Lang }): LocalOutcome {
+export function runLocal(
+  def: Pick<LocalAction, 'compute'>,
+  input: LocalInput,
+  opts: { selection: boolean; lang: Lang; whole?: boolean },
+): LocalOutcome {
   const t = MESSAGES[opts.lang]
   const length = typeof input.text === 'string' ? input.text.length : 0
   if (opts.selection && length > LOCAL_SELECTION_LIMIT) {
@@ -126,7 +140,7 @@ export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, o
   // The compute's run and the reading of its answer alike: a getter on that
   // answer may throw too.
   try {
-    return outcomeOf(def.compute(input), opts.selection, opts.lang)
+    return outcomeOf(def.compute(input), opts.selection, opts.lang, opts.whole === true)
   } catch (err) {
     // No secure random numbers: said in the user's language, not as the error's own English.
     const reason = err instanceof RandomUnavailableError ? t.randomUnavailable : messageOf(err)
@@ -134,7 +148,7 @@ export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, o
   }
 }
 
-function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
+function outcomeOf(out: unknown, selection: boolean, lang: Lang, whole: boolean): LocalOutcome {
   const t = MESSAGES[lang]
   if (isRecord(out) && typeof out['then'] === 'function') {
     // Not awaited: a compute is synchronous by contract. Its rejection, if any, goes nowhere.
@@ -142,7 +156,7 @@ function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
     return { kind: 'settle', ok: false, text: t.failed(t.localAsync) }
   }
   if (isRecord(out) && typeof out['text'] === 'string') {
-    return { kind: 'settle', ok: true, text: truncate(out['text'], lang) }
+    return { kind: 'settle', ok: true, text: whole ? out['text'] : truncate(out['text'], lang) }
   }
   if (isRecord(out) && typeof out['error'] === 'string') {
     // Cut as a text is: an error can quote the input (parse-url's port) at any length.

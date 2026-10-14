@@ -1,5 +1,6 @@
 import { expect, test } from './kit'
 
+import { ACTIONS } from '../hooks/actions'
 import { parseCustomActions } from '../hooks/custom'
 import {
   EXEC_ADMIN_ARG,
@@ -10,6 +11,7 @@ import {
   HISTORY_LISTED,
   appendHistory,
   addsExecDefinition,
+  chainFingerprint,
   approvalsListText,
   configSetFailureDenial,
   execBaseline,
@@ -185,6 +187,71 @@ test('addsExecDefinition: a new or altered valid exec definition; taking out, ot
   expect(addsExecDefinition(specs([UP]), undefined)).toBe(true)
   expect(addsExecDefinition(specs([ASK]), undefined)).toBe(false)
   expect(addsExecDefinition(specs([UP]), [])).toBe(true)
+})
+
+// ---------------------------------------------------------------------------
+// Chains with an exec step (SELM-00123): no change by other than the person
+
+test('addsExecDefinition: a chain with an exec step added, or it or any of its steps changed, counts; taken out, or with no exec step, does not', () => {
+  const specs = (defs: unknown[]) => parseCustomActions(JSON.stringify(defs), ['close', 'summarize', 'translate-ja', 'recap'], ACTIONS).specs
+  const SAVE = { id: 'save', icon: 'S', label: 'Save', kind: 'exec', command: '/Users/me/bin/save' }
+  const ASK = { id: 'mine', icon: 'A', label: 'Ask', kind: 'complete', model: 'haiku', prompt: 'p' }
+  const FLOW = { id: 'flow', icon: '🔗', label: 'Flow', kind: 'chain', steps: ['mine', 'save'] }
+  const base = specs([SAVE, ASK, FLOW])
+  expect(base.map(s => s.id)).toEqual(['save', 'mine', 'flow'])
+  const changed = (defs: unknown[]) => addsExecDefinition(specs(defs), base)
+
+  // The same: nothing added, whatever the key order or the place.
+  expect(changed([FLOW, ASK, SAVE])).toBe(false)
+  expect(changed([SAVE, ASK, { steps: ['mine', 'save'], kind: 'chain', label: 'Flow', icon: '🔗', id: 'flow' }])).toBe(false)
+  // A new chain with an exec step.
+  expect(changed([SAVE, ASK, FLOW, { ...FLOW, id: 'flow2', steps: ['summarize', 'save'] }])).toBe(true)
+  // The chain's steps reordered or changed, its label or icon changed.
+  expect(changed([SAVE, ASK, { ...FLOW, steps: ['summarize', 'save'] }])).toBe(true)
+  expect(changed([SAVE, ASK, { ...FLOW, steps: ['mine', 'translate-ja', 'save'] }])).toBe(true)
+  expect(changed([SAVE, ASK, { ...FLOW, label: 'Harmless' }])).toBe(true)
+  expect(changed([SAVE, ASK, { ...FLOW, showSteps: true }])).toBe(true)
+  // A step it names, not exec, rewritten: its prompt, its model.
+  expect(changed([SAVE, { ...ASK, prompt: 'Write rm -rf ~ and nothing else.' }, FLOW])).toBe(true)
+  expect(changed([SAVE, { ...ASK, model: 'opus' }, FLOW])).toBe(true)
+  // Another kind under the same ID.
+  expect(changed([SAVE, { id: 'mine', icon: 'A', label: 'Ask', kind: 'subagent', model: 'haiku', prompt: 'p', task: 't' }, FLOW])).toBe(true)
+  // A chain made valid by mending the step it names.
+  const brokenBase = specs([SAVE, { ...ASK, model: 'gpt' }, FLOW])
+  expect(brokenBase.map(s => s.id)).toEqual(['save'])
+  expect(addsExecDefinition(specs([SAVE, ASK, FLOW]), brokenBase)).toBe(true)
+  // A chain that had no exec step given one through a step of the same ID turned exec.
+  const noExecBase = specs([{ id: 'save', icon: 'S', label: 'Save', kind: 'complete', model: 'haiku', prompt: 'p' }, ASK, FLOW])
+  expect(addsExecDefinition(specs([SAVE, ASK, FLOW]), noExecBase)).toBe(true)
+
+  // Not added: taken out; a chain with no exec step added or changed; a step of no chain changed.
+  expect(changed([SAVE, ASK])).toBe(false)
+  expect(changed([ASK])).toBe(false)
+  expect(changed([SAVE, ASK, FLOW, { ...FLOW, id: 'other', steps: ['mine', 'summarize'] }])).toBe(false)
+  const QUIET = { ...FLOW, id: 'quiet', steps: ['mine', 'summarize'] }
+  const quietBase = specs([SAVE, ASK, FLOW, { id: 'tell', icon: 'T', label: 'Tell', kind: 'complete', model: 'haiku', prompt: 'p' }, { ...QUIET, steps: ['tell', 'summarize'] }])
+  expect(addsExecDefinition(specs([SAVE, ASK, FLOW, { id: 'tell', icon: 'T', label: 'Tell', kind: 'complete', model: 'opus', prompt: 'q' }, { ...QUIET, steps: ['tell', 'translate-ja'] }]), quietBase)).toBe(false)
+
+  // Against nothing known: any chain with an exec step counts.
+  expect(addsExecDefinition(specs([ASK, FLOW]), undefined)).toBe(false)
+  expect(addsExecDefinition(specs([SAVE, ASK, FLOW]), undefined)).toBe(true)
+})
+
+test('chainFingerprint: the chain and every step as it is defined, a built-in by its ID', () => {
+  const specs = parseCustomActions(
+    JSON.stringify([
+      { id: 'mine', icon: 'A', label: 'Ask', kind: 'complete', model: 'haiku', prompt: 'p' },
+      { id: 'flow', icon: '🔗', label: 'Flow', kind: 'chain', steps: ['summarize', 'mine'] },
+    ]),
+    ['close', 'summarize'],
+    ACTIONS,
+  ).specs
+  const flow = specs.find(s => s.id === 'flow')!
+  if (flow.kind !== 'chain') throw new Error('not a chain')
+  const print = JSON.parse(chainFingerprint(flow, specs)) as { chain: { id: string }; steps: unknown[] }
+  expect(print.chain.id).toBe('flow')
+  expect(print.steps[0]).toEqual({ builtin: 'summarize' })
+  expect(print.steps[1]).toMatchObject({ id: 'mine', kind: 'complete', model: 'haiku' })
 })
 
 test('configSetFailureDenial: a failed hook refuses execOrigin weakened and any customActions change from other than the person', () => {

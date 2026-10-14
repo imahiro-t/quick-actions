@@ -3,7 +3,7 @@ import { expect, test } from './kit'
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, textOf } from '../hooks/actions'
 import type { LocalAction, LocalInput, LocalOutput } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
-import { clampInterval, localInputFor, runLocal, tickerStep, truncate } from '../hooks/local'
+import { clampInterval, codePointPrefix, localInputFor, runLocal, tickerStep, truncate } from '../hooks/local'
 import type { LocalSource } from '../hooks/local'
 
 // What a local action's run decides, checked directly: register.tsx only does
@@ -170,6 +170,25 @@ test('truncate: counts code points, so an emoji on the limit is kept whole or le
   expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(out)).toBe(false)
   // 20,000 emoji (40,000 code units) are within the limit.
   expect(truncate(emoji.repeat(LOCAL_TEXT_LIMIT), 'en')).toBe(emoji.repeat(LOCAL_TEXT_LIMIT))
+})
+
+test('codePointPrefix: counts code points up to max, an emoji as one and never split in half', () => {
+  expect(codePointPrefix('abc', 2)).toEqual({ end: 2, count: 2 })
+  // A max of as many or more: all of it.
+  expect(codePointPrefix('abc', 3)).toEqual({ end: 3, count: 3 })
+  expect(codePointPrefix('abc', 10)).toEqual({ end: 3, count: 3 })
+  // A surrogate pair is one code point, two code units.
+  expect(codePointPrefix('a😀b', 2)).toEqual({ end: 3, count: 2 })
+  expect(codePointPrefix('😀😀', 1)).toEqual({ end: 2, count: 1 })
+  // A max of 0 or less takes none.
+  expect(codePointPrefix('abc', 0)).toEqual({ end: 0, count: 0 })
+  expect(codePointPrefix('abc', -1)).toEqual({ end: 0, count: 0 })
+  expect(codePointPrefix('', 5)).toEqual({ end: 0, count: 0 })
+})
+
+test('truncate: a limit of 0 keeps nothing but the mark, and an empty text stays empty', () => {
+  expect(truncate('abc', 'en', 0)).toBe(`\n${MESSAGES.en.truncated}`)
+  expect(truncate('', 'en', 0)).toBe('')
 })
 
 test('textOf / messageOf: any value as text, never throwing', () => {

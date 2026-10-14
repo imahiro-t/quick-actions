@@ -263,6 +263,18 @@ export type Messages = {
   execOriginConfigDenied: string
   /** Why a change to customActions that adds or alters an exec definition was refused: it came from other than the person in /config. */
   customActionsConfigDenied: string
+  /** A chain's step as it runs and as its output is headed: its place of how many, and its label. */
+  chainStep: (step: number, steps: number, label: string) => string
+  /** A chain stopped at a step: its place of how many, its label, and why (the step's own error). */
+  chainStepFailed: (step: number, steps: number, label: string, error: string) => string
+  /** Why a local step that would open or copy URLs (an effect) failed: a chain does not do that. */
+  chainLocalEffect: string
+  /** Why a local step that would run over time (a timer) failed. */
+  chainLocalTicker: string
+  /** Why a step whose output is empty failed: there is nothing to pass on. */
+  chainEmptyOutput: string
+  /** Why an exec step whose output was cut failed: a part is never passed on. */
+  chainOutputCut: string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -414,6 +426,22 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `exec のアクションがすでに ${r.max} つ実行中のため実行しませんでした`
         case 'execSlotFailed':
           return '実行中の exec のアクションの数を確かめられなかったため実行しませんでした'
+        case 'chainSteps':
+          return `steps には ${r.min}〜${r.max} 個のアクション ID（文字列）を並べてください`
+        case 'chainStepUnknown':
+          return `ステップ ${r.step} の ${r.id} という有効なアクションはありません`
+        case 'chainNested':
+          return `ステップ ${r.step} の ${r.id} は連結アクションです（連結アクションは入れ子にできません）`
+        case 'chainStepTarget':
+          return `ステップ ${r.step} の ${r.id} は選択テキストのアクションではありません（2 番目以降のステップは選択テキストのアクションだけです）`
+        case 'chainField':
+          return `連結アクション（kind: chain）には ${r.field} を書けません`
+        case 'chainStepRejected':
+          return `ステップ ${r.step} の exec のアクション ${r.id} を使えません: ${MESSAGES.ja.customReason(r.reason)}`
+        case 'chainReloaded':
+          return '実行中に設定が読み直されたため、exec のステップを実行しませんでした'
+        case 'execApprovalGone':
+          return '実行中に exec のアクションの承認が取り消されたか変わったため実行しませんでした。ローカルの端末で実行し直して承認してください'
       }
     },
     customProblemsHeading: 'customActions で無視した定義:',
@@ -506,7 +534,13 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminHistoryUnreadable: 'exec の実行履歴を読み込めませんでした（記録がないという意味ではありません）。',
     execAdminNoneToRevoke: '取り消す exec の承認はありません。',
     execOriginConfigDenied: 'Quick Actions の execOrigin を terminal から外せるのは、本人が /config で変更したときだけです',
-    customActionsConfigDenied: 'Quick Actions の customActions に exec の定義を足したり変えたりできるのは、本人が /config で変更したときだけです',
+    customActionsConfigDenied: 'Quick Actions の customActions に exec の定義や、exec のステップを含む連結アクションを足したり変えたりできるのは、本人が /config で変更したときだけです',
+    chainStep: (step, steps, label) => `ステップ ${step}/${steps}: ${label}`,
+    chainStepFailed: (step, steps, label, error) => `ステップ ${step}/${steps}（${label}）で失敗: ${error}`,
+    chainLocalEffect: '連結アクションのステップでは URL を開いたりコピーしたりしません',
+    chainLocalTicker: '連結アクションのステップでは時間のかかる実行（タイマーなど）はできません',
+    chainEmptyOutput: 'このステップの出力が空のため、次のステップに渡せません',
+    chainOutputCut: 'このステップの出力が上限を超えたため、次のステップに渡しませんでした',
   },
   en: {
     thinking: 'Thinking…',
@@ -641,6 +675,22 @@ export const MESSAGES: Record<Lang, Messages> = {
           return `not run: ${r.max} exec actions are running already`
         case 'execSlotFailed':
           return 'not run: how many exec actions are running could not be checked'
+        case 'chainSteps':
+          return `steps must list ${r.min} to ${r.max} action IDs (strings)`
+        case 'chainStepUnknown':
+          return `step ${r.step}: there is no valid action ${r.id}`
+        case 'chainNested':
+          return `step ${r.step}: ${r.id} is a chain (chains cannot be nested)`
+        case 'chainStepTarget':
+          return `step ${r.step}: ${r.id} is not an action on the selection (every step after the first must be one)`
+        case 'chainField':
+          return `a chain (kind: chain) cannot have ${r.field}`
+        case 'chainStepRejected':
+          return `step ${r.step}: the exec action ${r.id} cannot be used: ${MESSAGES.en.customReason(r.reason)}`
+        case 'chainReloaded':
+          return 'not run: the settings were read again while the chain ran, so its exec step was not run'
+        case 'execApprovalGone':
+          return 'not run: the approval of the exec action was revoked or changed while the chain ran. Run it again at your own terminal to approve it'
       }
     },
     customProblemsHeading: 'Ignored in customActions:',
@@ -734,7 +784,13 @@ export const MESSAGES: Record<Lang, Messages> = {
     execAdminHistoryUnreadable: 'The exec run history could not be read (this does not mean none is recorded).',
     execAdminNoneToRevoke: 'No exec approval to revoke.',
     execOriginConfigDenied: 'Quick Actions execOrigin can be moved off terminal only by you, in /config',
-    customActionsConfigDenied: 'Quick Actions customActions can have exec definitions added or changed only by you, in /config',
+    customActionsConfigDenied: 'Quick Actions customActions can have exec definitions, and chains with an exec step, added or changed only by you, in /config',
+    chainStep: (step, steps, label) => `Step ${step}/${steps}: ${label}`,
+    chainStepFailed: (step, steps, label, error) => `Failed at step ${step}/${steps} (${label}): ${error}`,
+    chainLocalEffect: 'a step of a chain does not open or copy URLs',
+    chainLocalTicker: 'a step of a chain cannot run over time (a timer and the like)',
+    chainEmptyOutput: 'the step gave no output, so there is nothing to pass on',
+    chainOutputCut: 'the output of the step passed its limit, so it was not passed on',
   },
 }
 

@@ -7,8 +7,8 @@
 // The reasons are kept as data and put into words only when shown
 // (problemLine), since the language is not known yet when the setting is read.
 
-import { ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE, WEB_TOOLS } from './actions'
-import type { ActionSpec, Target } from './actions'
+import { ACTIONS, ANSWER_LANGUAGE, READ_ONLY_TOOLS, STYLE, WEB_TOOLS, needsSelection } from './actions'
+import type { ActionSpec, BuiltinSpec, ChainAction, Target } from './actions'
 import type { ArgSpec } from './args'
 import { EXEC_ARGS_MAX, EXEC_ARG_MAX, EXEC_TIMEOUT_DEFAULT_MS, EXEC_TIMEOUT_MAX_MS, EXEC_TIMEOUT_MIN_MS, isSafeExecPath } from './exec'
 import { MESSAGES } from './i18n'
@@ -20,7 +20,29 @@ export const ALLOWED_SUBAGENT_TOOLS: readonly string[] = [...READ_ONLY_TOOLS, ..
 /** The models a custom complete or subagent action may name. */
 export const MODELS: readonly string[] = ['haiku', 'sonnet', 'opus']
 
-export const KINDS: readonly string[] = ['complete', 'fork', 'subagent', 'exec']
+export const KINDS: readonly string[] = ['complete', 'fork', 'subagent', 'exec', 'chain']
+
+/** The fewest and the most steps a chain may have. */
+export const CHAIN_STEPS_MIN = 2
+export const CHAIN_STEPS_MAX = 8
+
+/**
+ * The fields of the other kinds a chain definition may not have (`target`
+ * among them: a chain's is its first step's). One there says its author meant
+ * something else, so it is refused rather than run.
+ */
+export const NOT_CHAIN_FIELDS: readonly string[] = [
+  'prompt',
+  'model',
+  'tools',
+  'task',
+  'maxTokens',
+  'description',
+  'command',
+  'args',
+  'timeoutMs',
+  'target',
+]
 
 /**
  * The fields of the other kinds an exec definition may not have: one there
@@ -136,6 +158,24 @@ export type CustomReason =
   | { code: 'execBusy'; max: number }
   /** The running exec actions could not be counted (the slots not written): not run, the safe side. */
   | { code: 'execSlotFailed' }
+  // A chain definition (kind `chain`). `step` is the step's place, from 1; `id` the ID as written (shown safe).
+  /** `steps` not an array of `min` to `max` strings. */
+  | { code: 'chainSteps'; min: number; max: number }
+  /** A step that names no built-in and no valid custom definition (one left out counts as none). */
+  | { code: 'chainStepUnknown'; step: number; id: string }
+  /** A step that is a chain (itself included). */
+  | { code: 'chainNested'; step: number; id: string }
+  /** A step after the first that is not an action on the selection. */
+  | { code: 'chainStepTarget'; step: number; id: string }
+  /** A field of another kind (NOT_CHAIN_FIELDS) in a chain definition. */
+  | { code: 'chainField'; field: string }
+  // Found by the exec gate, or as a chain runs.
+  /** An exec step the exec gate refused (`reason`): the chain is refused with it. */
+  | { code: 'chainStepRejected'; step: number; id: string; reason: CustomReason }
+  /** The settings were read again (the module reloaded) while the chain ran: its exec steps are not run. */
+  | { code: 'chainReloaded' }
+  /** The approval of an exec step was taken away (or changed) while the chain ran: not asked again there, not run. */
+  | { code: 'execApprovalGone' }
 
 /**
  * One problem with the setting: `index` is the definition's place in the array
@@ -329,6 +369,63 @@ function parseExec(d: Record<string, unknown>, base: { id: string; icon: string;
   }
 }
 
+/**
+ * A chain definition as written: no field of another kind (NOT_CHAIN_FIELDS);
+ * `steps` an array of CHAIN_STEPS_MIN to CHAIN_STEPS_MAX strings; `showSteps`
+ * a boolean, false when left out. What its steps name is checked once every
+ * definition is read (chainProblem), so it may name one written after it.
+ * Called within parseOne, so it fails as the others do.
+ */
+function parseChain(d: Record<string, unknown>, base: { id: string; icon: string; label: Localized; runningText?: Localized }): ActionSpec {
+  const other = NOT_CHAIN_FIELDS.find(f => d[f] !== undefined)
+  if (other !== undefined) fail({ code: 'chainField', field: other })
+  const steps = d['steps']
+  if (steps === undefined || steps === null) fail({ code: 'missing', field: 'steps' })
+  if (
+    !Array.isArray(steps) ||
+    steps.length < CHAIN_STEPS_MIN ||
+    steps.length > CHAIN_STEPS_MAX ||
+    !steps.every(step => typeof step === 'string')
+  ) {
+    fail({ code: 'chainSteps', min: CHAIN_STEPS_MIN, max: CHAIN_STEPS_MAX })
+  }
+  const showSteps = d['showSteps'] ?? false
+  if (typeof showSteps !== 'boolean') fail({ code: 'invalid', field: 'showSteps' })
+  return { ...base, kind: 'chain', steps: [...(steps as string[])], showSteps: showSteps as boolean }
+}
+
+/**
+ * Why the chain `chain` may not be kept, by what its steps name: `steps` are
+ * the actions a step may be (the built-ins and the valid custom definitions
+ * that are not chains), `chains` the IDs of every chain read (valid or not,
+ * itself included), none of which a step may be. Each step in order: a
+ * chain (chainNested), else one that is not there (chainStepUnknown), else,
+ * after the first, one not on the selection (chainStepTarget). Undefined when
+ * every step is fine.
+ */
+function chainProblem(chain: ChainAction<Localized>, steps: ReadonlyMap<string, ActionSpec>, chains: ReadonlySet<string>): CustomReason | undefined {
+  for (const [i, id] of chain.steps.entries()) {
+    const step = i + 1
+    if (chains.has(id)) return { code: 'chainNested', step, id: shown(id) }
+    const def = steps.get(id)
+    if (def === undefined) return { code: 'chainStepUnknown', step, id: shown(id) }
+    if (i > 0 && !needsSelection(def)) return { code: 'chainStepTarget', step, id: shown(id) }
+  }
+  return undefined
+}
+
+/**
+ * A chain whose steps are fine, with what its first step works on: its
+ * `target` (left out for the selection), and, standalone, its argument.
+ */
+function withFirstTarget(chain: ChainAction<Localized>, first: ActionSpec): ChainAction<Localized> {
+  const { target: _t, arg: _a, ...rest } = chain
+  if (first.target === undefined || first.target === 'selection') return rest
+  if (first.target === 'context') return { ...rest, target: 'context' }
+  const arg = first.kind === 'fork' ? undefined : first.arg
+  return { ...rest, target: 'none', ...(arg === undefined ? {} : { arg }) }
+}
+
 /** One definition checked against the IDs already taken; the first reason found if it is not valid. */
 function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<string>): ActionSpec | CustomReason {
   try {
@@ -352,6 +449,7 @@ function parseOne(d: unknown, taken: ReadonlySet<string>, reserved: ReadonlySet<
     if (typeof kind !== 'string' || !KINDS.includes(kind)) fail({ code: 'kind', value: shown(kind), allowed: KINDS })
     const base = { id: id as string, icon, label, ...(runningText === undefined ? {} : { runningText }) }
     if (kind === 'exec') return parseExec(d, base)
+    if (kind === 'chain') return parseChain(d, base)
     const prompt = required(d, 'prompt')
     const target = targetOf(d)
     const context = target === 'context'
@@ -425,12 +523,19 @@ function warningOf(spec: ActionSpec): CustomWarningReason | undefined {
 /**
  * The custom actions in the setting, what was wrong with it, and what is
  * worth knowing about the definitions kept (`warnings`). `reservedIds`
- * are the IDs a custom one may not take (the built-ins', `close` and `hint`). An unset
- * or blank setting gives nothing and no problem; any other value that is not a
- * string (an array written in settings.json without quoting it, say) leaves
- * them all out and says so. Never throws.
+ * are the IDs a custom one may not take (the built-ins', `close` and `hint`);
+ * `builtins` the built-ins a chain's step may name (ACTIONS when left out).
+ * An unset or blank setting gives nothing and no problem; any other value that
+ * is not a string (an array written in settings.json without quoting it, say)
+ * leaves them all out and says so. Never throws.
+ *
+ * Read in two passes: every definition first, as before (an ID taken by the
+ * first that has it, a chain's included, whatever comes of it after); then
+ * what each chain's steps name, against the built-ins and the custom
+ * definitions kept that are not chains, wherever they are written. A chain
+ * refused there is told at its own place among the problems.
  */
-export function parseCustomActions(setting: unknown, reservedIds: readonly string[]): CustomActions {
+export function parseCustomActions(setting: unknown, reservedIds: readonly string[], builtins: readonly BuiltinSpec[] = ACTIONS): CustomActions {
   if (setting === undefined || setting === null) return NONE
   if (typeof setting !== 'string') {
     return { specs: [], problems: [{ index: null, id: null, reason: { code: 'notString' } }], warnings: [] }
@@ -450,7 +555,7 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
 
   const reserved = new Set(reservedIds)
   const taken = new Set<string>()
-  const specs: ActionSpec[] = []
+  const kept: { index: number; spec: ActionSpec }[] = []
   const problems: CustomProblem[] = []
   const warnings: CustomWarning[] = []
   parsed.forEach((d: unknown, index) => {
@@ -461,11 +566,33 @@ export function parseCustomActions(setting: unknown, reservedIds: readonly strin
     } else {
       // First come, first served, as with an ID written twice in `pinActions`.
       taken.add(r.id)
-      specs.push(r)
+      kept.push({ index, spec: r })
       const warning = warningOf(r)
       if (warning !== undefined) warnings.push({ index, id: r.id, reason: warning })
     }
   })
+
+  // The second pass: what the chains' steps name.
+  const chains = new Set(kept.flatMap(k => (k.spec.kind === 'chain' ? [k.spec.id] : [])))
+  if (chains.size === 0) return { specs: kept.map(k => k.spec), problems, warnings }
+  const stepPool = new Map<string, ActionSpec>()
+  for (const b of builtins) stepPool.set(b.id, b)
+  for (const k of kept) if (k.spec.kind !== 'chain' && !stepPool.has(k.spec.id)) stepPool.set(k.spec.id, k.spec)
+  const specs: ActionSpec[] = []
+  for (const k of kept) {
+    if (k.spec.kind !== 'chain') {
+      specs.push(k.spec)
+      continue
+    }
+    const why = chainProblem(k.spec, stepPool, chains)
+    if (why !== undefined) {
+      problems.push({ index: k.index, id: k.spec.id, reason: why })
+      continue
+    }
+    specs.push(withFirstTarget(k.spec, stepPool.get(k.spec.steps[0]!)!))
+  }
+  // In the order the definitions are written, the chains refused last among them.
+  problems.sort((a, b) => (a.index ?? -1) - (b.index ?? -1))
   return { specs, problems, warnings }
 }
 

@@ -27,9 +27,15 @@
 // A layer of defence beside these: a /config change from other than the
 // person (another plugin's $.config.set, the bridge) may neither take
 // execOrigin off terminal (weakensExecOrigin) nor add or alter an exec
-// definition in customActions (addsExecDefinition), which would land in the
-// user settings and so pass scopeVerdict; register.tsx's config.set hook
-// refuses it.
+// definition in customActions (addsExecDefinition), nor a chain with an exec
+// step or any step of it, which would land in the user settings and so pass
+// scopeVerdict; register.tsx's config.set hook refuses it.
+//
+// A chain (kind `chain`) with an exec step runs that step only as the exec
+// action runs on its own: the same gate, origin limit, allowlist, SHA-256 and
+// approval, all checked before any step of the chain runs, and checked again,
+// without asking, right before the exec step starts (register.tsx). Which
+// steps of a chain are exec is told by chainExecSteps alone.
 //
 // It then runs through `/usr/bin/env -i` (the environment cut down to a few
 // variables), in the home directory, with a timeout, its output cut at a limit
@@ -44,7 +50,7 @@
 // it may hand `$` on, and these judge what it read.
 
 import { base64Decode } from './codec'
-import type { ActionSpec } from './actions'
+import type { ActionSpec, ChainAction } from './actions'
 import type { CustomReason } from './custom'
 import { MESSAGES } from './i18n'
 import type { Lang } from './i18n'
@@ -524,6 +530,38 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(sorted(value)) ?? ''
 }
 
+/** One exec step of a chain: its place (from 1) and the exec definition's ID. */
+export type ChainExecStep = { step: number; id: string }
+
+/**
+ * The steps of `chain` that are exec actions, in order, by what they name
+ * among `specs` (the custom definitions kept: no built-in is exec). The one
+ * place that tells whether a chain has an exec step: the exec gate, the
+ * config.set guard and the run all go by it.
+ */
+export function chainExecSteps(chain: { steps: readonly string[] }, specs: readonly { id: string; kind: string }[]): ChainExecStep[] {
+  const kinds = new Map<string, string>()
+  for (const spec of specs) if (!kinds.has(spec.id)) kinds.set(spec.id, spec.kind)
+  return chain.steps.flatMap((id, i) => (kinds.get(id) === 'exec' ? [{ step: i + 1, id }] : []))
+}
+
+/**
+ * A chain as the config.set guard compares it: the chain's own definition and
+ * each step's as `specs` (the custom definitions kept) have it, a built-in's
+ * as its ID alone (`{ builtin: id }`; no custom definition can take a
+ * built-in's ID), as canonical JSON. A change to any step's definition (its
+ * prompt, its model, its kind), not only to the chain's, changes it.
+ */
+export function chainFingerprint(chain: ChainAction<unknown>, specs: readonly ActionSpec[]): string {
+  const byId = new Map<string, ActionSpec>()
+  for (const spec of specs) if (!byId.has(spec.id)) byId.set(spec.id, spec)
+  return canonicalJson({ chain, steps: chain.steps.map(id => byId.get(id) ?? { builtin: id }) })
+}
+
+/** The chains among `specs` that have an exec step (chainExecSteps). */
+const execChains = (specs: readonly ActionSpec[]) =>
+  specs.flatMap(spec => (spec.kind === 'chain' && chainExecSteps(spec, specs).length > 0 ? [spec] : []))
+
 /**
  * Whether the valid definitions after a change (`next`, parseCustomActions'
  * specs) hold an exec definition not in the valid ones it is judged against
@@ -532,14 +570,26 @@ function canonicalJson(value: unknown): string {
  * field (its command, arguments, label, timeout, …), key order aside. The
  * valid definitions are compared, not the text, so one made valid (its
  * duplicate before it taken out, its mistake mended) counts as added too.
- * Taking exec definitions out, turning one into another kind, reordering them
- * and changing the other kinds' do not.
+ *
+ * A chain with an exec step (chainExecSteps) counts the same way, by its
+ * chainFingerprint: one new to `base`'s chains with an exec step, or whose
+ * definition, or any of its steps' definitions, differs in anything (its
+ * steps, its label, a step's prompt or model, a step of another kind under the
+ * same ID, a step made valid). Such a chain cannot be changed at all by other
+ * than the person, its label and icon included.
+ *
+ * Taking exec definitions or chains with an exec step out, turning an exec
+ * definition into another kind, reordering them, changing the other kinds'
+ * and adding or changing a chain with no exec step do not.
  */
 export function addsExecDefinition(next: readonly ActionSpec[], base: readonly ActionSpec[] | undefined): boolean {
   const execs = next.filter(spec => spec.kind === 'exec')
-  if (base === undefined) return execs.length > 0
+  const chains = execChains(next)
+  if (base === undefined) return execs.length > 0 || chains.length > 0
   const known = new Map(base.filter(spec => spec.kind === 'exec').map(spec => [spec.id, canonicalJson(spec)]))
-  return execs.some(spec => known.get(spec.id) !== canonicalJson(spec))
+  if (execs.some(spec => known.get(spec.id) !== canonicalJson(spec))) return true
+  const knownChains = new Map(execChains(base).map(chain => [chain.id, chainFingerprint(chain, base)]))
+  return chains.some(chain => knownChains.get(chain.id) !== chainFingerprint(chain, next))
 }
 
 /**

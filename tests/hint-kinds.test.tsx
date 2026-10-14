@@ -6,6 +6,17 @@ import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
+/**
+ * `drawn` is the engine's own drawing, as no plugin's hook rewrote it: its
+ * type and props exactly the engine's, and, where the kit says who drew it
+ * (`part`), not this plugin.
+ */
+function expectEngineDrawn(drawn: unknown) {
+  const { part, ...rest } = drawn as { part?: { plugin?: string } }
+  expect(rest).toEqual({ type: 'Box', props: { key: 'engine' } })
+  expect(part?.plugin).not.toBe(PLUGIN)
+}
+
 // The hint line under the prompt (SELM-00050).
 //
 // The engine keeps answering a selection after its highlight goes, and tells
@@ -557,8 +568,8 @@ test('another plugin\'s pane asks for a redraw only as its dock changes, and the
   expect(invalidated - before).toBe(1)
   for (let i = 0; i < 3; i++) await other.redraw({ ...OTHER_PANE.props, bodyColumns: 40, placement: 'dock' })
   expect(invalidated - before).toBe(1)
-  // Its own drawing is left as the engine draws it.
-  expect(await other.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
+  // Its own drawing is left as the engine draws it, not drawn by this plugin.
+  expectEngineDrawn(await other.drawn())
   await other.redraw({ ...OTHER_PANE.props, bodyColumns: 30, placement: 'dock' })
   expect(invalidated - before).toBe(2)
   await other.unmount()
@@ -789,8 +800,8 @@ test('SessionMode (drawn on the row above) is left alone, and its labels change 
   await before.unmount()
   for (const modes of [['focus', 'memory paused'], []]) {
     const mode = await $.ui.mount({ plugin: PLUGIN, component: 'SessionMode', surface: 'terminal', props: { modes } })
-    // The engine's own drawing, which no plugin's hook rewrote.
-    expect(await mode.drawn()).toEqual({ type: 'Box', props: { key: 'engine' } })
+    // The engine's own drawing, which no plugin's hook rewrote (nor this plugin drew).
+    expectEngineDrawn(await mode.drawn())
     await mode.unmount()
     const band = await mountBand($, 103)
     expect(await actionCount(band)).toBe(count)

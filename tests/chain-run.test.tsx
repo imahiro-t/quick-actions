@@ -4,6 +4,7 @@ import type { On } from 'claude-code'
 
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import { utf8Encode } from '../hooks/codec'
+import { displaySafe } from '../hooks/custom'
 import { ALLOWLIST_RELATIVE, APPROVALS_KEY, ENV_BIN, EXEC_STDIN_MAX, HISTORY_KEY } from '../hooks/exec'
 import { MESSAGES } from '../hooks/i18n'
 import { sha256 } from '../hooks/sha'
@@ -232,6 +233,42 @@ test('subagent as a step: registering it throwing stops the chain there, saying 
   const text = await paneText($)
   expect(text).toContain(t.chainStepFailed(1, 2, 'Look', t.couldNotStart('')))
   expect(text).toContain('not now')
+})
+
+// A step's subagent that could not start says why with displaySafe applied,
+// as the action run alone does: refused or thrown, a raw control or
+// bidirectional character in the reason is shown as U+XXXX.
+const UNSAFE = 'bad\u0007\u202Ename'
+
+test('subagent as a step: a spawn refused for a reason with control characters shows them as U+XXXX', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  s.spawnDeny = UNSAFE
+  await start($)
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'cs')
+  await clock.settle()
+  const text = await paneText($)
+  expect(text).toContain(t.chainStepFailed(2, 2, 'Look', t.couldNotStart(displaySafe(UNSAFE))))
+  expect(text).not.toContain('\u0007')
+  expect(text).not.toContain('\u202E')
+})
+
+test('subagent as a step: registering it throwing with control characters shows them as U+XXXX', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.refuse = UNSAFE
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'sc')
+  await clock.settle()
+  const text = await paneText($)
+  expect(text).toContain(t.chainStepFailed(1, 2, 'Look', t.couldNotStart('')))
+  expect(text).toContain('badU+0007U+202Ename')
+  expect(text).not.toContain('\u0007')
+  expect(text).not.toContain('\u202E')
 })
 
 // ---------------------------------------------------------------------------

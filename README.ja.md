@@ -1266,6 +1266,14 @@ exec のアクションを初めて実行するとき、また、承認したと
 - そのうえでリポジトリのルートで `node scripts/gen-catalog.mjs` を実行してデータを再生成し、`docs/actions-data.js` をコミットします。スクリプトには Node 24 以上が必要です（TypeScript のソースをそのまま読み込むため）。asdf なら例えば `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - 再生成を忘れると、`tests/catalog.test.ts`（`claude plugin test .` で実行）が落ちます。カテゴリや説明のない組み込みアクションや、種類の違うカテゴリに入れたアクションがあっても落ちます
 
+### 新しい worktree での型チェック
+
+`.claude-plugin/types/` には、Claude Code のプラグイン API の型定義（`claude-code`・`claude-code-tools`・`claude-code-mcp`）と、ルートの `tsconfig.json` が extends する型チェック用の `tsconfig.json` が入っています。git の管理外（gitignore 対象）のため、新しく作った worktree にはありません。
+
+- メインのワーキングツリー（リポジトリを clone したディレクトリ）からコピーします。worktree のルートで `cp -R <メインのワーキングツリー>/.claude-plugin/types .claude-plugin/`。worktree の中からなら、メインのワーキングツリーの位置は git で求められます: `cp -R "$(git rev-parse --path-format=absolute --git-common-dir)/../.claude-plugin/types" .claude-plugin/`（通常の clone のように、メインのワーキングツリーの `.git` がそのルートにあるディレクトリの場合に成り立ちます）
+- そのうえでリポジトリのルートで `npx -p typescript tsc -p tsconfig.json` を実行して型チェックします
+- ルートの `tsconfig.json` 自体に `noEmit: true` があるため、型定義をコピーする前に `tsc` を実行しても、リポジトリに `.js` は出力されません（型が解決できずに失敗するだけです）
+
 ### テストファイル
 
 - テストファイル（`tests/*.test.ts` / `*.test.tsx`）は、`test`・`expect`・`mock` を `claude-code/testing` からではなく `./kit`（`tests/kit.ts`）から取ります。`./kit` の `test` は `timeoutMs` を指定しないテストの既定タイムアウトをテストキットの 5 秒ではなく 30 秒にし、高負荷時に時間切れだけでテストが落ちないようにしています。`claude-code/testing` からの `import type` は構いません

@@ -115,9 +115,15 @@ function effectOf(v: unknown): LocalEffect | undefined {
  * only answer at once, and an effect asked for by a standalone one (or one of
  * no known shape: see effectOf). A selection longer than LOCAL_SELECTION_LIMIT (code
  * units of `input.text`, as the caller passes it) is refused before the compute is called, saying
- * how long it is and the limit. Never throws.
+ * how long it is and the limit. `whole`: a text answered is kept whole, not
+ * cut at LOCAL_TEXT_LIMIT (a chain's step, whose output is passed on: it cuts
+ * only what it shows). Never throws.
  */
-export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, opts: { selection: boolean; lang: Lang }): LocalOutcome {
+export function runLocal(
+  def: Pick<LocalAction, 'compute'>,
+  input: LocalInput,
+  opts: { selection: boolean; lang: Lang; whole?: boolean },
+): LocalOutcome {
   const t = MESSAGES[opts.lang]
   const length = typeof input.text === 'string' ? input.text.length : 0
   if (opts.selection && length > LOCAL_SELECTION_LIMIT) {
@@ -126,7 +132,7 @@ export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, o
   // The compute's run and the reading of its answer alike: a getter on that
   // answer may throw too.
   try {
-    return outcomeOf(def.compute(input), opts.selection, opts.lang)
+    return outcomeOf(def.compute(input), opts.selection, opts.lang, opts.whole === true)
   } catch (err) {
     // No secure random numbers: said in the user's language, not as the error's own English.
     const reason = err instanceof RandomUnavailableError ? t.randomUnavailable : messageOf(err)
@@ -134,7 +140,7 @@ export function runLocal(def: Pick<LocalAction, 'compute'>, input: LocalInput, o
   }
 }
 
-function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
+function outcomeOf(out: unknown, selection: boolean, lang: Lang, whole: boolean): LocalOutcome {
   const t = MESSAGES[lang]
   if (isRecord(out) && typeof out['then'] === 'function') {
     // Not awaited: a compute is synchronous by contract. Its rejection, if any, goes nowhere.
@@ -142,7 +148,7 @@ function outcomeOf(out: unknown, selection: boolean, lang: Lang): LocalOutcome {
     return { kind: 'settle', ok: false, text: t.failed(t.localAsync) }
   }
   if (isRecord(out) && typeof out['text'] === 'string') {
-    return { kind: 'settle', ok: true, text: truncate(out['text'], lang) }
+    return { kind: 'settle', ok: true, text: whole ? out['text'] : truncate(out['text'], lang) }
   }
   if (isRecord(out) && typeof out['error'] === 'string') {
     // Cut as a text is: an error can quote the input (parse-url's port) at any length.

@@ -266,7 +266,7 @@ test('parse: target none takes complete and subagent, with an optional free-text
   expect(problemLine(problems[0]!, 'ja')).toBe('#3 (forked): target が none のアクションは complete・subagent・exec のいずれかで書いてください（指定: fork）')
   expect(problemLine(problems[0]!, 'en')).toBe('#3 (forked): an action with target none must be complete, subagent or exec (given: fork)')
   // local is the built-ins' own: not one of the kinds a custom action may name.
-  expect(problemLine(problems[1]!, 'en')).toBe('#4 (local): kind must be one of complete, fork, subagent, exec (given: local)')
+  expect(problemLine(problems[1]!, 'en')).toBe('#4 (local): kind must be one of complete, fork, subagent, exec, chain (given: local)')
 })
 
 for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
@@ -381,7 +381,7 @@ test("the README's examples are valid definitions", () => {
 test('the allowed tools and models are exactly the ones the ticket names', () => {
   expect([...ALLOWED_SUBAGENT_TOOLS]).toEqual(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'])
   expect([...MODELS]).toEqual(['haiku', 'sonnet', 'opus'])
-  expect([...KINDS]).toEqual(['complete', 'fork', 'subagent', 'exec'])
+  expect([...KINDS]).toEqual(['complete', 'fork', 'subagent', 'exec', 'chain'])
 })
 
 test('the reasons name the allowed values from the one list that checks them', () => {

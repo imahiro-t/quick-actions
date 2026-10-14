@@ -545,9 +545,9 @@ export async function reselect(s: Stage, clock: Clock) {
   await clock.advance(400)
 }
 
-/** A definition's prompt; undefined for a local or exec action, which has none, or for no definition. */
+/** A definition's prompt; undefined for a local, exec or chain action, which has none, or for no definition. */
 export const promptOf = (def: ActionDef | ActionSpec | undefined): string | undefined =>
-  def === undefined || def.kind === 'local' || def.kind === 'exec' ? undefined : def.prompt
+  def === undefined || def.kind === 'local' || def.kind === 'exec' || def.kind === 'chain' ? undefined : def.prompt
 
 /** The hint line's kind buttons are keyed by this and the kind: never an action's ID. */
 export const KIND_KEY = '_kind-'

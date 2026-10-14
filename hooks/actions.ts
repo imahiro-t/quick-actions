@@ -253,11 +253,30 @@ export type ExecAction<T = string> = ActionBase<T> & {
   arg?: ArgSpec<T>
 }
 
+/**
+ * Other actions run one after another as one (a custom action's only: no
+ * built-in is one). `steps` are the IDs of 2 to 8 actions, built-in or custom
+ * but never another chain; each step's own definition is looked up as the
+ * chain runs. What the first step works on is the chain's (`target`, and
+ * `arg` for a standalone one, copied from it as the setting is read); each
+ * step after it is an action on the selection, and gets the output of the
+ * step before as its selected text (an exec step, on its standard input).
+ * `showSteps`: whether the pane shows each step's output, not the last alone.
+ */
+export type ChainAction<T = string> = ActionBase<T> & {
+  kind: 'chain'
+  target?: Target
+  steps: readonly string[]
+  showSteps: boolean
+  /** A standalone chain's argument: its first step's. */
+  arg?: ArgSpec<T>
+}
+
 /** A subagent definition resolved for one language: its description is always filled in (see resolveSpec). */
 export type ResolvedSubagentAction = SubagentAction & { description: string }
 
 /** A definition with its texts resolved for one language: what the hint line, the pane and the runner use. */
-export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction | LocalAction | ExecAction
+export type ActionDef = CompleteAction | ForkAction | ResolvedSubagentAction | LocalAction | ExecAction | ChainAction
 
 /** A definition as written in ACTIONS, its texts in both languages. */
 export type ActionSpec =
@@ -266,9 +285,10 @@ export type ActionSpec =
   | SubagentAction<Localized>
   | LocalAction<Localized>
   | ExecAction<Localized>
+  | ChainAction<Localized>
 
-/** A built-in's definition: any kind but exec, which is the person's own alone. */
-export type BuiltinSpec = Exclude<ActionSpec, ExecAction<Localized>>
+/** A built-in's definition: any kind but exec and chain, which are the person's own alone. */
+export type BuiltinSpec = Exclude<ActionSpec, ExecAction<Localized> | ChainAction<Localized>>
 
 export const PLUGIN = 'quick-actions'
 
@@ -907,8 +927,8 @@ export const localizePrompt = (prompt: string, lang: Lang) =>
 export function resolveSpec(spec: ActionSpec, lang: Lang): ActionDef {
   const label = spec.label[lang]
   const texts = spec.runningText === undefined ? { label } : { label, runningText: spec.runningText[lang] }
-  if (spec.kind === 'local' || spec.kind === 'exec') {
-    // No prompt: `compute` (or the command and its arguments) is handed on as it is.
+  if (spec.kind === 'local' || spec.kind === 'exec' || spec.kind === 'chain') {
+    // No prompt: `compute` (or the command and its arguments, or the steps' IDs) is handed on as it is.
     const { label: _l, runningText: _r, category: _c, summary: _s, arg, ...rest } = spec
     return { ...rest, ...texts, ...(arg === undefined ? {} : { arg: { ...arg, hint: arg.hint[lang] } }) }
   }

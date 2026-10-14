@@ -65,15 +65,15 @@ export const clampInterval = (ms: number) =>
   Number.isFinite(ms) && ms > TICKER_MIN_INTERVAL_MS ? ms : TICKER_MIN_INTERVAL_MS
 
 /**
- * A result past the limit, cut there and marked as cut. Characters are counted
- * as code points, as a text argument's are, so an emoji is one and is never
- * split in half.
+ * A result past the limit (`limit` code points, LOCAL_TEXT_LIMIT unless said),
+ * cut there and marked as cut. Characters are counted as code points, as a
+ * text argument's are, so an emoji is one and is never split in half.
  */
-export function truncate(text: string, lang: Lang): string {
+export function truncate(text: string, lang: Lang, limit: number = LOCAL_TEXT_LIMIT): string {
   // No more code points than code units: a text this short is within the limit.
-  if (text.length <= LOCAL_TEXT_LIMIT) return text
+  if (text.length <= limit) return text
   let end = 0
-  for (let count = 0; count < LOCAL_TEXT_LIMIT; count++) {
+  for (let count = 0; count < limit; count++) {
     if (end >= text.length) return text
     const code = text.codePointAt(end) ?? 0
     end += code > 0xffff ? 2 : 1

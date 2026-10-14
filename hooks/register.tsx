@@ -5,6 +5,7 @@ import type { ArgInput, Result, ResultOrigin } from '../types'
 import {
   ACTIONS,
   DEFAULT_ACTION_IDS,
+  LOCAL_TEXT_LIMIT,
   NO_INPUT,
   PLUGIN,
   READ_ONLY_TOOLS,
@@ -346,10 +347,19 @@ async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
   registeredAgents.add(def.id)
 }
 
-// A subagent answers later, through turn.complete; the others answer here.
-// `prompt` is its task with what it works on (the selection, or a standalone
-// action's argument, or nothing more).
-async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, id: number, prompt: string) {
+/**
+ * Starts `def`'s subagent on `prompt` (its task with what it works on: the
+ * selection, or a standalone action's argument, or nothing more), as an
+ * action run alone and a chain's step both do: its agent ID, or, refused,
+ * with no agent ID, or thrown (registering or spawning it), why it could not
+ * start (couldNotStart). Never rejects.
+ */
+async function spawnSubagent(
+  $: EngineInterface,
+  def: ResolvedSubagentAction,
+  lang: Lang,
+  prompt: string,
+): Promise<{ ok: true; agentId: string } | { ok: false; error: string }> {
   const t = MESSAGES[lang]
   try {
     await ensureAgent($, def)
@@ -358,14 +368,22 @@ async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, la
       description: def.label,
       prompt,
     })
-    if (spawned.deny !== undefined || spawned.agentId === undefined) {
-      await settle($, id, false, t.couldNotStart(spawned.deny ?? 'no agent id'))
-      return
-    }
-    pendingAgents.set(spawned.agentId, id)
+    if (spawned.deny !== undefined || spawned.agentId === undefined) return { ok: false, error: t.couldNotStart(spawned.deny ?? 'no agent id') }
+    return { ok: true, agentId: spawned.agentId }
   } catch (err) {
-    await settle($, id, false, t.couldNotStart(messageOf(err)))
+    return { ok: false, error: t.couldNotStart(messageOf(err)) }
   }
+}
+
+// A subagent answers later, through turn.complete, which settles entry `id`;
+// the others answer here.
+async function startSubagent($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, id: number, prompt: string) {
+  const started = await spawnSubagent($, def, lang, prompt)
+  if (!started.ok) {
+    await settle($, id, false, started.error)
+    return
+  }
+  pendingAgents.set(started.agentId, id)
 }
 
 // The usage scores (./order) are read, added to and written back one use at a
@@ -1050,19 +1068,6 @@ type ExecInput = { target: 'selection'; text: string } | { target: 'context' } |
 type ExecReady = { realPath: string; size: number; sha256: string }
 
 /**
- * Every check before an exec action runs, in order, the first that fails its
- * reason: not Windows; not refused by this load's gate; asked from the
- * person's own hand, when execOrigin says so; the allowlist read
- * again and the command's landing path in it; that file's SHA-256 the
- * entry's, when it has one; and approved for that path, those arguments and
- * that SHA-256 (asked now, at the person's terminal alone, when it is not).
- * `load`: the load whose gate and execOrigin count (the one running now).
- */
-async function prepareExec($: EngineInterface, def: ExecAction, lang: Lang, from: RunFrom, load: ExecLoad = currentExecLoad): Promise<ExecReady | CustomReason> {
-  return checkExec($, def, lang, from, load)
-}
-
-/**
  * The checks of prepareExec, run again with nothing asked right before a
  * chain's exec step starts (`ready`: what they came to before the chain's
  * first step ran), since a model's steps may run for minutes in between:
@@ -1084,15 +1089,29 @@ async function recheckExec(
   if (currentExecLoad !== load) return { code: 'chainReloaded' }
   const chainGated = (await ensureExecGate($, load)).rejected.get(chainId)
   if (chainGated !== undefined) return chainGated
-  return checkExec($, def, lang, from, load, ready)
+  return prepareExec($, def, lang, from, load, ready)
 }
 
 /**
- * prepareExec's checks against `load`; with `recheck` (recheckExec), the
+ * Every check before an exec action runs, in order, the first that fails its
+ * reason: not Windows; not refused by this load's gate; asked from the
+ * person's own hand, when execOrigin says so; the allowlist read
+ * again and the command's landing path in it; that file's SHA-256 the
+ * entry's, when it has one; and approved for that path, those arguments and
+ * that SHA-256 (asked now, at the person's terminal alone, when it is not).
+ * `load`: the load whose gate and execOrigin count (the one running now).
+ * With `recheck` (recheckExec: what these checks came to before), the
  * landing path and the SHA-256 must be its own, and an approval missing is
  * refused rather than asked for.
  */
-async function checkExec($: EngineInterface, def: ExecAction, lang: Lang, from: RunFrom, load: ExecLoad, recheck?: ExecReady): Promise<ExecReady | CustomReason> {
+async function prepareExec(
+  $: EngineInterface,
+  def: ExecAction,
+  lang: Lang,
+  from: RunFrom,
+  load: ExecLoad = currentExecLoad,
+  recheck?: ExecReady,
+): Promise<ExecReady | CustomReason> {
   if (await isWindows($)) return { code: 'execUnsupported' }
   const gated = (await ensureExecGate($, load)).rejected.get(def.id)
   if (gated !== undefined) return gated
@@ -1403,6 +1422,18 @@ const invalidArgText = (lang: Lang, id: string, typed: string, spec: ArgSpec): s
   MESSAGES[lang].invalidArg(id, typed, spec.hint)
 
 /**
+ * The default a standalone action run with no argument takes (runStandalone,
+ * and a chain whose first step is one): `spec` (the action `id`'s) parsed
+ * with nothing typed, as of now; one that does not parse, the error the
+ * person reads. Never rejects.
+ */
+async function defaultArg($: EngineInterface, lang: Lang, id: string, spec: ArgSpec): Promise<{ ok: true; value: ArgValue | undefined } | { ok: false; error: string }> {
+  const now = (await readQuietly($.clock.now())) ?? 0
+  const parsed = parseArg(spec, undefined, { now, utcOffsetMinutes })
+  return parsed.ok ? { ok: true, value: parsed.value } : { ok: false, error: invalidArgText(lang, id, '', spec) }
+}
+
+/**
  * A standalone action: on neither the selection nor the conversation, so it
  * takes no text, only its argument. `given` is the one the command or the
  * argument screen gave and already parsed (see parseInputArg); with none, the
@@ -1425,10 +1456,9 @@ async function runStandalone($: EngineInterface, def: ActionDef, lang: Lang, giv
 
   let value: ArgValue | undefined = given?.value
   if (given === undefined && def.kind !== 'fork' && def.arg !== undefined) {
-    const now = (await readQuietly($.clock.now())) ?? 0
-    const parsed = parseArg(def.arg, undefined, { now, utcOffsetMinutes })
+    const parsed = await defaultArg($, lang, def.id, def.arg)
     if (!parsed.ok) {
-      await settle($, id, false, t.invalidArg(def.id, '', def.arg.hint))
+      await settle($, id, false, parsed.error)
       return
     }
     value = parsed.value
@@ -1469,6 +1499,37 @@ type StepContext = {
   ready?: ExecReady
 }
 
+/** A step's output as `showSteps` shows it: under its heading ("Step n/N: label"). */
+type ChainSection = { heading: string; body: string }
+
+/**
+ * What a chain's entry shows: the outputs of the steps before (`earlier`,
+ * each under its heading, as `showSteps` shows them), then `tail`, the end
+ * the person runs the chain for (the last step's output, or the failure
+ * saying at which step and why), which is never cut here: the last step's
+ * output is as that action run alone shows it (cut where it cuts it, a local
+ * one at LOCAL_TEXT_LIMIT, an exec one at EXEC_OUTPUT_MAX, said so once).
+ * The outputs before share LOCAL_TEXT_LIMIT code points between them, each
+ * cut (and said so) to what the ones above it left, so however long they
+ * are they never push the end out of sight.
+ */
+function chainShown(earlier: readonly ChainSection[], tail: string, lang: Lang): string {
+  let left = LOCAL_TEXT_LIMIT
+  const parts = earlier.map(({ heading, body }) => {
+    const shown = left > 0 ? truncate(body, lang, left) : MESSAGES[lang].truncated
+    left -= codePointsUpTo(body, left)
+    return `${heading}\n${shown}`
+  })
+  return [...parts, tail].join('\n\n')
+}
+
+/** The code points in `text`, counted up to `max` at most. */
+function codePointsUpTo(text: string, max: number): number {
+  let count = 0
+  for (let at = 0; at < text.length && count < max; count++) at += (text.codePointAt(at) ?? 0) > 0xffff ? 2 : 1
+  return count
+}
+
 /** A failure's text without the "Failed: " it starts with, as chainStepFailed says that itself. */
 function unfailed(text: string, lang: Lang): string {
   const head = MESSAGES[lang].failed('')
@@ -1495,7 +1556,9 @@ function unfailed(text: string, lang: Lang): string {
  * output, or, with `showSteps`, each step's under its heading. A step that
  * fails (a text past the next step's limit, an output empty or cut before
  * the last step included) stops the chain there, saying at which step and
- * why, after the outputs so far with `showSteps`. Never leaves the entry running.
+ * why, after the outputs so far with `showSteps`. The last output and the
+ * failure are always shown whole, the outputs before cut to make room
+ * (chainShown). Never leaves the entry running.
  */
 async function runChain(
   $: EngineInterface,
@@ -1515,11 +1578,9 @@ async function runChain(
   const steps = chain.steps.map(id => findAction(defs, id))
   const labelOf = (i: number) => steps[i]?.label ?? displaySafe(chain.steps[i] ?? '')
   // Each step's output under its heading, as `showSteps` shows them.
-  const sections: string[] = []
-  const failureText = (i: number, error: string) => {
-    const failure = t.chainStepFailed(i + 1, total, labelOf(i), error)
-    return truncate(chain.showSteps && sections.length > 0 ? [...sections, failure].join('\n\n') : failure, lang)
-  }
+  const sections: ChainSection[] = []
+  const failureText = (i: number, error: string) =>
+    chainShown(chain.showSteps ? sections : [], t.chainStepFailed(i + 1, total, labelOf(i), error), lang)
   // Refused before any step ran: the entry opens failed, and a toast says so.
   const refuse = async (i: number, error: string) => {
     const id = await begin($, chain, lang, head, picked)
@@ -1565,17 +1626,15 @@ async function runChain(
   const id = await begin($, chain, lang, head, picked)
   try {
     let input = first
-    // A standalone chain run with no argument: its first step's default, as runStandalone parses it.
+    // A standalone chain run with no argument: its first step's default, as runStandalone takes it.
     if (first.kind === 'none' && given === undefined && chain.arg !== undefined && steps[0]!.kind !== 'exec') {
-      const now = (await readQuietly($.clock.now())) ?? 0
-      const parsed = parseArg(chain.arg, undefined, { now, utcOffsetMinutes })
+      const parsed = await defaultArg($, lang, steps[0]!.id, chain.arg)
       if (!parsed.ok) {
-        await settle($, id, false, failureText(0, t.invalidArg(steps[0]!.id, '', chain.arg.hint)))
+        await settle($, id, false, failureText(0, parsed.error))
         return
       }
       input = { kind: 'none', value: parsed.value }
     }
-    let shown = ''
     for (const [i, def] of steps.entries()) {
       await showStep($, id, i + 1)
       const last = i === total - 1
@@ -1588,11 +1647,12 @@ async function runChain(
         await settle($, id, false, failureText(i, t.chainEmptyOutput))
         return
       }
-      sections.push(`${t.chainStep(i + 1, total, def!.label)}\n${outcome.shown}`)
-      shown = outcome.shown
+      sections.push({ heading: t.chainStep(i + 1, total, def!.label), body: outcome.shown })
       input = { kind: 'selection', text: outcome.raw }
     }
-    await settle($, id, true, truncate(chain.showSteps ? sections.join('\n\n') : shown, lang))
+    // The last output as that action run alone shows it; the ones before, with showSteps, cut to make room.
+    const lastStep = sections.pop()!
+    await settle($, id, true, chain.showSteps ? chainShown(sections, `${lastStep.heading}\n${lastStep.body}`, lang) : lastStep.body)
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
     await settle($, id, false, t.failed(displaySafe(messageOf(err))))
@@ -1632,15 +1692,13 @@ async function runChainStep($: EngineInterface, def: ActionDef, lang: Lang, inpu
   }
 }
 
-/** A subagent's step: spawned as the action is, its answer waited for (turn.complete). */
+/** A subagent's step: started as the action is (spawnSubagent), its answer waited for (turn.complete). */
 async function subagentStep($: EngineInterface, def: ResolvedSubagentAction, lang: Lang, input: StepInput): Promise<StepOutcome> {
   const t = MESSAGES[lang]
-  await ensureAgent($, def)
-  const spawned = await $.agent.spawn({ subagentType: subagentType(def), description: def.label, prompt: subagentPrompt(def, input) })
-  const agentId = spawned.agentId
-  if (spawned.deny !== undefined || agentId === undefined) return { ok: false, error: t.couldNotStart(spawned.deny ?? 'no agent id') }
+  const started = await spawnSubagent($, def, lang, subagentPrompt(def, input))
+  if (!started.ok) return started
   const done = await new Promise<AgentDone>(resolve => {
-    pendingAgents.set(agentId, resolve)
+    pendingAgents.set(started.agentId, resolve)
   })
   const raw = done.answer.trim()
   if (done.reason !== 'answer' || raw === '') return { ok: false, error: t.noAnswer(done.reason) }
@@ -1670,7 +1728,8 @@ async function localStep($: EngineInterface, def: LocalAction, lang: Lang, input
  * its checks again (recheckExec), a slot, and the run (execOnce). Its output
  * is passed on as written (tidied, never escaped); one cut short is not
  * passed on but fails the step, unless it is the last, which shows it as the
- * action does.
+ * action does: up to EXEC_OUTPUT_MAX, said so once when cut (runChain cuts
+ * no last output again, chainShown).
  */
 async function execStep($: EngineInterface, def: ExecAction, lang: Lang, input: StepInput, ctx: StepContext): Promise<StepOutcome> {
   const t = MESSAGES[lang]

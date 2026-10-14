@@ -2,7 +2,7 @@ import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { LOCAL_SELECTION_LIMIT } from '../hooks/actions'
+import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT } from '../hooks/actions'
 import { utf8Encode } from '../hooks/codec'
 import { ALLOWLIST_RELATIVE, APPROVALS_KEY, ENV_BIN, EXEC_STDIN_MAX, HISTORY_KEY } from '../hooks/exec'
 import { MESSAGES } from '../hooks/i18n'
@@ -40,7 +40,9 @@ const CE2 = chain('ce2', ['save', 'mine', 'save'], { showSteps: true })
 const URLS = chain('urls', ['mine', 'open-urls', 'two'], { showSteps: true })
 const COUNT = chain('count', ['mine', 'count-text'])
 const TIMED = chain('timed', ['timer', 'mine'])
-const DEFS = [ASK, TWO, SUB, SAVE, CC, SHOWN, CS, CE, CE2, URLS, COUNT, TIMED]
+const LONG = chain('long', ['save', 'mine'], { showSteps: true })
+const SC = chain('sc', ['sub', 'two'])
+const DEFS = [ASK, TWO, SUB, SAVE, CC, SHOWN, CS, CE, CE2, URLS, COUNT, TIMED, LONG, SC]
 const SETTING = JSON.stringify(DEFS)
 const OPTIONS = { ...EN, customActions: SETTING }
 
@@ -216,6 +218,22 @@ test('subagent as a step: a spawn refused stops the chain there, saying why', { 
   expect(await paneText($)).toContain(t.chainStepFailed(2, 2, 'Look', t.couldNotStart('no room')))
 })
 
+test('subagent as a step: registering it throwing stops the chain there, saying it could not start', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.refuse = 'not now'
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'sc')
+  await clock.settle()
+  expect(s.spawned).toEqual([])
+  expect(s.models).toEqual([])
+  const text = await paneText($)
+  expect(text).toContain(t.chainStepFailed(1, 2, 'Look', t.couldNotStart('')))
+  expect(text).toContain('not now')
+})
+
 // ---------------------------------------------------------------------------
 // Failures
 
@@ -379,6 +397,64 @@ test('an exec step that exits with another code stops the chain, saying so', { o
   const text = await paneText($)
   expect(text).toContain(t.chainStepFailed(1, 3, 'Save', t.execExit(4)))
   expect(text).toContain('disk full')
+})
+
+// ---------------------------------------------------------------------------
+// What is shown when the outputs are long
+
+test('showSteps, a long output before a failing step: the failure is still shown, the output before cut to make room', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  const long = 'x'.repeat(30_000)
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? { exitCode: 0, stdout: long } : defaultProcessAnswer(argv))
+  s.answer = 'empty'
+  await start($)
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'long')
+  await clock.settle()
+  const text = await paneText($)
+  expect(text).toContain(t.chainStepFailed(2, 2, 'Ask', t.noAnswer('empty-reply')))
+  expect(text).toContain(`${t.chainStep(1, 2, 'Save')}\n${'x'.repeat(LOCAL_TEXT_LIMIT)}\n${t.truncated}`)
+  expect(text).not.toContain('x'.repeat(LOCAL_TEXT_LIMIT + 1))
+})
+
+test('showSteps, a long output before the last step: the last output is still shown, the output before cut to make room', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? { exitCode: 0, stdout: 'x'.repeat(30_000) } : defaultProcessAnswer(argv))
+  await start($)
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'long')
+  await clock.settle()
+  // The whole output was passed on; only its showing is cut.
+  expect(s.models[0]?.prompt).toContain('x'.repeat(30_000))
+  const text = await paneText($)
+  expect(text).toContain(`${t.chainStep(1, 2, 'Save')}\n${'x'.repeat(LOCAL_TEXT_LIMIT)}\n${t.truncated}\n\n${t.chainStep(2, 2, 'Ask')}\nanswer from haiku`)
+})
+
+test('an exec last step: its output shown as the action run alone shows it, past LOCAL_TEXT_LIMIT, said to be cut once', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s } = setUp(on)
+  const long = 'y'.repeat(LOCAL_TEXT_LIMIT + 5_000)
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? { exitCode: 0, stdout: long } : defaultProcessAnswer(argv))
+  await start($)
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'ce')
+  await clock.settle()
+  let text = await paneText($)
+  expect(text).toContain(long)
+  expect(text).not.toContain(t.truncated)
+  // Cut by $.process.run: said so once, as the action run alone says it.
+  s.processAnswer = argv => (argv[0] === ENV_BIN ? { exitCode: 0, stdout: 'partial', isStdoutTruncated: true } : defaultProcessAnswer(argv))
+  await runCommand($, 'ce')
+  await clock.settle()
+  text = await paneText($)
+  expect(text).toContain(`partial\n\n${t.execTruncated}`)
+  expect(text).not.toContain(t.truncated)
+  expect(text.split(t.execTruncated)).toHaveLength(2)
 })
 
 // ---------------------------------------------------------------------------
@@ -577,6 +653,44 @@ test('execOrigin set to terminal while a model\'s step ran (run from afar): the 
   )
   expect(execRuns(s)).toEqual([])
   expect(await paneText($)).toContain(t.chainStepFailed(2, 2, 'Save', t.customReason({ code: 'execOrigin' })))
+})
+
+test('run once more: every step runs again, and the exec checks and the approval are done again before any model call', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on)
+  const { s, w } = setUp(on)
+  await start($)
+  s.selected = 'hello'
+  await clock.advance(400)
+  await runCommand($, 'ce')
+  await clock.settle()
+  expect(w.asked).toHaveLength(1)
+  expect(s.models).toHaveLength(1)
+  expect(execRuns(s)).toHaveLength(1)
+  // A chain's entry runs over no time: it offers no "again" button; running it once more is running it again.
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await pane.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k.startsWith('_again-'))).toEqual([])
+  await pane.unmount()
+  // The executable changed since: the approval no longer holds, so it is asked again, before the model.
+  w.files[TOOL] = { content: `${SCRIPT}# v2\n` }
+  let modelsAtAsk = -1
+  w.onAsk = () => {
+    modelsAtAsk = s.models.length
+  }
+  await runCommand($, 'ce')
+  await clock.settle()
+  expect(w.asked).toHaveLength(2)
+  expect(modelsAtAsk).toBe(1)
+  expect(s.models).toHaveLength(2)
+  expect(execRuns(s).map(r => r.stdin)).toEqual(['answer from haiku', 'answer from haiku'])
+  expect(s.stored[APPROVALS_KEY]).toEqual({ save: { path: TOOL, args: [], sha256: hashOf(`${SCRIPT}# v2\n`) } })
+  // Declined this time: nothing runs, no model is called.
+  w.files[TOOL] = { content: OTHER }
+  w.answer = t.execCancel
+  await runCommand($, 'ce')
+  await clock.settle()
+  expect(w.asked).toHaveLength(3)
+  expect(s.models).toHaveLength(2)
+  expect(execRuns(s)).toHaveLength(2)
 })
 
 // A reload while a chain runs (chainReloaded) cannot be made here: the kit

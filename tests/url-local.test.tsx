@@ -880,6 +880,26 @@ test('copy-urls: the URLs reach $.ui.copy one per line, and the entry is done; r
   })
 })
 
+// A $.ui.copy that throws: the message is shown once escaped by url-local's
+// messageShown (\uXXXX), not through displaySafe as well (no U+XXXX), and no
+// raw control or bidirectional character reaches the pane (SELM-00127).
+test('copy-urls: a copy that throws shows its message with control characters escaped once', { options: { language: 'en', pinActions: 'copy-urls' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.copyDeny = 'bad\u0007\u202Ename'
+  await select(s, clock, 'https://a.example')
+  await runCommand($, 'copy-urls')
+  expect(s.copies).toEqual([{ text: 'https://a.example' }])
+  const r = await entry($, 'Could not copy')
+  expect(r?.failed).toBe(true)
+  expect(r?.text).toContain('bad\\u0007\\u202ename')
+  expect(r?.text).toContain('- https://a.example')
+  expect(r?.text).not.toContain('\u0007')
+  expect(r?.text).not.toContain('\u202E')
+  expect(r?.text).not.toContain('U+')
+})
+
 test('copy-urls pressed on the hint line copies on the surface it was pressed on', { options: { language: 'en', pinActions: 'copy-urls' } }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)

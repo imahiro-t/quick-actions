@@ -8,6 +8,7 @@
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, needsSelection, textOf } from './actions'
 import type { LocalAction, LocalEffect, LocalInput, TickerFrame } from './actions'
 import type { ArgValue } from './args'
+import { displaySafe } from './custom'
 import { MESSAGES } from './i18n'
 import { RandomUnavailableError } from './random'
 import type { Lang } from './i18n'
@@ -143,7 +144,7 @@ export function runLocal(
     return outcomeOf(def.compute(input), opts.selection, opts.lang, opts.whole === true)
   } catch (err) {
     // No secure random numbers: said in the user's language, not as the error's own English.
-    const reason = err instanceof RandomUnavailableError ? t.randomUnavailable : messageOf(err)
+    const reason = err instanceof RandomUnavailableError ? t.randomUnavailable : displaySafe(messageOf(err))
     return { kind: 'settle', ok: false, text: t.failed(reason) }
   }
 }
@@ -199,7 +200,7 @@ export function tickerStep(
   try {
     return stepOf(frame(at.now), at)
   } catch (err) {
-    const reason = err instanceof RandomUnavailableError ? MESSAGES[at.lang].randomUnavailable : messageOf(err)
+    const reason = err instanceof RandomUnavailableError ? MESSAGES[at.lang].randomUnavailable : displaySafe(messageOf(err))
     return { kind: 'failed', reason }
   }
 }

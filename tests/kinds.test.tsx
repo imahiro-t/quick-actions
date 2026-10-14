@@ -239,6 +239,35 @@ for (const surface of SURFACES) {
   })
 }
 
+// A subagent that could not start says why with displaySafe applied: a raw
+// control or bidirectional character in the reason (refused, or thrown) is
+// shown as U+XXXX, never put into the pane as is.
+const UNSAFE = 'bad\u0007\u202Ename'
+for (const surface of SURFACES) {
+  for (const path of ['refused', 'thrown'] as const) {
+    test(`[${surface}] a subagent ${path} at its start shows why with control characters as U+XXXX`, { options: WITH_ASK }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'segfault'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
+      if (path === 'refused') s.spawnDeny = UNSAFE
+      else s.refuse = UNSAFE
+      await reselect(s, clock)
+      await band.press({ key: 'code' })
+
+      const pane = await $.ui.mount({ ...PANE, surface })
+      const texts = (await pane.findAll({ text: /^起動できませんでした: / })).filter(f => f.type === 'Text').map(f => f.text)
+      expect(texts).toHaveLength(1)
+      expect(texts[0]).toContain('badU+0007U+202Ename')
+      expect(texts[0]).not.toContain('\u0007')
+      expect(texts[0]).not.toContain('\u202E')
+      if (path === 'refused') expect(texts[0]).toBe('起動できませんでした: badU+0007U+202Ename')
+    })
+  }
+}
+
 // Docked, core paints the pane's background in the theme, so the heading and
 // the answer are drawn in the theme too, the quote dimColor (the theme's
 // `inactive`); inline, nothing is painted, so they keep the terminal's

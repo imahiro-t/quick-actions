@@ -352,7 +352,8 @@ async function ensureAgent($: EngineInterface, def: ResolvedSubagentAction) {
  * selection, or a standalone action's argument, or nothing more), as an
  * action run alone and a chain's step both do: its agent ID, or, refused,
  * with no agent ID, or thrown (registering or spawning it), why it could not
- * start (couldNotStart). Never rejects.
+ * start (couldNotStart), with displaySafe applied first, so a control or
+ * bidirectional character in the reason is never shown raw. Never rejects.
  */
 async function spawnSubagent(
   $: EngineInterface,
@@ -368,10 +369,10 @@ async function spawnSubagent(
       description: def.label,
       prompt,
     })
-    if (spawned.deny !== undefined || spawned.agentId === undefined) return { ok: false, error: t.couldNotStart(spawned.deny ?? 'no agent id') }
+    if (spawned.deny !== undefined || spawned.agentId === undefined) return { ok: false, error: t.couldNotStart(displaySafe(spawned.deny ?? 'no agent id')) }
     return { ok: true, agentId: spawned.agentId }
   } catch (err) {
-    return { ok: false, error: t.couldNotStart(messageOf(err)) }
+    return { ok: false, error: t.couldNotStart(displaySafe(messageOf(err))) }
   }
 }
 

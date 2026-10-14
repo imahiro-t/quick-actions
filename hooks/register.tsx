@@ -553,7 +553,7 @@ async function startTicker($: EngineInterface, lang: Lang, id: number, label: st
     if (tickers.get(id) !== ticker) period.cancel()
   } catch (err) {
     endTicker(id)
-    await settle($, id, false, t.failed(messageOf(err)))
+    await settle($, id, false, t.failed(displaySafe(messageOf(err))))
     return
   }
   await applyStep($, lang, id, label, ticker, tickerStep(run.frame, { startedAt: now, now, lastText: undefined, lang }), now)
@@ -577,7 +577,7 @@ async function runLocalAction(
   try {
     now = await $.clock.now()
   } catch (err) {
-    await settle($, id, false, t.failed(messageOf(err)))
+    await settle($, id, false, t.failed(displaySafe(messageOf(err))))
     return
   }
   const input = localInputFor(def, { ...src, now, timeZone: timeZoneLabel(now), lang, utcOffsetMinutes, random, randomBytes })
@@ -610,7 +610,7 @@ async function runEffect($: EngineInterface, lang: Lang, id: number, effect: Loc
     for (const url of effect.urls) attempts.push(await openOne($, platform, url))
     await settle($, id, openSucceeded(attempts), truncate(openResultText(lang, attempts, effect.skipped, effect.withheld), lang))
   } catch (err) {
-    await settle($, id, false, MESSAGES[lang].failed(messageOf(err)))
+    await settle($, id, false, MESSAGES[lang].failed(displaySafe(messageOf(err))))
   }
 }
 
@@ -622,6 +622,9 @@ async function copyEffect($: EngineInterface, lang: Lang, id: number, effect: Ex
     const shown = r.isCopied ? copyResultText(lang, effect.urls) : copyResultText(lang, effect.urls, { reason: r.reason })
     await settle($, id, r.isCopied, truncate(shown, lang))
   } catch (err) {
+    // Not through displaySafe here: copyResultText shows `thrown` through
+    // ./url-local's messageShown, which escapes hidden characters already;
+    // both would mix U+XXXX into its \uXXXX.
     await settle($, id, false, truncate(copyResultText(lang, effect.urls, { thrown: messageOf(err) }), lang))
   }
 }
@@ -639,6 +642,8 @@ async function openOne($: EngineInterface, platform: Platform, url: string): Pro
   } catch (err) {
     const endedAt = await readQuietly($.clock.now())
     const elapsed = startedAt === undefined || endedAt === undefined ? 0 : endedAt - startedAt
+    // Not through displaySafe here: the reason is shown through ./url-local's
+    // messageShown, which escapes hidden characters already.
     return attemptOfRejection(url, messageOf(err), elapsed)
   }
 }
@@ -739,7 +744,7 @@ async function complete($: EngineInterface, lang: Lang, id: number, call: () => 
     await settle($, id, r.isAnswered, r.isAnswered ? showHiddenNoted(r.text.trim(), lang) : t.noAnswer(r.reason))
   } catch (err) {
     // A thrown call must not leave the entry "running" for good.
-    await settle($, id, false, t.failed(messageOf(err)))
+    await settle($, id, false, t.failed(displaySafe(messageOf(err))))
   }
 }
 

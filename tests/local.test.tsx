@@ -2,6 +2,7 @@ import { expect, test } from './kit'
 
 import { LOCAL_SELECTION_LIMIT, LOCAL_TEXT_LIMIT, TICKER_MAX_MS, TICKER_MIN_INTERVAL_MS, messageOf, textOf } from '../hooks/actions'
 import type { LocalAction, LocalInput, LocalOutput } from '../hooks/actions'
+import { displaySafe } from '../hooks/custom'
 import { MESSAGES } from '../hooks/i18n'
 import { clampInterval, codePointPrefix, localInputFor, runLocal, tickerStep, truncate } from '../hooks/local'
 import type { LocalSource } from '../hooks/local'
@@ -150,6 +151,26 @@ test('tickerStep: same, show, done (with its toast), the 24-hour limit and a fra
       { startedAt: 0, now: 1, lastText: undefined, lang: 'en' },
     ),
   ).toEqual({ kind: 'failed', reason: 'bad frame' })
+})
+
+// A compute or a frame that throws a message with a control or bidirectional
+// character: the reason is passed through displaySafe where it is read, so the
+// pane shows U+XXXX, never the raw character (SELM-00127).
+test('runLocal / tickerStep: a thrown message is shown through displaySafe', () => {
+  const UNSAFE = 'bad\u0007\u202Ename'
+  const thrown = on(() => {
+    throw new Error(UNSAFE)
+  })
+  const settled = runLocal(thrown, localInputFor(thrown, SOURCE), { selection: true, lang: 'ja' })
+  expect(settled).toEqual({ kind: 'settle', ok: false, text: MESSAGES.ja.failed(displaySafe(UNSAFE)) })
+  expect(settled).toEqual({ kind: 'settle', ok: false, text: '失敗しました: badU+0007U+202Ename' })
+  const step = tickerStep(
+    () => {
+      throw new Error(UNSAFE)
+    },
+    { startedAt: 0, now: 1, lastText: undefined, lang: 'en' },
+  )
+  expect(step).toEqual({ kind: 'failed', reason: 'badU+0007U+202Ename' })
 })
 
 test('truncate: counts code points, so an emoji on the limit is kept whole or left out whole, never split', () => {

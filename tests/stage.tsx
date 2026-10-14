@@ -368,6 +368,8 @@ export type Stage = {
   // Every $.ui.copy the plugin asked for (its text and surface), in order, and what each answers.
   copies: { text: string; surface?: string }[]
   copyAnswer: UiCopyResult
+  // Set to have every $.ui.copy refused with this reason (the plugin's call then rejects with it).
+  copyDeny: string | null
 }
 
 /** How the stage answers one $.process.run: what the command came to, or a refusal (the call rejects). */
@@ -403,7 +405,7 @@ const reply = (s: Stage, text: string) => {
 export type StageOptions = { store?: Readonly<Record<string, unknown>> }
 
 export const stage = (on: On, options: StageOptions = {}): Stage => {
-  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, sourceSettings: {}, sourceReads: [], sourceDeny: [], hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {}, processRuns: [], processAnswer: defaultProcessAnswer, copies: [], copyAnswer: { isCopied: true } }
+  const s: Stage = { selected: null, selectedRow: null, models: [], registered: [], commands: [], spawned: [], forks: [], toasts: [], answer: 'text', answerText: null, spawnDeny: null, refuse: null, settings: {}, settingsReads: 0, settingsDeny: null, sourceSettings: {}, sourceReads: [], sourceDeny: [], hold: null, opened: [], closed: [], rows: {}, panes: [], shown: null, focused: null, focusRequest: null, reopenShows: true, stored: { ...options.store }, drawn: {}, processRuns: [], processAnswer: defaultProcessAnswer, copies: [], copyAnswer: { isCopied: true }, copyDeny: null }
   const json = (value: unknown) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
   on('store.get', (_$, e) => ({ value: json(s.stored[e.key]) }))
   on('store.set', (_$, e) => {
@@ -429,6 +431,7 @@ export const stage = (on: On, options: StageOptions = {}): Stage => {
   })
   on('ui.copy', (_$, e) => {
     s.copies.push({ text: e.text, ...(e.surface === undefined ? {} : { surface: e.surface }) })
+    if (s.copyDeny !== null) return { deny: s.copyDeny }
     return { value: s.copyAnswer }
   })
   on('turn.complete', (_$, e) => ({ text: e.answer }))

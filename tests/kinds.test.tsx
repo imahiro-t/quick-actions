@@ -268,6 +268,31 @@ for (const surface of SURFACES) {
   }
 }
 
+// A model call (complete, or fork) that throws: its message is shown through
+// displaySafe, a raw control or bidirectional character as U+XXXX (SELM-00127).
+for (const surface of SURFACES) {
+  for (const key of ['explain', 'ask'] as const) {
+    test(`[${surface}] ${key}: a model call that throws shows why with control characters as U+XXXX`, { options: WITH_ASK }, async ($, on) => {
+      const clock = mock.clock(on)
+      const s = stage(on)
+      await start($)
+      s.selected = 'segfault'
+      await clock.advance(400)
+      const band = await $.ui.mount({ ...BAND, surface })
+      s.refuse = UNSAFE
+      await reselect(s, clock)
+      await band.press({ key })
+
+      const pane = await $.ui.mount({ ...PANE, surface })
+      const texts = (await pane.findAll({ text: /^失敗しました: / })).filter(f => f.type === 'Text').map(f => f.text)
+      expect(texts).toHaveLength(1)
+      expect(texts[0]).toContain('badU+0007U+202Ename')
+      expect(texts[0]).not.toContain('\u0007')
+      expect(texts[0]).not.toContain('\u202E')
+    })
+  }
+}
+
 // Docked, core paints the pane's background in the theme, so the heading and
 // the answer are drawn in the theme too, the quote dimColor (the theme's
 // `inactive`); inline, nothing is painted, so they keep the terminal's

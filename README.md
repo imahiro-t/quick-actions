@@ -1266,6 +1266,14 @@ The [action catalog](https://imahiro-t.github.io/quick-actions/) (`docs/index.ht
 - Then regenerate the data with `node scripts/gen-catalog.mjs` at the root of the repository and commit `docs/actions-data.js`. The script needs Node 24 or later (it imports the TypeScript sources as they are); with asdf, for one: `ASDF_NODEJS_VERSION=24.21.0 node scripts/gen-catalog.mjs`
 - `tests/catalog.test.ts` (run by `claude plugin test .`) fails when the data was not regenerated, and when a built-in has no category or summary, or one of another kind
 
+### Type checking in a new worktree
+
+`.claude-plugin/types/` holds the type definitions of the Claude Code plugin API (`claude-code`, `claude-code-tools`, `claude-code-mcp`) and the `tsconfig.json` for type checking, which the root `tsconfig.json` extends. It is ignored by git, so a newly created worktree does not have it.
+
+- Copy it from the main working tree (the directory the repository was cloned into). At the root of the worktree: `cp -R <main working tree>/.claude-plugin/types .claude-plugin/`. From inside the worktree, the main working tree can be found with git: `cp -R "$(git rev-parse --path-format=absolute --git-common-dir)/../.claude-plugin/types" .claude-plugin/` (this holds when the main working tree's `.git` is a directory at its root, as for a plain clone)
+- Then type check at the root of the repository with `npx -p typescript tsc -p tsconfig.json`
+- The root `tsconfig.json` sets `noEmit: true` itself, so running `tsc` before copying the types writes no `.js` into the repository: it only fails, unable to resolve the types
+
 ### Test files
 
 - A test file (`tests/*.test.ts` / `*.test.tsx`) takes `test`, `expect` and `mock` from `./kit` (`tests/kit.ts`), not from `claude-code/testing`: the `test` of `./kit` gives a test with no `timeoutMs` 30 seconds instead of the kit's 5, so that tests do not fail on time alone on a busy machine. `import type` from `claude-code/testing` is fine

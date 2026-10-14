@@ -190,6 +190,7 @@ What goes out depends on the kind of action and how it runs.
 - **The actions that check the web** (📚 Check on the web `web-check`, 📘 Official docs `official-docs`, 🚑 Search the error `search-error`, 📦 Package info `package-info`) send the selection outside: words from it go to a web search service as queries, and they fetch pages at URLs written in the selection or turned up by the search. They have no tool that reads files, and like every subagent of this plugin they run without CLAUDE.md (yours, the project's or the rules) in their context, so nothing from the repository or CLAUDE.md is put into those queries or URLs: the queries come from the selection, and the pages fetched are ones the selection names or the search found (their prompts also tell them to build queries from the selection alone and fetch only such URLs, though that part rests on the model following it). The pages they fetch can carry instructions of their own (prompt injection) that steer the answer, or what is searched and fetched next. Since they cannot change files or run commands, the effect stays within the answer in the pane. They send only when you press one on the hint line or in the ⋯ dialog, or run `/quick-actions <id>`. They are not in the first-time order, but they can always be picked in the ⋯ dialog (type `web-check` or the like in its filter), and once used they may show on the hint line in the order of use (no setting takes them out of the order). Whether they can search or fetch at all also depends on your Claude Code permissions for `WebSearch` / `WebFetch`
 - Actions you add in [`customActions`](#customactions) send the same way as their kind (the selection, the conversation, or the prompt and the argument). A custom subagent you allow `WebFetch` / `WebSearch` can send the selection, its argument and the files it read (inside the repository or out) to outside sites (instructions hidden in the selection can steer it to). Tools that run commands or change files (`Bash`, `Write`, `Edit` and the like) are not accepted (see [Adding an action from the settings](#from-the-settings-customactions))
 - **Custom actions of kind `exec`** ask no model: they hand the selection, the conversation (as JSON) or the argument to a program on your own machine, on its standard input, and the plugin sends nothing out for them. What the program does with it is up to the program (see [Running a local program (exec)](#running-a-local-program-exec))
+- **Custom actions of kind `chain`** send nothing of their own: each step sends what its action sends when run alone, the first on the selection, the conversation or the argument, and each after it on the output of the step before, as its selected text. An exec step gets that output, a model's answer included, as it is on its standard input (see [Running actions in sequence (chain)](#running-actions-in-sequence-chain))
 
 ### Usage counts
 
@@ -349,7 +350,7 @@ Directly in `settings.json`, escaped the same way:
 
 It is read again whenever the plugin reloads, like `pinActions` and `language`: a change in `/config` takes effect at once; after `claude plugin configure` or an edit to settings.json, restart Claude Code. Run `/quick-actions` after a change to see whether any definition was ignored, and why.
 
-Definitions of kind `exec`, which run a program on your machine, work only as written in your user settings (`~/.claude/settings.json`), and also need the program in an allowlist file in your home directory and your approval at the first run: see [Running a local program (exec)](#running-a-local-program-exec).
+Definitions of kind `exec`, which run a program on your machine, work only as written in your user settings (`~/.claude/settings.json`), and also need the program in an allowlist file in your home directory and your approval at the first run: see [Running a local program (exec)](#running-a-local-program-exec). The same holds for a definition of kind `chain` with an exec step: see [Running actions in sequence (chain)](#running-actions-in-sequence-chain).
 
 ### `execOrigin`
 
@@ -925,8 +926,8 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 | `id` | yes | all | The ID written in `pinActions` and the command: lowercase letters and digits, joined by single hyphens (`review-pr`). Not a built-in's ID, not `close` (the ✕ button), `hint` or `exec-approvals` (the command's arguments), and not one an earlier custom definition already took. Up to 64 characters (the longest name a subagent can have) |
 | `icon` | yes | all | The icon on the hint line (one emoji). A symbol that is text by default (☀, ✂, 🗂 and the like) is drawn as an emoji, with VS16 (U+FE0F) added after it, so that it takes the two columns the terminal draws it in; one already followed by VS16 or VS15 is left as written, and so are ©, ® and ™, drawn as the one-column marks they are. Up to 16 characters (counted in code points, so a ZWJ sequence or a flag fits); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
 | `label` | yes | all | The name shown on hover and as the pane heading: one string for both languages, or `{ "ja": "…", "en": "…" }`. Up to 64 characters each (counted in code points); control characters (ESC, NUL, tab, newline and the like), bidirectional controls (U+202E and the like) and the line and paragraph separators (U+2028, U+2029) are refused |
-| `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local), or `exec` (runs a program on your machine; see [Running a local program (exec)](#running-a-local-program-exec)) |
-| `target` | no | all | What it works on: `selection` (the default, also when empty), `context` (the conversation, with no selected text; `kind` must then be `fork` or `exec`) or `none` (a standalone action, on neither the selection nor the conversation; `kind` must then be `complete`, `subagent` or `exec`). It is shown as `[icon]`, `<icon>` or `{icon}` accordingly |
+| `kind` | yes | all | How it runs: `complete` / `fork` / `subagent` (as for the built-ins, see [Action list](#action-list); a custom action cannot be local), or `exec` (runs a program on your machine; see [Running a local program (exec)](#running-a-local-program-exec)), or `chain` (runs other actions one after another; see [Running actions in sequence (chain)](#running-actions-in-sequence-chain)) |
+| `target` | no | all but chain | What it works on: `selection` (the default, also when empty), `context` (the conversation, with no selected text; `kind` must then be `fork` or `exec`) or `none` (a standalone action, on neither the selection nor the conversation; `kind` must then be `complete`, `subagent` or `exec`). It is shown as `[icon]`, `<icon>` or `{icon}` accordingly. A chain takes its first step's and cannot have one |
 | `prompt` | yes | complete, fork, subagent | complete: the system prompt; fork: the instruction that follows the selection (with `target` `context`, the instruction alone); subagent: its system prompt |
 | `runningText` | no | all | What the pane shows while it runs, as `label` is written (default "Thinking…" / "考え中…"). Up to 64 characters each, with the same characters refused as in `label` |
 | `model` | complete and subagent | complete, subagent | `haiku`, `sonnet` or `opus` only, lowercase. A fork uses the conversation's model and ignores it |
@@ -937,8 +938,10 @@ Write the definitions as a JSON array in the [`customActions`](#customactions) s
 | `command` | exec | exec | The program's absolute path (see [Running a local program (exec)](#running-a-local-program-exec)) |
 | `args` | no | exec | Its fixed arguments, an array of strings passed as written |
 | `timeoutMs` | no | exec | How long it may run, 1000 to 120000 milliseconds (default 30000) |
+| `steps` | chain | chain | The IDs of the actions to run, in order: 2 to 8 built-in or custom ones (see [Running actions in sequence (chain)](#running-actions-in-sequence-chain)) |
+| `showSteps` | no | chain | `true` shows each step's output too, not only the last (default `false`) |
 
-Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored, except on an `exec` definition: one with `prompt`, `model`, `tools`, `task`, `maxTokens` or `description` is ignored as a whole.
+Fields the kind does not use (`tools` on a complete action, for example) and unknown fields are ignored, except on an `exec` or `chain` definition: an exec one with `prompt`, `model`, `tools`, `task`, `maxTokens` or `description`, or a chain with any of those, `command`, `args`, `timeoutMs` or `target`, is ignored as a whole.
 
 **The argument of an action with `target` `none`**: a custom standalone action takes one optional free-text argument of up to 500 characters (its type and default cannot be defined). The argument written in `/quick-actions <id> <argument>` is passed in `<input>…</input>`, as data rather than instructions: a line ahead of it says the text inside is data the user typed, not instructions, and any `<input>` / `</input>` tag inside it (in the same forms as for `<selected>` in [What is sent, and when](#what-is-sent-and-when)) is made harmless first. It goes as the user's input for complete, after `task` for subagent. Pressed on the hint line or in the ⋯ dialog, it asks for the argument on the [argument screen](#the-argument-screen) (with no default, an empty Enter says it runs with no argument, and the field shows "text"), and what is typed there is passed the same way. With none (an empty field, or a press in the mobile app too), complete is given only a set line saying there is no input, and subagent `task` alone. An `exec` action gets the argument as it is (not wrapped in `<input>`), on its standard input, and empty input when there is none.
 
@@ -1030,10 +1033,11 @@ A definition is ignored, alone, when:
 - `icon` is longer than 16 characters, `label` or `runningText` longer than 64, or `description` longer than 500 (in code points, each language's for `{ "ja", "en" }`), such as `label is too long (up to 64 characters)`
 - `icon`, `label`, `runningText` or `description` has a control character, a bidirectional control or a line or paragraph separator, such as `label contains a character it cannot have: U+001B (…)` (the character is written as U+XXXX)
 - a required field is missing or empty (`model` and `task` as its kind needs them), or a value is of the wrong shape (`label` with only one of `ja` / `en`, `maxTokens` out of range, `tools` empty or not an array)
-- `kind` is not `complete` / `fork` / `subagent` / `exec`, or `model` is not `haiku` / `sonnet` / `opus`
+- `kind` is not `complete` / `fork` / `subagent` / `exec` / `chain`, or `model` is not `haiku` / `sonnet` / `opus`
 - `target` is not `selection` / `context` / `none` (lowercase), is `context` with a `kind` other than `fork` or `exec`, or is `none` with the `kind` `fork`, such as `target must be one of selection, context, none (given: foo)`, `a definition with target context must have kind fork or exec (given: complete)` or `an action with target none must be complete, subagent or exec (given: fork)`
 - `tools` names a tool outside the five above: the whole definition is ignored rather than run without it, since that would run something other than what you wrote
 - of kind `exec`: `command` is not an absolute path (or has a character or form it cannot have), `args` is not an array of strings within its limits, `timeoutMs` is out of range, or it has a field of the other kinds (`prompt`, `model`, `tools`, `task`, `maxTokens`, `description`), such as `write command as the executable's absolute path (PATH is not searched; …; given: jq)` or `a definition of kind exec cannot have prompt`. Where it came from, the allowlist and the approval are checked too: see [Where the problems show](#where-the-problems-show)
+- of kind `chain`: `steps` is not 2 to 8 IDs, names no valid action, names a chain, or names an action not on the selection after the first step, or the chain has a field of the other kinds: see [Running actions in sequence (chain)](#running-actions-in-sequence-chain)
 
 When the setting is not valid JSON, or not an array, every custom definition is ignored. In settings.json the value must be a string (the array in quotes, its quotes escaped): Claude Code does not load the plugin with an unquoted array there. The built-ins work as before in every case. To see what was ignored and why:
 
@@ -1183,9 +1187,76 @@ The first time an exec action runs, and again whenever the path its command land
 - **Others can get in your way, not run code**: a sender other than you can revoke approvals (`revoke` is accepted from anywhere), so that your next run asks again, and, with `execOrigin` off, keep the 3 places of the [run limit](#limits) busy, so that your own runs are refused for a while. Neither runs anything new. `execOrigin: terminal` stops the second
 - **What you hand it goes to it**: the selection, or the whole conversation (with any file contents and secrets that came up in it), goes to the program, and what it does with it (writing files, sending it over the network) is up to the program. It runs with your own permissions, with no sandbox
 - Write exec definitions in your user settings alone. Those in a project's settings are ignored, and a project that overrides `customActions` turns exec off
-- **Adding or changing exec definitions is yours alone**: a change to `customActions` that adds an exec definition, or changes one in any field (its command, arguments, label, icon, timeout, …), is refused unless you make it yourself in `/config` (`Quick Actions customActions can have exec definitions added or changed only by you, in /config`); another plugin (through `$.config.set`) or Remote Control cannot, so they cannot slip a definition with a misleading label in front of your approval dialog. What it is checked against is the `customActions` text in your user settings, never the merged one, so exec definitions from a project's settings cannot be copied into yours this way either. A change from them that takes exec definitions out, or changes only the other kinds, goes through. When your user settings cannot be read, any such change holding an exec definition is refused; when the check itself fails, any change of theirs to `customActions` is. Like the [`execOrigin`](#execorigin) guard, this is a second line of defence only: a settings file written directly, or another plugin's own `config.set` hook, gets around it, and what still holds then is the allowlist, your approval dialog and its check of the path, arguments and SHA-256
+- **Adding or changing exec definitions, and chains with an exec step, is yours alone**: a change to `customActions` that adds an exec definition, or changes one in any field (its command, arguments, label, icon, timeout, …), is refused unless you make it yourself in `/config` (`Quick Actions customActions can have exec definitions, and chains with an exec step, added or changed only by you, in /config`). So is one that adds a [chain](#running-actions-in-sequence-chain) with an exec step, or changes such a chain in any way: its steps, label, icon or `showSteps`, and also the definition of any action its steps name (a model step's prompt or model, say, or a step's ID given to a definition of another kind). Another plugin (through `$.config.set`) or Remote Control cannot, so they cannot slip a definition with a misleading label in front of your approval dialog, or change what a chain hands your program. What it is checked against is the `customActions` text in your user settings, never the merged one, so exec definitions from a project's settings cannot be copied into yours this way either. A change from them that takes exec definitions (or chains) out, or changes only the other kinds and no action a chain with an exec step names, goes through. When your user settings cannot be read, any such change holding an exec definition or a chain with an exec step is refused; when the check itself fails, any change of theirs to `customActions` is. Like the [`execOrigin`](#execorigin) guard, this is a second line of defence only: a settings file written directly, or another plugin's own `config.set` hook, gets around it, and what still holds then is the allowlist, your approval dialog and its check of the path, arguments and SHA-256
 - Not defended against: `HOME` changed before Claude Code starts (your user settings are read from that same place)
 - This is a separate mechanism from the tools of a custom subagent: `Bash` and the other tools that run commands or change files are still not accepted there
+
+#### Running actions in sequence (chain)
+
+A definition of kind `chain` runs actions that are already there, built-in or custom, one after another as one action: each step's output goes to the next step as its selected text (to an exec step, on its standard input). With one press you can, say, translate the selection, sum it up, and have a script of yours add the summary to a file, which no single kind can do (exec asks no model, and complete, fork and subagent cannot write files).
+
+```json
+{
+  "id": "ja-sum-save",
+  "icon": "🔗",
+  "label": { "ja": "翻訳・要約して保存", "en": "Translate, sum up, save" },
+  "kind": "chain",
+  "steps": ["translate-ja", "summarize", "append-note"],
+  "showSteps": false
+}
+```
+
+(`append-note` here is an exec action of your own, defined in the same array; a step may name a definition written before or after the chain.)
+
+##### Fields of a chain
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `steps` | yes | The IDs of the actions to run, in order, 2 to 8 of them: built-ins or valid custom definitions. A step cannot be defined inline, and cannot be another chain |
+| `showSteps` | no | `true` shows the output of every step, each under its heading; `false` (the default, also when `null`) shows the last step's alone |
+
+`id`, `icon`, `label` and `runningText` are written as for the other kinds. A chain has no `target`: it takes its first step's. `prompt`, `model`, `tools`, `task`, `maxTokens`, `description`, `command`, `args`, `timeoutMs` and `target` cannot be written: a chain with any of them is ignored (`a chain (kind: chain) cannot have prompt`).
+
+##### What each step works on
+
+- **The first step** works on what it works on alone, and the chain is shown and run as that kind: a first step on the selection makes it `[icon]`, a context action `<icon>`, and a standalone action `{icon}`, taking an argument as that action does (`/quick-actions <id> <argument>` or the argument screen; with none, the first step's default, if it has one)
+- **Every step after it** gets the output of the step before as its selected text, so it must be an action on the selection (`target` `selection`). A context or standalone action can only be the first step
+- A step runs as its action runs alone and sends what it sends (see [What is sent, and when](#what-is-sent-and-when)): a model step gets the text wrapped in `<selected>…</selected>` as data, a fork step also passes the conversation, and an exec step gets the text as it is on its standard input
+
+##### Invalid chains
+
+A chain is ignored, alone and with the reason, as any [invalid definition](#invalid-definitions), when:
+
+- `steps` is missing, or is not an array of 2 to 8 strings (`steps must list 2 to 8 action IDs (strings)`), or `showSteps` is not `true` / `false`
+- a step names no valid action: an ID that is not there, or a custom definition that is itself ignored (`step 2: there is no valid action foo`)
+- a step is a chain, itself included (`step 2: ja-sum is a chain (chains cannot be nested)`). Chains cannot be nested, so they cannot loop either
+- a step after the first is not an action on the selection (`step 2: standup is not an action on the selection (every step after the first must be one)`)
+- it has a field of another kind, `target` included (above)
+- a step is an exec action that cannot be used (from where it came, the allowlist and the like, as in [Where the problems show](#where-the-problems-show)): `step 3: the exec action append-note cannot be used: …`. Such a chain is left off the hint line and out of the ⋯ dialog like the exec action itself
+
+##### What the pane shows for a chain
+
+- While it runs: `Step n/N: label`, the step running and its label
+- When it ends: the last step's output alone, or, with `showSteps`, the output of every step under `Step n/N: label`
+- The last step's output is shown with the same limit as when that action runs alone (an exec action's up to 100,000 characters, a local action's up to 20,000, a model's answer whole). With `showSteps`, the outputs of the steps before it share 20,000 characters between them, from the top down, each cut with a note when it runs over, so however long they are they never push the last output (or the failure) out of sight. Only the display is cut: the next step is given the whole output
+- A run counts as one use of the chain, under its ID, not as uses of its steps. An exec step is recorded in the exec [history](#limits) under the exec action's own ID
+
+##### When a step fails
+
+The chain stops at the step that fails, and the steps after it do not run. The pane shows `Failed at step n/N (label): …` with that step's error, after the outputs of the steps before it with `showSteps`. A step fails when its action would (a model with no answer, an exec program with an exit code other than 0 or past its timeout, and the like), and also when:
+
+- the text passed to it is past what it takes: up to 1 MiB on an exec step's standard input (`what it would be given is too large (up to 1,048,576 bytes)`), up to 1,000,000 characters for a local action
+- a step before the last gives no output (`the step gave no output, so there is nothing to pass on`), or, as an exec step, an output that was cut (past 100,000 characters, or Claude Code's 4 MiB a stream): a part is never passed on (`the output of the step passed its limit, so it was not passed on`)
+- a local action would open or copy URLs (`open-urls`, `copy-urls`: `a step of a chain does not open or copy URLs`), or run over time, as a timer does (`a step of a chain cannot run over time (a timer and the like)`). Whether one does depends on its input, so a chain naming one is not refused when it is read but fails when that step runs
+
+##### Chains with an exec step
+
+- A chain with an exec step works only when everything an exec action needs alone holds: the chain is written in your **user settings**, each exec step's program is in the **allowlist**, you **approved** it, and [`execOrigin`](#execorigin) lets it run from where it was asked. Anything else is refused, and the reason shown
+- **Before any step runs**, and so before any model is called, every exec step is checked and, when needed, its approval asked (once for an exec action that is more than one step). Refused or cancelled, nothing runs and no model is called: the entry opens failed, saying at which step and why, and a toast says so too
+- Right before each exec step starts, its checks are made again, with nothing asked. If the plugin was reloaded meanwhile (`not run: the settings were read again while the chain ran, so its exec step was not run`), the approval was revoked or changed (`not run: the approval of the exec action was revoked or changed while the chain ran. …`), the program was taken out of the allowlist, or changed (`not run: the executable changed after it was checked`), or `execOrigin` no longer lets it run, the step is not run and the chain fails there. While it runs, an exec step takes one of the 3 places of the [run limit](#limits)
+- **The approval is shared with the exec action run alone**: it is kept per exec action ID, so an action you approved alone runs in a chain with no dialog, and one approved from a chain runs alone with none. The approval dialog shows the exec action's own label and ID: it does not say that the run comes from a chain, nor that its input is a model's output
+- **A model's output goes straight to the program**: an exec step after a model step gets the model's answer as it is, on its standard input, with nothing checked or escaped. A model can be steered by instructions in the selection, the conversation or a page it read (prompt injection), so the program gets whatever the model was made to write. Put an exec step after a model only with a program that is safe to run on any input (see the [security notes](#security-notes) above)
+- **Changing it is yours alone**: a chain with an exec step cannot be added or changed in any way (its steps, label, icon, `showSteps`, and the definitions of the actions its steps name) by anyone but you in `/config`, just as an exec definition (see the [security notes](#security-notes)). Chains with no exec step can be changed like any other definition
 
 ### Built-in actions and the catalog page
 

@@ -2204,8 +2204,13 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, 
  * settings), not a JSON array, or not read back with the chain. A deny of
  * $.config.set and anything thrown are told too. Saved, the entry is
  * marked with the ID (in the state, which a reload keeps) and a toast says so.
+ *
+ * `loadedOf` is a seam for the tests alone: the save button passes nothing,
+ * and the setting loaded (currentExecLoad.setting) is read, after the user
+ * settings are, as before. A load that passed the plugin.json userConfig check
+ * is always a string, so a test reaches the not-a-string refusal through it.
  */
-async function saveComposed($: EngineInterface, l: Lang, r: Result) {
+export async function saveComposed($: EngineInterface, l: Lang, r: Result, loadedOf: () => unknown = () => currentExecLoad.setting) {
   const t = MESSAGES[l]
   const refuse = (why: string) => toastQuietly($, t.composeSaveRefused(why))
   try {
@@ -2214,7 +2219,7 @@ async function saveComposed($: EngineInterface, l: Lang, r: Result) {
     const user = await settingsOf($, 'user')
     if (user === undefined) return await refuse(t.composeSaveUnreadable)
     const own = execBaseline(user, PLUGIN) ?? ''
-    const loaded: unknown = currentExecLoad.setting ?? ''
+    const loaded: unknown = loadedOf() ?? ''
     // A load that is not a string cannot be told to be the user settings' own either.
     if (typeof loaded !== 'string' || own !== loaded) return await refuse(t.composeSaveNotUser)
     const prepared = prepareSave(own, steps, currentSpecs, reservedIds(), builtinSpecs())

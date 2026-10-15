@@ -1,12 +1,13 @@
 import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { EngineInterface, On } from 'claude-code'
 
 import { ACTIONS, actionsFor, markedIcon, needsSelection } from '../hooks/actions'
 import { ADHOC_CHAIN_ID, CHAIN_ICON } from '../hooks/compose'
 import { reasonText } from '../hooks/custom'
 import { ALLOWLIST_RELATIVE, ENV_BIN } from '../hooks/exec'
 import { MESSAGES } from '../hooks/i18n'
+import { saveComposed } from '../hooks/register'
 import type { Lang } from '../hooks/i18n'
 import type { Result } from '../types'
 import {
@@ -902,6 +903,52 @@ test('refused: customActions loaded from other than the user settings', { option
   await savedOrRefused($, s, clock, w)
   expect(c.sets).toEqual([])
   expect(s.toasts).toContain(t.composeSaveRefused(t.composeSaveNotUser))
+})
+
+/**
+ * A stand-in engine for calling saveComposed directly: the user settings it
+ * reads, and the toasts and $.config.set calls it is given. It has only what
+ * saveComposed uses up to the write; anything else it calls throws, which
+ * saveComposed tells in a toast of its own.
+ */
+function fakeSaveEngine(user: unknown) {
+  const sets: unknown[] = []
+  const toasts: string[] = []
+  const $ = {
+    settings: { read: async () => user },
+    ui: { toast: async (text: string) => { toasts.push(text) } },
+    config: { set: async (x: unknown) => { sets.push(x); return {} } },
+  } as unknown as EngineInterface
+  return { sets, toasts, $ }
+}
+
+const COMPOSED: Result = { id: 1, action: ADHOC_CHAIN_ID, chain: ['translate-ja', 'summarize'], target: 'selection', quote: 'Hello', status: 'done', text: 'x' }
+
+// The harness checks the options against plugin.json's userConfig, so a
+// customActions that is not a string never loads through it: saveComposed is
+// called directly, with the loaded setting given through its loadedOf seam.
+// The user settings hold the same value, to show that a load is refused even
+// then. The user settings' own text is always a string, so own !== loaded
+// refuses such a load too: what is pinned here is the refusal, not the typeof
+// check on its own.
+for (const [what, value] of [['a number', 42], ['an array', [MINE]]] as const) {
+  test(`refused: customActions loaded not as a string (${what}), nothing written`, async () => {
+    const { sets, toasts, $ } = fakeSaveEngine({ pluginConfigs: { [`${PLUGIN}@market`]: { options: { customActions: value } } } })
+    await saveComposed($, 'ja', COMPOSED, () => value)
+    expect(sets).toEqual([])
+    expect(toasts).toEqual([t.composeSaveRefused(t.composeSaveNotUser)])
+  })
+}
+
+// The control: the same stand-in and seam with a string load that matches the
+// user settings goes on to the write, so the refusals above are not a stand-in
+// that writes nothing whatever it is given. What follows the write (the state)
+// is not in the stand-in, so its toasts are not looked at.
+test('saved through the seam: a string load matching the user settings is written', async () => {
+  const { sets, $ } = fakeSaveEngine({})
+  await saveComposed($, 'ja', COMPOSED, () => '')
+  expect(sets).toHaveLength(1)
+  expect((sets[0] as { key: string }).key).toBe(`${PLUGIN}.customActions`)
 })
 
 test('refused: the user settings unreadable', { options: JA }, async ($, on) => {

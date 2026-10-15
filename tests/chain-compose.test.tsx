@@ -25,9 +25,11 @@ import {
   hintIcons,
   listedActions,
   pickAction,
+  pickerKindButtons,
   promptOf,
   runCommand,
   showKind,
+  showPickerKind,
   stage,
   start,
   storedUsage,
@@ -607,6 +609,8 @@ test('the dialog: what may not follow is refused as on the hint line', { options
   const picker = await dialogOn($, s, clock, 'Hello world')
   await picker.press({ key: TOGGLE })
   await picker.press({ key: 'translate-ja' })
+  // The tab turned to the selection's actions: back to all of them to find it.
+  await showPickerKind(picker as never, 'all')
   await picker.press({ key: 'recap' })
   expect(s.toasts).toEqual([reasonText({ code: 'chainStepTarget', step: 2, id: 'recap' }, 'ja')])
   expect(w.composing).toEqual({ steps: ['translate-ja'] })
@@ -623,6 +627,61 @@ test('the dialog with no text: once a first step is chosen, the selection\'s act
   await picker.press({ key: 'gitignore-template' })
   expect(await listedActions(picker)).toContain('summarize')
   expect(await keysOf(picker)).toContain('_picker-kind-selection')
+  expect(await tabShown(picker)).toBe('selection')
+  await picker.unmount()
+})
+
+/** The ⋯ dialog's kind tab listing now: the one kind button whose name says it is shown. */
+async function tabShown(picker: Mounted) {
+  const shown = (await pickerKindButtons(picker as never)).filter(k => k.label === t.hintKindShown(k.kind === 'all' ? t.allActions : t.hintKindTips[k.kind]))
+  expect(shown).toHaveLength(1)
+  return shown[0]!.kind
+}
+
+test('the dialog: a first step stacked turns the tab to the selection\'s actions, as the hint line does', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  const w = watch(on)
+  await start($)
+  const picker = await dialogOn($, s, clock, 'Hello world')
+  expect(await tabShown(picker)).toBe('all')
+  await picker.press({ key: TOGGLE })
+  await picker.press({ key: 'recap' })
+  expect(w.composing).toEqual({ steps: ['recap'] })
+  expect(await tabShown(picker)).toBe('selection')
+  expect(await listedActions(picker)).toContain('summarize')
+  expect(await listedActions(picker)).not.toContain('recap')
+  await picker.unmount()
+})
+
+test('the dialog: a later step leaves the tab the user chose', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  const w = watch(on)
+  await start($)
+  const picker = await dialogOn($, s, clock, 'Hello world')
+  await picker.press({ key: TOGGLE })
+  await picker.press({ key: 'translate-ja' })
+  expect(await tabShown(picker)).toBe('selection')
+  await showPickerKind(picker as never, 'all')
+  expect(await tabShown(picker)).toBe('all')
+  await picker.press({ key: 'summarize' })
+  expect(w.composing).toEqual({ steps: ['translate-ja', 'summarize'] })
+  expect(await tabShown(picker)).toBe('all')
+  await picker.unmount()
+})
+
+test('the dialog: a first step refused leaves the tab as it was', { options: { ...JA, customActions: JSON.stringify([{ id: 'my-chain', icon: '🔗', label: 'Mine', kind: 'chain', steps: ['explain', 'summarize'] }]) } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  const w = watch(on)
+  await start($)
+  const picker = await dialogOn($, s, clock, 'Hello world')
+  await picker.press({ key: TOGGLE })
+  await pickAction(picker as never, 'my-chain')
+  expect(s.toasts).toEqual([reasonText({ code: 'chainNested', step: 1, id: 'my-chain' }, 'ja')])
+  expect(w.composing).toEqual({ steps: [] })
+  expect(await tabShown(picker)).toBe('all')
   await picker.unmount()
 })
 
@@ -639,6 +698,8 @@ test('the dialog: the toggle off drops what was chosen; a pick runs again, and o
   expect(w.composing).toBeNull()
   expect(await keysOf(picker)).not.toContain(C_RUN)
   expect(s.models).toEqual([])
+  // The tab the first step turned to stays: back to all the actions.
+  await showPickerKind(picker as never, 'all')
   await pickAction(picker as never, 'gitignore-template')
   expect(await picker.find({ key: '_arg' })).toBeDefined()
   expect(s.models).toEqual([])

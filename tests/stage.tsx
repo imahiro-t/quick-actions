@@ -4,7 +4,7 @@ import type { On, ProcessRunResult, SettingsSource, UiCopyResult } from 'claude-
 import type { ActionDef, ActionSpec } from '../hooks/actions'
 import { base64Encode, utf8Encode } from '../hooks/codec'
 import type { Messages } from '../hooks/i18n'
-import { fixedRows } from '../hooks/picker-rows'
+import { fixedRows, linesOf } from '../hooks/picker-rows'
 import type { FilterRow } from '../hooks/picker-rows'
 
 // Stands for the engine beneath the plugin in every test: records what the
@@ -175,6 +175,10 @@ export const PICKER_FILTER = '_filter'
 export const PICKER_FILTER_CLEAR = '_filter-clear'
 /** The dialog's kind buttons above its list are keyed by this and the kind. */
 export const PICKER_KIND = '_picker-kind-'
+/** The dialog's multi-select toggle, under the kind buttons (SELM-00128): never an action's ID. */
+export const COMPOSE_TOGGLE = '_compose-toggle'
+/** The rows the multi-select toggle takes at `columns`, as drawn (a button, `[ label ]`). */
+export const composeToggleRows = (t: Messages, columns: number) => linesOf(`[ ${t.composeToggle} ]`, columns)
 
 /** What the helpers below need of a mounted ⋯ dialog. */
 type PickerView = {
@@ -688,4 +692,29 @@ export function execWorld(on: On, init: Partial<ExecWorld> = {}): ExecWorld {
     return { result: { answers: { [q.question]: w.answer } } }
   })
   return w
+}
+
+// ---------------------------------------------------------------------------
+// $.config.set (SELM-00128: a chain put together on the spot, saved), for the
+// tests that ask for it (configWorld): each change asked for recorded, and
+// answered as written or refused. Not answered unless a test asks, since a
+// test may hook config.set itself (tests/exec-run.test.tsx); unanswered,
+// $.config.set fails, as nothing beneath the plugin answers it.
+
+export type ConfigWorld = {
+  // Every change asked for, in order.
+  sets: { key: string; value: unknown }[]
+  // How the next ones are answered: null, written (`{ value }`); else this deny.
+  // (A hook that throws is skipped, its change written regardless: no answer here throws.)
+  answer: { deny: string } | null
+}
+
+/** Answers config.set as `c.answer` says (see ConfigWorld), recording each change. */
+export function configWorld(on: On): ConfigWorld {
+  const c: ConfigWorld = { sets: [], answer: null }
+  on('config.set', (_$, e) => {
+    c.sets.push({ key: e.key, value: e.value })
+    return c.answer === null ? { value: e.value } : { deny: c.answer.deny }
+  })
+  return c
 }

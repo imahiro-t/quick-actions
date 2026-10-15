@@ -1609,7 +1609,7 @@ for (const language of ['ja', 'en'] as const) {
       const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
       for (const kind of HINT_KINDS) {
         await showKind(band, kind)
-        expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯'])
+        expect(await hintIcons(band)).toEqual([...ofKind(ACTIONS, kind).map(markedIcon), '✕', '⋯', '⛓️'])
       }
       await band.unmount()
     },

@@ -275,6 +275,44 @@ export type Messages = {
   chainEmptyOutput: string
   /** Why an exec step whose output was cut failed: a part is never passed on. */
   chainOutputCut: string
+  // Chains put together on the spot (./compose): the hint line's ⛓ mode, the
+  // ⋯ dialog's multi-select, and the result pane's save.
+  /** The accessible name of the hint line's ⛓ button: whether the chain mode is on. */
+  chainModeName: (on: boolean) => string
+  /** The hover label of the ⛓ button. */
+  chainModeTip: string
+  /** What the hint line says in the chain mode with nothing stacked yet. */
+  chainModeGuide: string
+  /** The hint line's ⌫ (the last step stacked taken off): its name and hover label. */
+  chainUndoName: string
+  /** The hint line's ▶ (the steps stacked run in order): its name and hover label. */
+  chainRunName: string
+  /** The accessible name of the ⋯ dialog's multi-select toggle: whether it is on. */
+  composeToggleName: (on: boolean) => string
+  /** What the multi-select toggle draws. */
+  composeToggle: string
+  /** What the ⋯ dialog says in the multi-select with nothing chosen yet. */
+  composeGuide: string
+  /** The ⋯ dialog's button that takes the last action chosen off. */
+  composeUndo: string
+  /** The ⋯ dialog's button that runs the actions chosen in order. */
+  composeRun: string
+  /** The result pane's button that saves a chain put together on the spot as a custom action. */
+  composeSave: string
+  /** What the result pane shows in its place once saved: the ID it was saved as. */
+  composeSaved: (id: string) => string
+  /** The toast once saved: the ID it was saved as. */
+  composeSavedToast: (id: string) => string
+  /** The toast of a save refused: why. */
+  composeSaveRefused: (reason: string) => string
+  /** Why: it has an exec step, which only the person adds, in /config. */
+  composeSaveExec: string
+  /** Why: customActions does not come from the user settings alone (the project's, say). */
+  composeSaveNotUser: string
+  /** Why: the user settings could not be read. */
+  composeSaveUnreadable: string
+  /** Why: customActions is not a JSON array, which a save would overwrite. */
+  composeSaveNotArray: string
 }
 
 /** A whole number with its digits grouped by commas (1,234,567), in either language, with no locale data needed. */
@@ -541,6 +579,24 @@ export const MESSAGES: Record<Lang, Messages> = {
     chainLocalTicker: '連結アクションのステップでは時間のかかる実行（タイマーなど）はできません',
     chainEmptyOutput: 'このステップの出力が空のため、次のステップに渡せません',
     chainOutputCut: 'このステップの出力が上限を超えたため、次のステップに渡しませんでした',
+    chainModeName: on => (on ? 'チェーンモード: オン' : 'チェーンモード: オフ'),
+    chainModeTip: 'チェーンモード（アクションを順につないで実行）',
+    chainModeGuide: 'アクションを押すと積まれます',
+    chainUndoName: '末尾を取り消す',
+    chainRunName: '積んだ順に実行',
+    composeToggleName: on => (on ? '複数選択: オン' : '複数選択: オフ'),
+    composeToggle: '複数選択',
+    composeGuide: 'アクションを選ぶと順に積まれます',
+    composeUndo: '末尾を取り消す',
+    composeRun: 'まとめて実行',
+    composeSave: 'カスタムアクションとして保存',
+    composeSaved: id => `保存済み（${id}）`,
+    composeSavedToast: id => `Quick Actions: チェーンを ${id} として保存しました`,
+    composeSaveRefused: reason => `Quick Actions: チェーンを保存しませんでした（${reason}）`,
+    composeSaveExec: 'exec のステップを含むチェーンは保存できません。/config で customActions に追加してください',
+    composeSaveNotUser: 'customActions がユーザー設定以外（プロジェクト設定など）から読み込まれているため保存できません',
+    composeSaveUnreadable: 'ユーザー設定を読めないため保存できません',
+    composeSaveNotArray: 'customActions が JSON 配列ではないため、上書きしないよう保存しません',
   },
   en: {
     thinking: 'Thinking…',
@@ -791,6 +847,24 @@ export const MESSAGES: Record<Lang, Messages> = {
     chainLocalTicker: 'a step of a chain cannot run over time (a timer and the like)',
     chainEmptyOutput: 'the step gave no output, so there is nothing to pass on',
     chainOutputCut: 'the output of the step passed its limit, so it was not passed on',
+    chainModeName: on => (on ? 'Chain mode: on' : 'Chain mode: off'),
+    chainModeTip: 'Chain mode (run actions one after another)',
+    chainModeGuide: 'Press actions to stack them',
+    chainUndoName: 'Remove the last',
+    chainRunName: 'Run in order',
+    composeToggleName: on => (on ? 'Multi-select: on' : 'Multi-select: off'),
+    composeToggle: 'Multi-select',
+    composeGuide: 'Pick actions to stack them in order',
+    composeUndo: 'Remove the last',
+    composeRun: 'Run all',
+    composeSave: 'Save as a custom action',
+    composeSaved: id => `Saved (${id})`,
+    composeSavedToast: id => `Quick Actions: the chain is saved as ${id}`,
+    composeSaveRefused: reason => `Quick Actions: the chain was not saved (${reason})`,
+    composeSaveExec: 'a chain with an exec step cannot be saved here; add it to customActions in /config',
+    composeSaveNotUser: 'customActions is read from other than the user settings (the project settings, say)',
+    composeSaveUnreadable: 'the user settings could not be read',
+    composeSaveNotArray: 'customActions is not a JSON array, so it is not overwritten',
   },
 }
 

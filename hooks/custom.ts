@@ -401,9 +401,14 @@ function parseChain(d: Record<string, unknown>, base: { id: string; icon: string
  * itself included), none of which a step may be. Each step in order: a
  * chain (chainNested), else one that is not there (chainStepUnknown), else,
  * after the first, one not on the selection (chainStepTarget). Undefined when
- * every step is fine.
+ * every step is fine. Shared with the chains put together on the spot
+ * (./compose), so both are held to the same rules.
  */
-function chainProblem(chain: ChainAction<Localized>, steps: ReadonlyMap<string, ActionSpec>, chains: ReadonlySet<string>): CustomReason | undefined {
+export function chainProblem(
+  chain: { steps: readonly string[] },
+  steps: ReadonlyMap<string, { target?: Target }>,
+  chains: ReadonlySet<string>,
+): CustomReason | undefined {
   for (const [i, id] of chain.steps.entries()) {
     const step = i + 1
     if (chains.has(id)) return { code: 'chainNested', step, id: shown(id) }
@@ -418,7 +423,7 @@ function chainProblem(chain: ChainAction<Localized>, steps: ReadonlyMap<string, 
  * A chain whose steps are fine, with what its first step works on: its
  * `target` (left out for the selection), and, standalone, its argument.
  */
-function withFirstTarget(chain: ChainAction<Localized>, first: ActionSpec): ChainAction<Localized> {
+export function withFirstTarget<T>(chain: ChainAction<T>, first: { target?: Target; kind: string; arg?: ArgSpec<T> }): ChainAction<T> {
   const { target: _t, arg: _a, ...rest } = chain
   if (first.target === undefined || first.target === 'selection') return rest
   if (first.target === 'context') return { ...rest, target: 'context' }

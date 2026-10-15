@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { actionsFor, emojiIcon, markedIcon } from '../hooks/actions'
 import type { ActionDef } from '../hooks/actions'
+import { CHAIN_ICON } from '../hooks/compose'
 import { MESSAGES } from '../hooks/i18n'
 import type { Lang, Messages } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
@@ -58,7 +59,7 @@ for (const surface of SURFACES) {
       const band = await mountBand($, surface)
       for (const kind of KINDS) {
         await showKind(band, kind)
-        const buttons = (await hintButtons(band)).slice(0, -2)
+        const buttons = (await hintButtons(band)).slice(0, -3)
         expect(buttons.length).toBeGreaterThan(0)
         for (const b of buttons) {
           const def = builtIn(b.key, options.language)
@@ -81,9 +82,11 @@ for (const surface of SURFACES) {
       const band = await mountBand($, surface)
       const buttons = await hintButtons(band)
       await band.unmount()
-      const [close, more] = buttons.slice(-2)
+      const [close, more, chainMode] = buttons.slice(-3)
       expect([close?.key, close?.drawn, close?.name]).toEqual(['close', '✕', t.hintCloseName])
       expect([more?.drawn, more?.name]).toEqual(['⋯', t.hintMoreName])
+      // ⛓ (SELM-00128) after them, named by whether the chain mode is on.
+      expect([chainMode?.drawn, chainMode?.name]).toEqual([CHAIN_ICON, t.chainModeName(false)])
     })
   }
 }

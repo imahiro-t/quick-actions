@@ -250,7 +250,7 @@ test('the hint line follows the stored scores', async ($, on) => {
 
   // tldr then why, then the unused in the order of definition; `web` is no action.
   const icons = await iconsOf($)
-  expect(icons).toEqual([...['tldr', 'why', 'translate-ja', 'translate-en', 'translate-zh', 'translate-zh-tw'].map(iconOf), '✕', '⋯'])
+  expect(icons).toEqual([...['tldr', 'why', 'translate-ja', 'translate-en', 'translate-zh', 'translate-zh-tw'].map(iconOf), '✕', '⋯', '⛓️'])
 })
 
 test('a broken store still shows the default order', async ($, on) => {
@@ -259,7 +259,7 @@ test('a broken store still shows the default order', async ($, on) => {
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect(await iconsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
 })
 
 test('pins beyond what fits wait under ⋯', { options: { pinActions: 'why,tldr,ask,code' } }, async ($, on) => {
@@ -268,9 +268,9 @@ test('pins beyond what fits wait under ⋯', { options: { pinActions: 'why,tldr,
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  // Two fit on an 80-column line beside the permission mode.
-  const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 80, rows: 40, isFullscreen: false } })
-  expect(await hintIcons(band)).toEqual([iconOf('why'), iconOf('tldr'), '✕', '⋯'])
+  // Two fit on a 90-column line beside the permission mode and ⛓ (on 80 before SELM-00128).
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: { columns: 90, rows: 40, isFullscreen: false } })
+  expect(await hintIcons(band)).toEqual([iconOf('why'), iconOf('tldr'), '✕', '⋯', '⛓️'])
   await band.unmount()
 })
 

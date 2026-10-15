@@ -6,7 +6,7 @@ import { ACTIONS, needsSelection } from '../hooks/actions'
 import { MIN_SHOWN, buttonLines, kindRowLines, linesOf, pagerWidest, pickerKindLabels } from '../hooks/picker-rows'
 import { MESSAGES } from '../hooks/i18n'
 import { closesWhole } from '../hooks/register'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_NEXT, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
+import { BAND, EN, JA, PANE, PICKER, composeToggleRows, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_NEXT, PICKER_PANE, listedActions, listedCount, listedOptions, pickAction, pickerFixedRows, PLUGIN, SURFACES, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 /** The row of kind buttons as the terminal draws it, each `[ label ]`, flush against the next. */
@@ -296,7 +296,9 @@ for (const surface of SURFACES) {
     // At 60 columns every label is one row: the pane's rows less the kind buttons' row,
     // the filter row, the close button and the page buttons.
     expect(kindRowLines(pickerKindLabels(t, false), 60)).toBe(linesOf(pickerKindRow(t, false), 60))
-    const fits = (bodyRows: number) => bodyRows - pickerFixedRows(t, 60) - kindRowLines(pickerKindLabels(t, false), 60) - linesOf(pagerWidest(t, total), 60)
+    // And the multi-select toggle's row under the kind buttons (SELM-00128).
+    const fits = (bodyRows: number) =>
+      bodyRows - pickerFixedRows(t, 60) - kindRowLines(pickerKindLabels(t, false), 60) - composeToggleRows(t, 60) - linesOf(pagerWidest(t, total), 60)
     const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: props(40) })
     for (const o of await listedOptions(picker)) expect(buttonLines(o.label, 60)).toBe(1)
     expect(await listedCount(picker)).toBe(fits(40))

@@ -5,7 +5,7 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, PICKER_NEXT, PICKER_PREV, SURFACES, pageText, promptOf, runCommand, stage, start } from './stage'
+import { BAND, COMPOSE_TOGGLE, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, PICKER_NEXT, PICKER_PREV, SURFACES, pageText, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, the most used first, picked with the
@@ -93,7 +93,7 @@ for (const surface of SURFACES) {
     const s = stage(on)
     await start($)
     const band = await openByMore($, s, clock, surface)
-    const hint = (await band.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== 'close' && k !== MORE && !k.startsWith(KIND_KEY))
+    const hint = (await band.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k !== 'close' && k !== MORE && k !== '_chain-mode' && !k.startsWith(KIND_KEY))
     await band.unmount()
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
@@ -305,9 +305,9 @@ for (const [options, t] of [[JA, MESSAGES.ja], [EN, MESSAGES.en]] as const) {
 
     const unfocused = await $.ui.mount({ ...PICKER_PANE, surface: 'mobile', props: { ...PICKER_PANE.props, isFocused: false } })
     expect(holdsNotice(await unfocused.drawn())).toBe(false)
-    // The rest of the dialog is drawn as usual: the kind buttons, the actions' buttons, then Close.
+    // The rest of the dialog is drawn as usual: the kind buttons, the multi-select toggle, the actions' buttons, then Close.
     const labels = (await unfocused.findAll({ type: 'Button' })).map(b => String(b.props.label))
-    expect(labels).toHaveLength(4 + ACTIONS.length + 1)
+    expect(labels).toHaveLength(4 + 1 + ACTIONS.length + 1)
     const close = await unfocused.find({ key: PICKER_CLOSE })
     expect(close?.props.label).toBe(t.pickerClose)
     await unfocused.unmount()
@@ -413,8 +413,8 @@ test('[mobile] the dialog lists every action as a button, and a press runs it', 
   expect(await picker.find({ type: 'Select' })).toBeUndefined()
   const labels = (await picker.findAll({ type: 'Button' })).map(b => String(b.props.label))
   const defs = actionsFor('ja')
-  // The kind buttons, every action, icon and label, then the close button.
-  expect(labels).toHaveLength(4 + ACTIONS.length + 2)
+  // The kind buttons, the multi-select toggle, every action, icon and label, then the close button.
+  expect(labels).toHaveLength(4 + 1 + ACTIONS.length + 2)
   expect(labels).toContain('[🪄] 海賊風の要約')
   for (const def of defs) expect(labels).toContain(`${markedIcon(def)} ${def.label}`)
   expect(labels.at(-1)).toBe(MESSAGES.ja.pickerClose)
@@ -458,9 +458,9 @@ for (const surface of [...SURFACES, 'mobile'] as const) {
     expect(boxKeys).toContain('act-more')
     expect(unique(boxKeys)).toBe(true)
     const buttonKeys = (await band.findAll({ type: 'Button' })).map(b => b.key).filter(k => !String(k).startsWith(KIND_KEY))
-    // Past the kind buttons, the three pinned first, then the rest; ✕ and ⋯ last.
+    // Past the kind buttons, the three pinned first, then the rest; ✕, ⋯ and ⛓ last.
     expect(buttonKeys.slice(0, 3)).toEqual(['more', 'picker', 'picker-close'])
-    expect(buttonKeys.slice(-2)).toEqual(['close', MORE])
+    expect(buttonKeys.slice(-3)).toEqual(['close', MORE, '_chain-mode'])
     expect(unique(buttonKeys)).toBe(true)
     await band.unmount()
     // ⋯ opened the dialog's tab, shown; nothing ran.
@@ -766,7 +766,7 @@ test('[mobile] no filter field: every action is a button, as before', { options:
   expect(await picker.find({ key: PICKER_FILTER })).toBeUndefined()
   expect(await picker.find({ type: 'Input' })).toBeUndefined()
   expect(await picker.find({ key: PICKER_FILTER_CLEAR })).toBeUndefined()
-  expect((await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE && !String(b.key).startsWith(PICKER_KIND))).toHaveLength(ACTIONS.length)
+  expect((await picker.findAll({ type: 'Button' })).filter(b => b.key !== PICKER_CLOSE && b.key !== COMPOSE_TOGGLE && !String(b.key).startsWith(PICKER_KIND))).toHaveLength(ACTIONS.length)
   await picker.unmount()
 })
 
@@ -780,7 +780,7 @@ for (const surface of SURFACES) {
 
     const picker = await $.ui.mount({ ...PICKER_PANE, surface })
     const actionButtons = async () =>
-      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => ![PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT].includes(k) && !k.startsWith(PICKER_KIND))
+      (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => ![PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT, COMPOSE_TOGGLE].includes(k) && !k.startsWith(PICKER_KIND))
     expect(await picker.find({ type: 'Select' })).toBeUndefined()
     expect((await picker.find({ key: PICKER_FILTER }))?.props.autoFocus).toBe(true)
     // With the field there, as many as the pane's height holds, as without a palette.

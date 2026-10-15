@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { MIN_SHOWN, buttonLines, fixedRows, kindRowLines, linesOf, pagerWidest, pickerKindLabels } from '../hooks/picker-rows'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_LIST, PICKER_NEXT, PICKER_PANE, PICKER_PREV, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pageShown, pickAction, pickerFixedRows, promptOf, stage, start, storedUsage } from './stage'
+import { BAND, COMPOSE_TOGGLE, EN, JA, PANE, PICKER_CLOSE, composeToggleRows, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_LIST, PICKER_NEXT, PICKER_PANE, PICKER_PREV, PICKER_ROW, SURFACES, listBox, listRows, listedActions, listedCount, listedOptions, pageShown, pickAction, pickerFixedRows, promptOf, stage, start, storedUsage } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog's list as buttons (SELM-00059): there as the dialog opens, as
@@ -97,10 +97,10 @@ for (const surface of SURFACES) {
         expect(line).not.toMatch(/^(Action|アクション)\s*[:：]/)
       }
       expect(await picker.find({ type: 'Select' })).toBeUndefined()
-      // The buttons outside the list are the dialog's own (the kind buttons, Clear, the page buttons, Close).
+      // The buttons outside the list are the dialog's own (the kind buttons, the multi-select toggle, Clear, the page buttons, Close).
       const inList = await listedActions(picker)
       const outside = (await picker.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => !inList.includes(k))
-      expect(outside.every(k => [PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT].includes(k) || k.startsWith(PICKER_KIND))).toBe(true)
+      expect(outside.every(k => [PICKER_CLOSE, PICKER_FILTER_CLEAR, PICKER_PREV, PICKER_NEXT, COMPOSE_TOGGLE].includes(k) || k.startsWith(PICKER_KIND))).toBe(true)
       expect(outside.filter(k => k.startsWith(PICKER_KIND))).toHaveLength(4)
       expect(outside.filter(k => k === PICKER_PREV || k === PICKER_NEXT)).toHaveLength(2)
       await picker.unmount()
@@ -156,20 +156,22 @@ for (const surface of SURFACES) {
         expect([columns, labels]).toEqual([columns, all.slice(0, n)])
         expect(pageShown(textsOutsideList(await picker.drawn()), t, total)?.[0]).toBe(1)
         const pager = linesOf(pagerWidest(t, total), columns)
-        const used = (count: number) => pickerFixedRows(t, columns) + rows + pager + all.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
+        // The multi-select toggle's row under the kind buttons (SELM-00128).
+        const toggle = composeToggleRows(t, columns)
+        const used = (count: number) => pickerFixedRows(t, columns) + rows + toggle + pager + all.slice(0, count).reduce((sum, l) => sum + buttonLines(l, columns), 0)
         // Within the pane's 30 rows, and filling them: one more button would not fit.
         expect([columns, used(n) <= 30]).toEqual([columns, true])
         expect([columns, used(n) + buttonLines(all[n] ?? '', columns) > 30]).toEqual([columns, true])
         // Where every listed button is one row, the count is exact: 30 less the kind buttons' rows and the rest.
         if (labels.every(l => buttonLines(l, columns) === 1)) {
-          expect([columns, n]).toEqual([columns, 30 - pickerFixedRows(t, columns) - rows - pager])
+          expect([columns, n]).toEqual([columns, 30 - pickerFixedRows(t, columns) - rows - toggle - pager])
         }
       }
       // At 60 the built-in labels are one row each, and so are the filter row, Close, the kind
-      // buttons and the page buttons: 30 - 2 - 1 - 1 = 26.
+      // buttons, the multi-select toggle and the page buttons: 30 - 2 - 1 - 1 - 1 = 25.
       expect(pickerFixedRows(t, 60)).toBe(2)
       await picker.redraw(at(30, 60, focused))
-      expect((await listedActions(picker)).length).toBe(26)
+      expect((await listedActions(picker)).length).toBe(25)
       await picker.unmount()
     })
   }
@@ -228,7 +230,8 @@ for (const surface of SURFACES) {
     await start($)
     await openByMore($, s, clock, surface)
 
-    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(9) })
+    // Nine rows as before SELM-00128, and one for the multi-select toggle.
+    const picker = await $.ui.mount({ ...PICKER_PANE, surface, props: at(10) })
     expect(await listedActions(picker)).toEqual(used)
     expect(await listedActions(picker)).not.toContain('translate-zh')
     // Typed in the filter, translate-zh leaves translate-zh-tw too; its own button is pressed, not the first.

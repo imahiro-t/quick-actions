@@ -28,6 +28,7 @@ import type { ActionDef, ActionSpec, BuiltinSpec, ChainAction, CompleteAction, E
 import { formatClock, parseArg, splitCommandArgs, utcLabel } from './args'
 import type { ArgSpec, ArgValue } from './args'
 import { kindOfTarget } from './catalog'
+import { ADHOC_CHAIN_ID, CHAIN_ICON, adhocChain, composeProblem, prepareSave, stackProblem } from './compose'
 import { definitionIndex, displaySafe, parseCustomActions, problemFor, problemLine, reasonText, warningLine, withNotices } from './custom'
 import type { CustomProblem, CustomReason } from './custom'
 import {
@@ -86,7 +87,7 @@ import { codePointPrefix, localInputFor, runLocal, tickerStep, truncate } from '
 import { quoteLine, showHiddenNoted } from './selection-local'
 import type { Frame } from './local'
 import { pagerWidest, pickerKindLabels, pickerKindsShown, pickerPages } from './picker-rows'
-import { TIP_RESERVE, buttonWidth, dockGivenBack, dockReturn, hintLayout, hintLineColumns, hintMost, isStaleDock, leadFor } from './hint-width'
+import { EMOJI_EXTRA, TIP_RESERVE, buttonWidth, dockGivenBack, dockReturn, hasEmoji, hintLayout, hintLineColumns, hintMost, isStaleDock, leadFor, textWidth } from './hint-width'
 import type { DockMeasure } from './hint-width'
 import {
   HINT_KINDS,
@@ -184,6 +185,23 @@ const setArgKey = (id: number) => `_set-arg-${id}`
 // The ⋯ dialog's argument screen: its field, and the button back to the list.
 const PICKER_ARG_KEY = ARG_KEY
 const PICKER_ARG_BACK_KEY = '_arg-back'
+// A chain put together on the spot (./compose): the hint line's ⛓ button, the
+// steps it stacked (one each, by place), ⌫ and ▶; the ⋯ dialog's
+// multi-select toggle, the steps chosen, its undo and run buttons; and the
+// result pane's save button, one per entry.
+const CHAIN_MODE_KEY = '_chain-mode'
+const chainStepKey = (i: number) => `_chain-step-${i}`
+const CHAIN_UNDO_KEY = '_chain-undo'
+const CHAIN_RUN_KEY = '_chain-run'
+const CHAIN_GUIDE_KEY = '_chain-guide'
+const COMPOSE_TOGGLE_KEY = '_compose-toggle'
+const COMPOSE_STEPS_KEY = '_compose-steps'
+const COMPOSE_UNDO_KEY = '_compose-undo'
+const COMPOSE_RUN_KEY = '_compose-run'
+const saveKey = (id: number) => `_save-${id}`
+// What the hint line draws between the steps stacked.
+const STEP_SEPARATOR = ' › '
+const savedKey = (id: number) => `_saved-${id}`
 
 /**
  * Whether an Input can be drawn here: everywhere the surface's table has one
@@ -265,6 +283,8 @@ const asking = atom({ plugin: 'quick-actions', key: 'asking' } as const, 0)
 // session rather than in the module, so a reload (an option changed) does not
 // forget the runs still going.
 const execSlots = atom({ plugin: 'quick-actions', key: 'execSlots' } as const, [])
+// The chain being put together on the spot, shared by the hint line and the ⋯ dialog (./compose).
+const composing = atom({ plugin: 'quick-actions', key: 'composing' } as const, null)
 
 // The language: settled in register when the setting names one; for `auto`,
 // by the first hook that needs it, whichever event comes first, and once only.
@@ -323,6 +343,10 @@ const pendingAgents = new Map<string, number | ((done: AgentDone) => void)>()
 // The definitions of the load running now, resolved for a language, set by
 // register as currentExecLoad is: a chain looks its steps up here as it starts.
 let currentDefs: (l: Lang) => readonly ActionDef[] = () => []
+// The specs of the load running now by ID, both languages in each, set by
+// register as currentDefs is: a save of a chain put together on the spot
+// labels it from them (./compose prepareSave).
+let currentSpecs: ReadonlyMap<string, ActionSpec> = new Map()
 
 async function settle($: EngineInterface, id: number, ok: boolean, text: string) {
   const status: Result['status'] = ok ? 'done' : 'failed'
@@ -674,7 +698,7 @@ async function detectPlatform($: EngineInterface): Promise<Platform> {
 }
 
 /** What a new entry says it ran on, and, for a selection in one transcript row, where that lies. */
-type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'input' | 'origin'>
+type EntryHead = Pick<Result, 'target' | 'quote' | 'arg' | 'input' | 'origin' | 'chain'>
 
 /**
  * A selection as the engine answers it: its text, trimmed, and the transcript
@@ -699,8 +723,9 @@ function pickedOf(text: string, requestId: unknown): Picked {
  * tab keeps what it holds, or, closed, opens on the text selected now.
  */
 async function begin($: EngineInterface, def: ActionDef, lang: Lang, head: EntryHead, text?: Picked): Promise<number> {
-  // Not awaited: the score must not hold up the answer.
-  void recordUsage($, def.id)
+  // Not awaited: the score must not hold up the answer. A chain put together
+  // on the spot is no action of its own: its use is not counted.
+  if (def.id !== ADHOC_CHAIN_ID) void recordUsage($, def.id)
   await update($, hint, () => null)
   await update($, hintKind, () => null)
   // Worked out on the list it is added to, in the same update: past every ID
@@ -1571,6 +1596,9 @@ async function runChain(
 ) {
   const t = MESSAGES[lang]
   const total = chain.steps.length
+  // A chain put together on the spot: its entry keeps its steps, from which
+  // the pane draws it again (and offers to save it), wherever it was run from.
+  const entryHead: EntryHead = chain.id === ADHOC_CHAIN_ID ? { ...head, chain: [...chain.steps] } : head
   // The load the chain starts in: a reload meanwhile stops its exec steps (recheckExec).
   const load = currentExecLoad
   const defs = currentDefs(lang)
@@ -1582,7 +1610,7 @@ async function runChain(
     chainShown(chain.showSteps ? sections : [], t.chainStepFailed(i + 1, total, labelOf(i), error), lang)
   // Refused before any step ran: the entry opens failed, and a toast says so.
   const refuse = async (i: number, error: string) => {
-    const id = await begin($, chain, lang, head, picked)
+    const id = await begin($, chain, lang, entryHead, picked)
     await settle($, id, false, failureText(i, error))
     finishedToast($, t.execRefusedToast(chain.label, t.chainStepFailed(i + 1, total, labelOf(i), error)))
   }
@@ -1622,7 +1650,7 @@ async function runChain(
     readies.set(i + 1, ready)
   }
 
-  const id = await begin($, chain, lang, head, picked)
+  const id = await begin($, chain, lang, entryHead, picked)
   try {
     let input = first
     // A standalone chain run with no argument: its first step's default, as runStandalone takes it.
@@ -2003,6 +2031,8 @@ export const closesWhole = (origin: { kind: 'plugin' | 'person' | 'unload' }) =>
 async function closeAll($: EngineInterface, closing?: string) {
   await stopAllTickers($)
   await update($, picking, () => null)
+  // The chain being put together goes with the pane: ⛓ is off again.
+  await update($, composing, () => null)
   // This plugin's dock goes; another plugin's, measured, stays.
   for (const [surface, measure] of measuredDock) if (measure.own) measuredDock.delete(surface)
   for (const id of [PICKER, PANE]) {
@@ -2035,6 +2065,67 @@ async function backToList($: EngineInterface) {
 export const closeGoesBack = (state: { text: string | null; requestId?: string; filter: string; arg?: ArgInput } | null, origin: PaneCloseOrigin): boolean =>
   origin.kind === 'person' && state !== null && state.arg !== undefined
 
+/** A toast that is let go should it fail: what it says is not worth a failure. */
+async function toastQuietly($: EngineInterface, text: string) {
+  try {
+    await $.ui.toast(text)
+  } catch {
+    // Not shown.
+  }
+}
+
+/**
+ * A press of `def` in the chain mode (the hint line's ⛓, the ⋯ dialog's
+ * multi-select): stacked after the steps so far, nothing run, unless a chain
+ * may not have it there (./compose stackProblem), which a toast says, and
+ * nothing is stacked. With its first step stacked, the hint line turns to the
+ * actions on the selection, the only ones a step after it may be.
+ */
+async function stackStep($: EngineInterface, lang: Lang, def: ActionDef) {
+  const now = await read($, composing)
+  if (now === null) return
+  const why = stackProblem(now.steps, def)
+  if (why !== undefined) {
+    await toastQuietly($, reasonText(why, lang))
+    return
+  }
+  await update($, composing, c => (c === null ? c : { steps: [...c.steps, def.id] }))
+  if (now.steps.length === 0) await update($, hintKind, () => 'selection')
+}
+
+/**
+ * Runs `steps` as a chain put together on the spot (./compose adhocChain),
+ * through the way an action of its first step's kind runs (and so through
+ * runChain, its gate, checks and approvals with it): standalone with its
+ * first step's default argument, on the conversation, or on `held` (the text
+ * the hint line or the ⋯ dialog holds). Refused with a toast, nothing run,
+ * when the steps may not be a chain now (./compose composeProblem) or the
+ * first is on the selection with no text held. The chain mode is turned off
+ * as it runs, unless `keepMode` (the result pane's "again", which is not of it).
+ */
+async function runComposed($: EngineInterface, lang: Lang, steps: readonly string[], held: Picked | null, from: RunFrom, keepMode = false) {
+  const defs = currentDefs(lang)
+  const why = composeProblem(steps, defs)
+  if (why !== undefined) {
+    await toastQuietly($, reasonText(why, lang))
+    return
+  }
+  const chain = adhocChain(steps, defs)
+  if (needsSelection(chain) && held === null) {
+    await toastQuietly($, MESSAGES[lang].noSelection)
+    return
+  }
+  if (!keepMode) await update($, composing, () => null)
+  if (isStandalone(chain) || isContext(chain)) {
+    // The held text is neither sent nor needed: its icons go, as after a press.
+    if (held !== null) await update($, dismissed, () => held.text)
+    if (isStandalone(chain)) await runStandalone($, chain, lang, undefined, from)
+    else await runOnConversation($, chain, lang, from)
+    return
+  }
+  await runOnText($, chain, lang, held!, from)
+}
+
 /**
  * A pick in the ⋯ dialog: runs `def` on the text the dialog opened on; a
  * context action, on the conversation. Either way, that text's icons go, as
@@ -2044,6 +2135,13 @@ export const closeGoesBack = (state: { text: string | null; requestId?: string; 
  * dialog's tab turns to its argument screen.
  */
 async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, input: boolean, surface?: RenderSurface) {
+  // Multi-select: stacked, not run, and no argument screen (a standalone
+  // first step runs with its default); the filter emptied, as after a pick.
+  if (def !== undefined && (await read($, composing)) !== null) {
+    await update($, picking, p => (p === null ? p : { ...withoutPage(p), filter: '' }))
+    await stackStep($, lang, def)
+    return
+  }
   if (def !== undefined && input && takesArg(def)) {
     await update($, picking, p => (p === null ? p : { ...p, arg: { action: def.id, value: '' } }))
     // The list it was picked in is gone: the field takes the focus ring.
@@ -2071,6 +2169,44 @@ async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, 
     return
   }
   await runOnText($, def, lang, pickedOf(text, held?.requestId), from)
+}
+
+/**
+ * Saves the chain put together on the spot that entry `r` ran (its steps,
+ * `r.chain`) as a custom action: one definition (./compose prepareSave)
+ * added to the person's own customActions in the user settings, through
+ * $.config.set. Refused, with a toast saying why and nothing written: with
+ * an exec step (only the person adds one, in /config: this plugin's own
+ * $.config.set does not pass its own config.set guard, so it is refused
+ * here), the user settings unreadable, the setting loaded not the user
+ * settings' own text (the project's, say: never copied into the user
+ * settings), not a JSON array, or not read back with the chain. A deny of
+ * $.config.set and anything thrown are told too. Saved, the entry is
+ * marked with the ID (in the state, which a reload keeps) and a toast says so.
+ */
+async function saveComposed($: EngineInterface, l: Lang, r: Result) {
+  const t = MESSAGES[l]
+  const refuse = (why: string) => toastQuietly($, t.composeSaveRefused(why))
+  try {
+    const steps = r.chain ?? []
+    if (chainExecSteps({ steps }, [...currentSpecs.values()]).length > 0) return await refuse(t.composeSaveExec)
+    const user = await settingsOf($, 'user')
+    if (user === undefined) return await refuse(t.composeSaveUnreadable)
+    const own = execBaseline(user, PLUGIN) ?? ''
+    const loaded: unknown = currentExecLoad.setting ?? ''
+    if (typeof loaded !== 'string') return await refuse(t.composeSaveNotArray)
+    if (own !== loaded) return await refuse(t.composeSaveNotUser)
+    const prepared = prepareSave(own, steps, currentSpecs, reservedIds(), builtinSpecs())
+    if (!prepared.ok) {
+      return await refuse(prepared.refusal.code === 'notArray' ? t.composeSaveNotArray : reasonText(prepared.refusal.reason, l))
+    }
+    const written = await $.config.set({ key: `${PLUGIN}.customActions`, value: prepared.value })
+    if (written.deny !== undefined) return await refuse(displaySafe(written.deny))
+    await update($, results, list => list.map(x => (x.id === r.id ? { ...x, saved: prepared.record.id } : x)))
+    await toastQuietly($, t.composeSavedToast(prepared.record.id))
+  } catch (err) {
+    await refuse(displaySafe(messageOf(err)))
+  }
 }
 
 export const register: Register = (on, options) => {
@@ -2148,6 +2284,7 @@ export const register: Register = (on, options) => {
   const resolvedDefs: Partial<Record<Lang, readonly ActionDef[]>> = {}
   const defsFor = (l: Lang): readonly ActionDef[] => (resolvedDefs[l] ??= resolveAll(allSpecs, l))
   currentDefs = defsFor
+  currentSpecs = specById
 
   /** Every action in the settled order, resolved for the language: the ⋯ dialog's list; its first that fit, the hint line's. */
   const inOrder = (ids: readonly string[], l: Lang): ActionDef[] => {
@@ -2405,12 +2542,23 @@ export const register: Register = (on, options) => {
 
     const l = await ensureLanguage($)
     const t = MESSAGES[l]
-    const kind = hintKindFor(await read($, hintKind), text !== null)
-    const kinds = HINT_KINDS.filter(k => k !== 'selection' || text !== null)
+    // The chain mode (⛓, ./compose): on, a press stacks the action; the steps stacked so far.
+    const composed = await read($, composing)
+    const chainMode = composed !== null
+    const stacked = composed?.steps ?? []
+    // The selection's actions are shown with text to run on, and, in the
+    // chain mode, once a step is stacked: they are what may follow it.
+    const selectable = text !== null || stacked.length > 0
+    const kind = hintKindFor(await read($, hintKind), selectable)
+    const kinds = HINT_KINDS.filter(k => k !== 'selection' || selectable)
     // The order of the kinds that apply, pins first, of the kind shown.
     // Less what the exec gate refused.
     const ordered = allowed(await ensureExecGate($, execLoad), inOrder(await ensureOrder($, orderLoad), l))
-    const candidates = ofKind(arrange(ordered, pins, text !== null, orderLoad.defaults), kind)
+    const candidates = ofKind(arrange(ordered, pins, selectable, orderLoad.defaults), kind)
+    // The steps stacked as drawn: each one's icon (an ID no longer there, after a reload, as `?`) and label.
+    const stepDefs = stacked.map(id => findAction(defsFor(l), id))
+    const stepIcons = stepDefs.map(d => (d === undefined ? '?' : emojiIcon(d.icon)))
+    const stepLabels = stacked.map((id, i) => stepDefs[i]?.label ?? displaySafe(id))
 
     // The line's width: the viewport's columns, which on the terminal are the
     // transcript's column, a docked pane's already off (SELM-00066: 180
@@ -2441,7 +2589,13 @@ export const register: Register = (on, options) => {
     // still fit beside them, else as their marks alone (their hover labels say
     // which), else, too narrow even for those, left out (the kind shown stays
     // as it is). Then as many actions as fit (./hint-width hintLayout).
-    const ends = buttonWidth('✕') + buttonWidth('⋯')
+    // ⛓ always; in the chain mode, its guide with nothing stacked, else the
+    // steps (a space, then their icons, ` › ` between) and ⌫ and ▶: all kept
+    // whole, as ✕ and ⋯ are, so they count with them.
+    const stepsWidth =
+      stepIcons.reduce((sum, icon, i) => sum + textWidth(icon) + (hasEmoji(icon) ? EMOJI_EXTRA : 0) + (i > 0 ? textWidth(STEP_SEPARATOR) : 0), 0) + 1
+    const modeWidth = !chainMode ? 0 : stacked.length === 0 ? textWidth(` ${t.chainModeGuide}`) : stepsWidth + buttonWidth('⌫') + buttonWidth('▶')
+    const ends = buttonWidth('✕') + buttonWidth('⋯') + buttonWidth(CHAIN_ICON) + modeWidth
     const kindsWidth = (compact: boolean) => kinds.reduce((sum, k) => sum + buttonWidth(kindMark(k, compact)), 0)
     // Widths measured for as many as the line could take at most, not every candidate.
     const most = hintMost(columns)
@@ -2469,6 +2623,11 @@ export const register: Register = (on, options) => {
     // A press puts this line away, whichever kind it runs: the selection's
     // icons (dismissed) and the line `hint` opened.
     const press = async (a: ActionDef) => {
+      // The chain mode: stacked, nothing run (and no argument screen).
+      if ((await read($, composing)) !== null) {
+        await stackStep($, l, a)
+        return
+      }
       // Standalone taking an argument, where an Input can be drawn: nothing
       // runs yet; the ⋯ dialog opens on its argument screen, holding the text
       // as ⋯ does. The run there puts this line away.
@@ -2503,6 +2662,18 @@ export const register: Register = (on, options) => {
       if (current !== null) await update($, dismissed, () => current)
       await update($, hint, () => null)
       await update($, hintKind, () => null)
+      // The chain mode goes with the line.
+      await update($, composing, () => null)
+    }
+    // ⛓: the chain mode on, or off with what was stacked.
+    const toggleChain = () => update($, composing, c => (c === null ? { steps: [] } : null))
+    // ⌫: the last step stacked taken off.
+    const undoStep = () => update($, composing, c => (c === null ? c : { steps: c.steps.slice(0, -1) }))
+    // ▶: the steps stacked run in order, on the text the line holds.
+    const runStacked = async () => {
+      const c = await read($, composing)
+      if (c === null) return
+      await runComposed($, l, c.steps, await forPicker(), fromSurface(e.surface))
     }
     // The hover labels: cut where the row ends rather than wrapped onto another,
     // in the terminal's foreground (nothing paints the line's background, so a
@@ -2575,10 +2746,57 @@ export const register: Register = (on, options) => {
             ⋯
           </Button>
         </Box>
+        <Box key={`act-${CHAIN_MODE_KEY}`} flexShrink={0} hover={{ scope: 'tip-chain-mode' }}>
+          {chainMode ? (
+            <Button key={CHAIN_MODE_KEY} label={t.chainModeName(true)} onPress={toggleChain}>
+              <Text bold underline>{CHAIN_ICON}</Text>
+            </Button>
+          ) : (
+            <Button key={CHAIN_MODE_KEY} label={t.chainModeName(false)} onPress={toggleChain}>
+              {CHAIN_ICON}
+            </Button>
+          )}
+        </Box>
+        {chainMode && stacked.length === 0 && (
+          <Box key={CHAIN_GUIDE_KEY} flexShrink={0}>
+            <Text> {t.chainModeGuide}</Text>
+          </Box>
+        )}
+        {chainMode && stacked.length > 0 && (
+          <Box key="_chain-steps" flexDirection="row" flexShrink={0}>
+            <Text> </Text>
+            {stepIcons.map((icon, i) => (
+              <Box key={chainStepKey(i)} flexDirection="row" flexShrink={0}>
+                {i > 0 && <Text>{STEP_SEPARATOR}</Text>}
+                <Box flexShrink={0} hover={{ scope: `tip-chain-step-${i}` }}>
+                  <Text>{icon}</Text>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
+        {chainMode && stacked.length > 0 && (
+          <Box key={`act-${CHAIN_UNDO_KEY}`} flexShrink={0} hover={{ scope: 'tip-chain-undo' }}>
+            <Button key={CHAIN_UNDO_KEY} label={t.chainUndoName} onPress={undoStep}>
+              ⌫
+            </Button>
+          </Box>
+        )}
+        {chainMode && stacked.length > 0 && (
+          <Box key={`act-${CHAIN_RUN_KEY}`} flexShrink={0} hover={{ scope: 'tip-chain-run' }}>
+            <Button key={CHAIN_RUN_KEY} label={t.chainRunName} onPress={runStacked}>
+              ▶
+            </Button>
+          </Box>
+        )}
         {shownKinds.map(k => tip(`tip-kind-${k}`, t.hintKindTips[k]))}
         {enabled.map(a => tip(`tip-action-${a.id}`, a.label))}
         {tip('tip-close', t.close)}
         {tip('tip-more', t.allActions)}
+        {tip('tip-chain-mode', t.chainModeTip)}
+        {chainMode && stepLabels.map((label, i) => tip(`tip-chain-step-${i}`, label))}
+        {chainMode && stacked.length > 0 && tip('tip-chain-undo', t.chainUndoName)}
+        {chainMode && stacked.length > 0 && tip('tip-chain-run', t.chainRunName)}
       </Box>
     )
   })
@@ -2635,7 +2853,12 @@ export const register: Register = (on, options) => {
     // Less what the exec gate refused.
     const gate = await ensureExecGate($, execLoad)
     const all = allowed(gate, inOrder(await ensureOrder($, orderLoad), l))
-    const hasSelection = state !== null && state.text !== null
+    // The multi-select (./compose), shared with the hint line's ⛓ mode: the steps chosen so far.
+    const composed = await read($, composing)
+    const stacked = composed?.steps ?? []
+    // The selection's actions are listed with text to run on, and, in the
+    // multi-select, once a step is chosen: they are what may follow it.
+    const hasSelection = state !== null && (state.text !== null || stacked.length > 0)
     // The kind listed (undefined: every kind), and what is listed of it in the
     // dialog's order; the filter searches that alone.
     const kind = pickerKindFor(state?.kind, hasSelection)
@@ -2651,6 +2874,22 @@ export const register: Register = (on, options) => {
     const shown = filterDefs(ordered, filter)
     const kinds = pickerKindsShown(hasSelection)
     const labelOf = (a: ActionDef) => `${markedIcon(a)} ${a.label}`
+    // The multi-select's rows, drawn under the kind buttons while the dialog
+    // is open: its toggle; on, the steps chosen (numbered, in order) and its
+    // undo and run buttons, or with none chosen yet its guide.
+    const stepsLine = stacked
+      .map((id, i) => {
+        const d = findAction(defsFor(l), id)
+        return `${i + 1}. ${d === undefined ? displaySafe(id) : `${emojiIcon(d.icon)} ${d.label}`}`
+      })
+      .join(' → ')
+    const composeChrome =
+      state === null
+        ? []
+        : [
+            `[ ${t.composeToggle} ]`,
+            ...(composed === null ? [] : stacked.length === 0 ? [t.composeGuide] : [stepsLine, `[ ${t.composeUndo} ][ ${t.composeRun} ]`]),
+          ]
     // The filter row as drawn below, and so as counted: one set of strings for both.
     const filterRow = {
       label: t.pickerFilterLabel,
@@ -2669,7 +2908,7 @@ export const register: Register = (on, options) => {
         : pickerPages({
             bodyRows: e.props.scroll.bodyRows,
             bodyColumns: e.props.bodyColumns,
-            chrome: [],
+            chrome: composeChrome,
             filterRow,
             close: t.pickerClose,
             // The kind buttons' row, drawn while the dialog is open alone
@@ -2748,6 +2987,30 @@ export const register: Register = (on, options) => {
         </Button>
       )
     }
+    // The multi-select's toggle: on, or off with what was chosen (the hint line's ⛓ with it).
+    const toggleCompose = () => update($, composing, c => (c === null ? { steps: [] } : null))
+    const composeToggle = (
+      <Button key={COMPOSE_TOGGLE_KEY} label={t.composeToggleName(composed !== null)} onPress={toggleCompose}>
+        {composed !== null ? (
+          <Text bold {...(fixed ? { color: style.heading } : { underline: true })}>{t.composeToggle}</Text>
+        ) : fixed ? (
+          <Text color={style.muted}>{t.composeToggle}</Text>
+        ) : (
+          t.composeToggle
+        )}
+      </Button>
+    )
+    const composeUndo = { label: t.composeUndo, onPress: () => update($, composing, c => (c === null ? c : { steps: c.steps.slice(0, -1) })) }
+    // Run all: as the hint line's ▶, on the text the dialog holds.
+    const composeRun = {
+      label: t.composeRun,
+      onPress: async () => {
+        const c = await read($, composing)
+        if (c === null) return
+        const held = await read($, picking)
+        await runComposed($, l, c.steps, held === null || held.text === null ? null : pickedOf(held.text, held.requestId), fromSurface(e.surface))
+      },
+    }
     // Clear empties the field and hands the focus ring back to it (see ./focus).
     const clear = {
       label: t.pickerFilterClear,
@@ -2825,6 +3088,23 @@ export const register: Register = (on, options) => {
           <Box flexDirection="row" flexWrap="wrap">
             {kindButton('all')}
             {kinds.map(kindButton)}
+          </Box>
+        )}
+        {state !== null && (
+          <Box flexDirection="row" flexWrap="wrap">
+            {composeToggle}
+          </Box>
+        )}
+        {state !== null && composed !== null && stacked.length === 0 && <Text {...muted(style)}>{t.composeGuide}</Text>}
+        {state !== null && composed !== null && stacked.length > 0 && (
+          <Text key={COMPOSE_STEPS_KEY} color={style.body}>
+            {stepsLine}
+          </Text>
+        )}
+        {state !== null && composed !== null && stacked.length > 0 && (
+          <Box flexDirection="row" flexWrap="wrap">
+            {mutedButton(elements, style, COMPOSE_UNDO_KEY, composeUndo)}
+            {mutedButton(elements, style, COMPOSE_RUN_KEY, composeRun)}
           </Box>
         )}
         {state !== null && Input !== undefined && (
@@ -3012,6 +3292,30 @@ export const register: Register = (on, options) => {
     }
     /** Whether the entry is a timer's (or the like's) that no longer runs: what rerun is drawn for. */
     const idle = (r: Result) => r.status !== 'running' || orphaned(r)
+    /**
+     * A chain put together on the spot, once it no longer runs: "again", the
+     * same steps on the text the ⋯ dialog holds (or selected now), with no
+     * argument screen; and the save as a custom action, or, saved, the ID.
+     */
+    const composedButtons = (r: Result, steps: readonly string[], def: ActionDef | undefined) => {
+      const againComposed = async () => {
+        const open = await openPicking($)
+        const held = open !== null && open.text !== null ? pickedOf(open.text, open.requestId) : await pickedNow($)
+        await runComposed($, l, steps, held, fromSurface(e.surface), true)
+      }
+      return (
+        <Box flexDirection="row" flexWrap="wrap">
+          {paneButton(againKey(r.id), t.again, againComposed, entryButton(r, def, t.again))}
+          {r.saved === undefined ? (
+            paneButton(saveKey(r.id), t.composeSave, () => saveComposed($, l, r), entryButton(r, def, t.composeSave))
+          ) : (
+            <Text key={savedKey(r.id)} {...muted(style)}>
+              {` ${t.composeSaved(r.saved)}`}
+            </Text>
+          )}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" {...painted(style)}>
@@ -3038,7 +3342,8 @@ export const register: Register = (on, options) => {
           <Text {...muted(style)}>{t.emptyPane}</Text>
         )}
         {list.map(r => {
-          const def = findAction(defs, r.action)
+          // A chain put together on the spot is drawn again from its steps: no definition has its ID.
+          const def = r.chain !== undefined ? adhocChain(r.chain, defs) : findAction(defs, r.action)
           return (
             <Box flexDirection="column" marginBottom={1}>
               {/* Bold is the label's alone: a nested Text takes its parent's
@@ -3053,6 +3358,7 @@ export const register: Register = (on, options) => {
                 <Text color={r.status === 'failed' ? style.failed : style.body}>{r.text}</Text>
               )}
               {r.timed === true && def !== undefined && isStandalone(def) && idle(r) && rerun(r, def)}
+              {r.chain !== undefined && r.status !== 'running' && composedButtons(r, r.chain, def)}
               {r.origin !== undefined && marks(r, def, r.origin)}
             </Box>
           )

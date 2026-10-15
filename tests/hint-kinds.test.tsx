@@ -2,6 +2,7 @@ import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 
 import { LEAD_RESERVE, TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
+import { CHAIN_ICON } from '../hooks/compose'
 import { MESSAGES } from '../hooks/i18n'
 import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
@@ -56,7 +57,7 @@ async function lineWidth(band: Parameters<typeof hintIcons>[0]) {
 }
 
 /** How many actions the line shows (its icons, less ✕ and ⋯). */
-const actionCount = async (band: Parameters<typeof hintIcons>[0]) => (await hintIcons(band)).length - 2
+const actionCount = async (band: Parameters<typeof hintIcons>[0]) => (await hintIcons(band)).length - 3
 
 /** The cells the line has on a viewport `columns` wide: the permission mode at the row's left (LEAD_RESERVE) taken off. */
 const room = (columns: number) => hintLineColumns(columns, leadFor('terminal'))
@@ -80,7 +81,7 @@ for (const surface of SURFACES) {
     expect(buttons.map(b => b.label)).toEqual(['選択範囲へのアクション（表示中）', '会話へのアクション', '単独で使うアクション'])
     const bold = (await band.findAll({ type: 'Text' })).filter(t => t.props.bold === true).map(t => t.text)
     expect(bold).toEqual(['[選択]'])
-    const icons = async () => (await hintIcons(band)).slice(0, -2).map(String)
+    const icons = async () => (await hintIcons(band)).slice(0, -3).map(String)
     expect((await icons()).every(l => l.startsWith('['))).toBe(true)
 
     await showKind(band, 'context')
@@ -169,9 +170,9 @@ test('with no text to run on, no selection button: the line opens on the convers
 
   const band = await mountBand($)
   expect(await hintKinds(band)).toEqual(['context', 'standalone'])
-  expect((await hintIcons(band)).slice(0, -2).every(l => String(l).startsWith('<'))).toBe(true)
+  expect((await hintIcons(band)).slice(0, -3).every(l => String(l).startsWith('<'))).toBe(true)
   await showKind(band, 'standalone')
-  expect((await hintIcons(band)).slice(0, -2).every(l => String(l).startsWith('{'))).toBe(true)
+  expect((await hintIcons(band)).slice(0, -3).every(l => String(l).startsWith('{'))).toBe(true)
   await band.unmount()
 })
 
@@ -230,9 +231,10 @@ test('wider, more icons: as many as fit, more than six on a wide terminal', { op
     expect(await lineWidth(band)).toBeLessThanOrEqual(room(columns))
     await band.unmount()
   }
-  // Two at 80 columns beside the permission mode, not the six counted before
-  // SELM-00058: six never fit once each button's frame is counted.
-  expect(counts[0]).toBe(2)
+  // One at 80 columns beside the permission mode, not the six counted before
+  // SELM-00058: six never fit once each button's frame is counted (two before
+  // SELM-00128 put ⛓ beside ✕ and ⋯).
+  expect(counts[0]).toBe(1)
   for (let i = 1; i < counts.length; i++) expect(counts[i]!).toBeGreaterThanOrEqual(counts[i - 1]!)
   expect(counts[2]!).toBeGreaterThan(counts[0]!)
   expect(counts.at(-1)!).toBeGreaterThan(6)
@@ -248,10 +250,10 @@ for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.e
     for (const columns of [80, 70, 60, 50, 40, 30, 20]) {
       const band = await mountBand($, columns)
       // ✕ and ⋯ are drawn however narrow; whatever more is laid out fits beside them.
-      if (room(columns) >= buttonWidth('✕') + buttonWidth('⋯')) expect(await lineWidth(band)).toBeLessThanOrEqual(room(columns))
+      if (room(columns) >= buttonWidth('✕') + buttonWidth('⋯') + buttonWidth(CHAIN_ICON)) expect(await lineWidth(band)).toBeLessThanOrEqual(room(columns))
       // ✕ and ⋯ stay, so every action is still a press away.
       const icons = await hintIcons(band)
-      expect(icons.slice(-2)).toEqual(['✕', '⋯'])
+      expect(icons.slice(-3)).toEqual(['✕', '⋯', '⛓️'])
       const kinds = await kindButtons(band)
       const named = Object.values(t.hintKinds).every(k => kinds.some(b => b.drawn.includes(k)))
       if (!named && kinds.length > 0) {
@@ -261,11 +263,12 @@ for (const [options, name, t] of [[JA, 'ja', MESSAGES.ja], [EN, 'en', MESSAGES.e
         expect(kinds.map(b => b.label)).toEqual([t.hintKindShown(t.hintKindTips.selection), t.hintKindTips.context, t.hintKindTips.standalone])
       }
       // Too narrow even for the kinds' marks beside ✕ and ⋯: none.
-      if (room(columns) < marks + buttonWidth('✕') + buttonWidth('⋯')) expect(kinds).toEqual([])
+      if (room(columns) < marks + buttonWidth('✕') + buttonWidth('⋯') + buttonWidth(CHAIN_ICON)) expect(kinds).toEqual([])
       await band.unmount()
     }
-    // 80 and 70 columns: their marks alone, still with an action beside them.
-    for (const columns of [80, 70]) {
+    // 90 and 80 columns: their marks alone, still with an action beside them
+    // (80 and 70 before SELM-00128 put ⛓ beside ✕ and ⋯).
+    for (const columns of [90, 80]) {
       const band = await mountBand($, columns)
       expect((await kindButtons(band)).map(b => b.drawn)).toEqual(['[ ]', '< >', '{ }'])
       expect(await actionCount(band)).toBeGreaterThan(0)
@@ -693,7 +696,7 @@ function expected(columns: number, lang: 'ja' | 'en', lead = LEAD_RESERVE) {
     line,
     kindsLabeled: KIND_CELLS[lang],
     kindsMarks: KIND_CELLS.marks,
-    ends: buttonWidth('✕') + buttonWidth('⋯'),
+    ends: buttonWidth('✕') + buttonWidth('⋯') + buttonWidth(CHAIN_ICON),
     widths: Array.from({ length: hintMost(line) }, () => 9),
     tip: TIP_RESERVE,
   })
@@ -717,14 +720,15 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     // off the row), each a single emoji in its mark (9 cells), so the count is
     // never short of candidates.
     const wide = await mountBand($, 400)
-    const icons = (await hintIcons(wide)).slice(0, -2).map(String)
+    const icons = (await hintIcons(wide)).slice(0, -3).map(String)
     expect(icons.length).toBeGreaterThanOrEqual(13)
     for (const icon of icons.slice(0, 13)) expect(buttonWidth(icon)).toBe(9)
     await wide.unmount()
 
     const table = {
-      ja: [[60, 'none', 2], [80, 'marks', 2], [100, 'labeled', 2], [160, 'labeled', 8]],
-      en: [[60, 'none', 2], [80, 'marks', 2], [100, 'marks', 3], [160, 'labeled', 7]],
+      // ⛓ (SELM-00128) beside ✕ and ⋯ takes a few cells more off the actions.
+      ja: [[60, 'none', 1], [80, 'marks', 1], [100, 'labeled', 2], [160, 'labeled', 7]],
+      en: [[60, 'none', 1], [80, 'marks', 1], [100, 'marks', 2], [160, 'labeled', 6]],
     } as const
     for (const [columns, kinds, count] of table[lang]) {
       const band = await mountBand($, columns)
@@ -764,7 +768,7 @@ test('45 columns: no action and no kind button, yet ✕ and ⋯, and ⋯ reaches
   await start($)
   await select(s, clock, SELECTED)
   const band = await mountBand($, 45)
-  expect(await hintIcons(band)).toEqual(['✕', '⋯'])
+  expect(await hintIcons(band)).toEqual(['✕', '⋯', '⛓️'])
   expect(await kindsDrawn(band)).toBe('none')
   await band.press({ key: '_more' })
   await band.unmount()
@@ -819,11 +823,11 @@ for (const surface of SURFACES) {
     const boxes = await band.findAll({ type: 'Box' })
     const acts = boxes.filter(b => String(b.key).startsWith('act-'))
     const count = await actionCount(band)
-    // The kinds, the actions, ✕ and ⋯, in that order, every one kept whole.
+    // The kinds, the actions, ✕, ⋯ and ⛓, in that order, every one kept whole.
     expect(acts.map(b => String(b.key))).toEqual([
       'act-_kind-selection', 'act-_kind-context', 'act-_kind-standalone',
       ...acts.slice(3, 3 + count).map(b => String(b.key)),
-      'act-close', 'act-_more',
+      'act-close', 'act-_more', 'act-_chain-mode',
     ])
     for (const box of acts) expect(box.props.flexShrink).toBe(0)
     const row = boxes[0]!

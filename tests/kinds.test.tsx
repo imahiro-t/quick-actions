@@ -96,7 +96,7 @@ for (const language of ['ja', 'en'] as const) {
 
       const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
       const icons = (await hintIcons(band))
-      expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
+      expect(icons).toEqual(['[💡]', '[🔎]', '[📚]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
 
       await reselect(s, clock)
       await band.press({ key: 'web-check' })

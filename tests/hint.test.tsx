@@ -43,7 +43,7 @@ for (const surface of SURFACES) {
     s.selected = 'some text'
     await clock.advance(400)
 
-    expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+    expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
   })
 
   test(
@@ -56,7 +56,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[📝]', '[💡]', '[💬]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[📝]', '[💡]', '[💬]', '[🌐]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
     },
   )
 
@@ -70,7 +70,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[🌐]', '[💡]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[🌐]', '[💡]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯', '⛓️'])
     },
   )
 
@@ -84,7 +84,7 @@ for (const surface of SURFACES) {
       s.selected = 'some text'
       await clock.advance(400)
 
-      expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+      expect(await iconsFor($, surface)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
     },
   )
 

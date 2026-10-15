@@ -36,6 +36,15 @@ export type Result = {
    * the moment). Left out before the first step and on every other entry.
    */
   step?: number
+  /**
+   * A chain put together on the spot (the hint line's ⛓ mode, the ⋯ dialog's
+   * multi-select; ./compose): its steps' IDs, in order, from which its
+   * heading, its step and its "again" are drawn anew (its action is
+   * `_chain`, which no definition has). Left out on every other entry.
+   */
+  chain?: string[]
+  /** Set once such a chain was saved as a custom action: the ID it was saved as. */
+  saved?: string
   status: 'running' | 'done' | 'failed'
   text: string
   /**
@@ -126,6 +135,15 @@ declare module 'claude-code' {
        * EXEC_SLOT_GRACE_MS.
        */
       execSlots: ExecSlot[]
+      /**
+       * The chain being put together on the spot: the hint line's ⛓ mode and
+       * the ⋯ dialog's multi-select, one state for both (null: neither on).
+       * On, a press of an action stacks its ID in `steps` rather than running
+       * it; ▶ (or "Run all") runs them in order as a chain. Back to null with
+       * ⛓ or the toggle pressed again, a run of it, ✕ on the hint line, or
+       * the pane closed as a whole.
+       */
+      composing: { steps: string[] } | null
     }
   }
 }

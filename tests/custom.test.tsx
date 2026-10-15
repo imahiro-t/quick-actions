@@ -563,7 +563,7 @@ for (const surface of SURFACES) {
       const band = await $.ui.mount({ ...BAND, surface })
       const icons = (await hintIcons(band))
       // Five pinned, then the first of the rest (translate-ja), six in all.
-      expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯'])
+      expect(icons).toEqual(['[🪄]', '[💡]', '[🧭]', '[🧪]', '[👀]', '[🌐]', '✕', '⋯', '⛓️'])
       for (const label of labels) expect(await band.find({ text: new RegExp(label) })).toBeDefined()
       // Nothing was wrong: no toast.
       expect(s.toasts).toEqual([])
@@ -705,7 +705,7 @@ for (const surface of SURFACES) {
 
     const band = await $.ui.mount({ ...BAND, surface })
     // The valid custom one and explain pinned; the invalid ones nowhere.
-    expect((await hintIcons(band))).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯'])
+    expect((await hintIcons(band))).toEqual(['[🪄]', '[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '✕', '⋯', '⛓️'])
     await reselect(s, clock)
     await band.press({ key: 'explain' })
     expect(s.models.map(m => m.model)).toEqual(['sonnet'])
@@ -785,7 +785,7 @@ test('broken JSON: the built-in default set shows, and the command tells why', {
   await clock.advance(400)
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await hintIcons(band))).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect((await hintIcons(band))).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
   await band.unmount()
 
   const r = await runCommand($, '')

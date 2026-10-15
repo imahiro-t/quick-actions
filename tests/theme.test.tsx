@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ACTIONS } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { PALETTES, contrastRatio, paneStyle, parsePaneTheme } from '../hooks/palette'
-import { BAND, EN, JA, KIND_KEY, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
+import { BAND, COMPOSE_TOGGLE, EN, JA, KIND_KEY, PANE, PICKER, PICKER_CLOSE, PICKER_FILTER, PICKER_KIND, PICKER_NEXT, PICKER_PANE, PICKER_PREV, SURFACES, listedActions, pickAction, pickerKindButtons, reselect, showPickerKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The `paneTheme` setting: auto (Claude Code's theme, as before) or a fixed
@@ -377,7 +377,7 @@ for (const theme of THEMES) {
       await showPickerKind(picker, 'selection')
       expect((await pickerKindButtons(picker, p.muted)).map(k => [k.kind, k.bold, k.dim, k.color, k.dimColor])).toEqual(everyKind)
 
-      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => ![PICKER_CLOSE, PICKER_PREV, PICKER_NEXT].includes(String(b.key)) && !String(b.key).startsWith(PICKER_KIND))
+      const buttons = (await picker.findAll({ type: 'Button' })).filter(b => ![PICKER_CLOSE, PICKER_PREV, PICKER_NEXT, COMPOSE_TOGGLE].includes(String(b.key)) && !String(b.key).startsWith(PICKER_KIND))
       // Every action on mobile, which draws no filter field; elsewhere as many as the pane's height holds.
       expect(buttons.map(b => b.key)).toEqual(await listedActions(picker))
       if (surface === 'mobile') expect(buttons).toHaveLength(ACTIONS.length)

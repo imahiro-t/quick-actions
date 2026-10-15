@@ -195,7 +195,7 @@ for (const surface of SURFACES) {
     expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
     const labels = await labelsOf($, surface)
     // The context actions: the default set's first, then the rest in the order of definition; six in all.
-    expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+    expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯', '⛓️'])
     // With no text to run on, no kind button for the selection's actions; the standalone ones a press away.
     const kinds = await $.ui.mount({ ...BAND, surface })
     expect(await hintKinds(kinds)).toEqual(['context', 'standalone'])
@@ -221,7 +221,7 @@ test('with text selected, /quick-actions hint keeps every kind though the comman
   await openHint($, s, clock)
   await clock.advance(400)
   // It opens on the actions on the text it held; the other kinds a press away.
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
   expect((await labelsOf($, 'terminal', 'context')).slice(0, 2)).toEqual(['<🧭>', '<✅>'])
   await labelsOf($, 'terminal', 'selection')
 
@@ -244,7 +244,7 @@ test('a selection made after /quick-actions hint arms it: that selection going c
 
   s.selected = 'exit 137'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
 
   s.selected = null
   await clock.advance(400)
@@ -266,7 +266,7 @@ test('the selection held as the command ran, seen late by the poll, does not arm
   s.selected = null
   await clock.advance(400)
   // Its going closes nothing: the line stays, on the text it held.
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'summarize' })
   await band.unmount()
@@ -364,15 +364,15 @@ test('the usage scores order the kinds as one; with a selection, the actions on 
   await start($)
   s.selected = 'some text'
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '[💃]', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '[💃]', '✕', '⋯', '⛓️'])
   // Its context actions by the same scores, a press away.
-  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯', '⛓️'])
 
   // With nothing selected, the same order with the context actions alone.
   s.selected = null
   await clock.advance(400)
   await openHint($, s, clock)
-  expect(await labelsOf($)).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯', '⛓️'])
 })
 
 test('`pinActions` pins either kind', { options: { pinActions: 'recap,explain,handoff' } }, async ($, on) => {
@@ -382,13 +382,13 @@ test('`pinActions` pins either kind', { options: { pinActions: 'recap,explain,ha
   s.selected = 'some text'
   await clock.advance(400)
   // Each kind's pins lead it.
-  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯'])
-  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<📝>', '<✅>', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[🔤]', '[🀄]', '[🏮]', '[🌏]', '✕', '⋯', '⛓️'])
+  expect(await labelsOf($, 'terminal', 'context')).toEqual(['<🧭>', '<📝>', '<✅>', '<📋>', '<❓>', '<🧸>', '✕', '⋯', '⛓️'])
 
   s.selected = null
   await clock.advance(400)
   await openHint($, s, clock)
-  expect(await labelsOf($)).toEqual(['<🧭>', '<📝>', '<✅>', '<📋>', '<❓>', '<🧸>', '✕', '⋯'])
+  expect(await labelsOf($)).toEqual(['<🧭>', '<📝>', '<✅>', '<📋>', '<❓>', '<🧸>', '✕', '⋯', '⛓️'])
 })
 
 // ---------------------------------------------------------------------------

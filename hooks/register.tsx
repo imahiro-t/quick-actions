@@ -2089,18 +2089,22 @@ const undoComposing = ($: EngineInterface) => update($, composing, c => (c === n
  * multi-select): stacked after the steps so far, nothing run, unless a chain
  * may not have it there (./compose stackProblem), which a toast says, and
  * nothing is stacked. With its first step stacked, the hint line turns to the
- * actions on the selection, the only ones a step after it may be.
+ * actions on the selection, the only ones a step after it may be. True only
+ * when this press stacked the first step (not when refused, off, or a later
+ * step), for the ⋯ dialog to turn its own tab the same way.
  */
-async function stackStep($: EngineInterface, lang: Lang, def: ActionDef) {
+async function stackStep($: EngineInterface, lang: Lang, def: ActionDef): Promise<boolean> {
   const now = await read($, composing)
-  if (now === null) return
+  if (now === null) return false
   const why = stackProblem(now.steps, def)
   if (why !== undefined) {
     await toastQuietly($, reasonText(why, lang))
-    return
+    return false
   }
   await update($, composing, c => (c === null ? c : { steps: [...c.steps, def.id] }))
-  if (now.steps.length === 0) await update($, hintKind, () => 'selection')
+  if (now.steps.length > 0) return false
+  await update($, hintKind, () => 'selection')
+  return true
 }
 
 /**
@@ -2158,9 +2162,11 @@ async function runStackedSteps($: EngineInterface, lang: Lang, heldText: () => P
 async function pick($: EngineInterface, lang: Lang, def: ActionDef | undefined, input: boolean, surface?: RenderSurface) {
   // Multi-select: stacked, not run, and no argument screen (a standalone
   // first step runs with its default); the filter emptied, as after a pick.
+  // With the first step stacked, the tab turns to the actions on the
+  // selection, as the hint line does; a later step leaves the tab chosen.
   if (def !== undefined && (await read($, composing)) !== null) {
     await update($, picking, p => (p === null ? p : { ...withoutPage(p), filter: '' }))
-    await stackStep($, lang, def)
+    if (await stackStep($, lang, def)) await update($, picking, p => (p === null ? p : { ...withoutPage(p), kind: 'selection' as const }))
     return
   }
   if (def !== undefined && input && takesArg(def)) {

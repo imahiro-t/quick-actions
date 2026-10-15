@@ -199,9 +199,9 @@ const COMPOSE_STEPS_KEY = '_compose-steps'
 const COMPOSE_UNDO_KEY = '_compose-undo'
 const COMPOSE_RUN_KEY = '_compose-run'
 const saveKey = (id: number) => `_save-${id}`
+const savedKey = (id: number) => `_saved-${id}`
 // What the hint line draws between the steps stacked.
 const STEP_SEPARATOR = ' › '
-const savedKey = (id: number) => `_saved-${id}`
 
 /**
  * Whether an Input can be drawn here: everywhere the surface's table has one
@@ -2065,7 +2065,11 @@ async function backToList($: EngineInterface) {
 export const closeGoesBack = (state: { text: string | null; requestId?: string; filter: string; arg?: ArgInput } | null, origin: PaneCloseOrigin): boolean =>
   origin.kind === 'person' && state !== null && state.arg !== undefined
 
-/** A toast that is let go should it fail: what it says is not worth a failure. */
+/**
+ * A toast that is let go should it fail: what it says is not worth a failure.
+ * Not ./scroll settleQuietly: $.ui.toast is typed to return nothing (no
+ * promise to settle), and a throw from the call itself is to be caught too.
+ */
 async function toastQuietly($: EngineInterface, text: string) {
   try {
     await $.ui.toast(text)
@@ -2073,6 +2077,12 @@ async function toastQuietly($: EngineInterface, text: string) {
     // Not shown.
   }
 }
+
+/** The chain mode on (nothing stacked yet), or off with what was stacked: the hint line's ⛓, the ⋯ dialog's multi-select toggle. */
+const toggleComposing = ($: EngineInterface) => update($, composing, c => (c === null ? { steps: [] } : null))
+
+/** The last step stacked taken off: the hint line's ⌫, the ⋯ dialog's "undo last". */
+const undoComposing = ($: EngineInterface) => update($, composing, c => (c === null ? c : { steps: c.steps.slice(0, -1) }))
 
 /**
  * A press of `def` in the chain mode (the hint line's ⛓, the ⋯ dialog's
@@ -2124,6 +2134,17 @@ async function runComposed($: EngineInterface, lang: Lang, steps: readonly strin
     return
   }
   await runOnText($, chain, lang, held!, from)
+}
+
+/**
+ * The steps stacked so far run as runComposed does, on the text `heldText`
+ * gives (read only once there are steps to run): the hint line's ▶, the ⋯
+ * dialog's "run all". Nothing when the chain mode is off.
+ */
+async function runStackedSteps($: EngineInterface, lang: Lang, heldText: () => Promise<Picked | null>, from: RunFrom) {
+  const c = await read($, composing)
+  if (c === null) return
+  await runComposed($, lang, c.steps, await heldText(), from)
 }
 
 /**
@@ -2194,8 +2215,8 @@ async function saveComposed($: EngineInterface, l: Lang, r: Result) {
     if (user === undefined) return await refuse(t.composeSaveUnreadable)
     const own = execBaseline(user, PLUGIN) ?? ''
     const loaded: unknown = currentExecLoad.setting ?? ''
-    if (typeof loaded !== 'string') return await refuse(t.composeSaveNotArray)
-    if (own !== loaded) return await refuse(t.composeSaveNotUser)
+    // A load that is not a string cannot be told to be the user settings' own either.
+    if (typeof loaded !== 'string' || own !== loaded) return await refuse(t.composeSaveNotUser)
     const prepared = prepareSave(own, steps, currentSpecs, reservedIds(), builtinSpecs())
     if (!prepared.ok) {
       return await refuse(prepared.refusal.code === 'notArray' ? t.composeSaveNotArray : reasonText(prepared.refusal.reason, l))
@@ -2665,16 +2686,10 @@ export const register: Register = (on, options) => {
       // The chain mode goes with the line.
       await update($, composing, () => null)
     }
-    // ⛓: the chain mode on, or off with what was stacked.
-    const toggleChain = () => update($, composing, c => (c === null ? { steps: [] } : null))
-    // ⌫: the last step stacked taken off.
-    const undoStep = () => update($, composing, c => (c === null ? c : { steps: c.steps.slice(0, -1) }))
+    const toggleChain = () => toggleComposing($)
+    const undoStep = () => undoComposing($)
     // ▶: the steps stacked run in order, on the text the line holds.
-    const runStacked = async () => {
-      const c = await read($, composing)
-      if (c === null) return
-      await runComposed($, l, c.steps, await forPicker(), fromSurface(e.surface))
-    }
+    const runStacked = () => runStackedSteps($, l, forPicker, fromSurface(e.surface))
     // The hover labels: cut where the row ends rather than wrapped onto another,
     // in the terminal's foreground (nothing paints the line's background, so a
     // theme colour such as `suggestion` falls to about 1.8:1 where the theme
@@ -2988,7 +3003,7 @@ export const register: Register = (on, options) => {
       )
     }
     // The multi-select's toggle: on, or off with what was chosen (the hint line's ⛓ with it).
-    const toggleCompose = () => update($, composing, c => (c === null ? { steps: [] } : null))
+    const toggleCompose = () => toggleComposing($)
     const composeToggle = (
       <Button key={COMPOSE_TOGGLE_KEY} label={t.composeToggleName(composed !== null)} onPress={toggleCompose}>
         {composed !== null ? (
@@ -3000,16 +3015,20 @@ export const register: Register = (on, options) => {
         )}
       </Button>
     )
-    const composeUndo = { label: t.composeUndo, onPress: () => update($, composing, c => (c === null ? c : { steps: c.steps.slice(0, -1) })) }
+    const composeUndo = { label: t.composeUndo, onPress: () => undoComposing($) }
     // Run all: as the hint line's ▶, on the text the dialog holds.
     const composeRun = {
       label: t.composeRun,
-      onPress: async () => {
-        const c = await read($, composing)
-        if (c === null) return
-        const held = await read($, picking)
-        await runComposed($, l, c.steps, held === null || held.text === null ? null : pickedOf(held.text, held.requestId), fromSurface(e.surface))
-      },
+      onPress: () =>
+        runStackedSteps(
+          $,
+          l,
+          async () => {
+            const held = await read($, picking)
+            return held === null || held.text === null ? null : pickedOf(held.text, held.requestId)
+          },
+          fromSurface(e.surface),
+        ),
     }
     // Clear empties the field and hands the focus ring back to it (see ./focus).
     const clear = {

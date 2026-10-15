@@ -64,7 +64,7 @@ export function composeProblem(steps: readonly string[], defs: readonly { id: st
   return chainProblem({ steps }, pool, chains)
 }
 
-/** The label of a chain of these steps: each step's label joined by an arrow, an unknown one by its ID (shown safe). */
+/** The label of a chain of steps with these labels: joined by an arrow (the callers put an unknown step's ID, shown safe, in its place). */
 const joinedLabel = (labels: readonly string[]) => labels.join(' → ')
 
 /**

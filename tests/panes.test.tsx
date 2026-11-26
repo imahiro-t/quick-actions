@@ -405,6 +405,31 @@ test('while a question is up, the hint line is not drawn and the command opens n
   expect(s.panes.sort()).toEqual([PANE.requestId, PICKER].sort())
 })
 
+// SELM-00131: the line is always drawn, but not while a question is up, with no selection either.
+test('with nothing selected, the hint line is drawn, but not while a question is up', async ($, on) => {
+  const clock = mock.clock(on)
+  const answer = heldQuestion(on)
+  stage(on)
+  await start($)
+  await clock.advance(400)
+  let band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.findAll({ type: 'Button' })).length).toBeGreaterThan(0)
+  await band.unmount()
+
+  const asked = ask($, 'toolu_3')
+  await clock.settle()
+  band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band.findAll({ type: 'Button' })).toEqual([])
+  await band.unmount()
+
+  answer()
+  await asked
+  await clock.settle()
+  band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.findAll({ type: 'Button' })).length).toBeGreaterThan(0)
+  await band.unmount()
+})
+
 test('a question refused or failing lets Quick Actions be used again', async ($, on) => {
   const clock = mock.clock(on)
   on('tool.call', { tool: 'AskUserQuestion' }, () => {

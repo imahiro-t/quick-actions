@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon } from '../hooks/actions'
 import { MESSAGES, answerStyle } from '../hooks/i18n'
-import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, listedOptions, pickAction, SURFACES, hintIcons, hintKinds, runCommand, showKind, stage, start } from './stage'
+import { BAND, EN, JA, JAPANESE, PANE, PICKER_PANE, listedOptions, pickAction, SURFACES, NO_SELECTION_SHAPE, hintIcons, hintKinds, hintShape, runCommand, showKind, stage, start } from './stage'
 import type { Clock, HintKindName, Stage } from './stage'
 
 // Context actions: on the conversation itself, with no selected text, a fork
@@ -138,6 +138,14 @@ const labelsOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'termina
   return labels
 }
 
+/** The hint line's shape (hintShape) as drawn afresh. */
+const shapeOf = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal') => {
+  const band = await $.ui.mount({ ...BAND, surface })
+  const shape = await hintShape(band)
+  await band.unmount()
+  return shape
+}
+
 /** `/quick-actions hint`, then the selection gone, as the engine has it after a command, and a poll. */
 async function openHint($: Engine, s: Stage, clock: Clock) {
   const r = await runCommand($, 'hint')
@@ -184,16 +192,21 @@ test('the marks: [icon] on the selection, <icon> on the conversation', () => {
 // /quick-actions hint
 
 for (const surface of SURFACES) {
-  test(`[${surface}] with nothing selected, /quick-actions hint shows the context actions alone, and ✕ closes it`, async ($, on) => {
+  // SELM-00131: the line is there with nothing selected, without `hint`;
+  // `hint` with nothing selected only puts it back to that, and ✕ leaves it.
+  test(`[${surface}] with nothing selected, the hint line shows the context actions alone; /quick-actions hint and ✕ leave it so`, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
     await clock.advance(400)
-    expect(await labelsOf($, surface)).toEqual([])
+    expect(await shapeOf($, surface)).toEqual(NO_SELECTION_SHAPE)
+    const before = await labelsOf($, surface)
 
     const r = await openHint($, s, clock)
-    expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
+    expect(JSON.stringify(r)).toContain(MESSAGES.en.hintReset)
+    expect(JSON.stringify(r)).not.toContain(MESSAGES.en.hintOpened)
     const labels = await labelsOf($, surface)
+    expect(labels).toEqual(before)
     // The context actions: the default set's first, then the rest in the order of definition; six in all.
     expect(labels).toEqual(['<🧭>', '<✅>', '<📋>', '<❓>', '<🧸>', '<🌐>', '✕', '⋯', '⛓️'])
     // With no text to run on, no kind button for the selection's actions; the standalone ones a press away.
@@ -206,10 +219,35 @@ for (const surface of SURFACES) {
     await band.press({ key: 'close' })
     await band.unmount()
     await clock.advance(400)
-    expect(await labelsOf($, surface)).toEqual([])
+    expect(await labelsOf($, surface)).toEqual(labels)
     expect(s.forks).toEqual([])
   })
 }
+
+// SELM-00131: `hint` with nothing selected puts the line back to no
+// selection: the kind switched to back to the conversation's, the text an
+// earlier `hint` took let go.
+test('/quick-actions hint with nothing selected puts back the kind switched to and lets go of the text taken', async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  await start($)
+  s.selected = 'exit 137'
+  await clock.advance(400)
+  await openHint($, s, clock)
+  // The text taken: the selection's actions, after the highlight went.
+  let band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await hintKinds(band)).toEqual(['selection', 'context', 'standalone'])
+  await showKind(band, 'standalone')
+  await band.unmount()
+
+  const r = await runCommand($, 'hint')
+  expect(JSON.stringify(r)).toContain(MESSAGES.en.hintReset)
+  await clock.advance(400)
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
+  band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band.find({ key: 'explain' })).toBeUndefined()
+  await band.unmount()
+})
 
 test('with text selected, /quick-actions hint keeps every kind though the command took the selection away', async ($, on) => {
   const clock = mock.clock(on)
@@ -218,14 +256,15 @@ test('with text selected, /quick-actions hint keeps every kind though the comman
   s.selected = 'ECONNREFUSED 127.0.0.1:3306'
   await clock.advance(400)
 
-  await openHint($, s, clock)
+  const r = await openHint($, s, clock)
+  expect(JSON.stringify(r)).toContain(MESSAGES.en.hintOpened)
   await clock.advance(400)
   // It opens on the actions on the text it held; the other kinds a press away.
   expect(await labelsOf($)).toEqual(['[💡]', '[🌐]', '[📝]', '[🔎]', '[🔤]', '[🀄]', '✕', '⋯', '⛓️'])
   expect((await labelsOf($, 'terminal', 'context')).slice(0, 2)).toEqual(['<🧭>', '<✅>'])
   await labelsOf($, 'terminal', 'selection')
 
-  // An action on the selection runs on the text held as the command ran, and the line closes.
+  // An action on the selection runs on the text held as the command ran, and the line goes back to no selection.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await band.press({ key: 'explain' })
   await band.unmount()
@@ -233,10 +272,10 @@ test('with text selected, /quick-actions hint keeps every kind though the comman
   expect(s.models[0]?.prompt).toContain('<selected>')
   expect(s.models[0]?.prompt).toContain('ECONNREFUSED 127.0.0.1:3306')
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
-test('a selection made after /quick-actions hint arms it: that selection going closes the line', async ($, on) => {
+test('a selection made after /quick-actions hint arms it: that selection going puts the line back to no selection', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -248,10 +287,10 @@ test('a selection made after /quick-actions hint arms it: that selection going c
 
   s.selected = null
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
-  // Closed for good: no selection keeps nothing open.
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
+  // For good: the text taken is let go, nothing held.
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
 test('the selection held as the command ran, seen late by the poll, does not arm it', async ($, on) => {
@@ -277,7 +316,7 @@ test('the selection held as the command ran, seen late by the poll, does not arm
 // Running a context action
 
 for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
-  test(`[${lang}] a context action on the hint line forks the session with no selection, closes the line and shows "${MESSAGES[lang].onConversation}"`, { options }, async ($, on) => {
+  test(`[${lang}] a context action on the hint line forks the session with no selection, puts the line back to no selection and shows "${MESSAGES[lang].onConversation}"`, { options }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -294,7 +333,7 @@ for (const [options, lang] of [[JA, 'ja'], [EN, 'en']] as const) {
     expect(s.forks[0]).not.toContain('<selected>')
     expect(s.models).toEqual([])
     await clock.advance(400)
-    expect(await labelsOf($)).toEqual([])
+    expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
     expect(await pane.find({ text: MESSAGES[lang].onConversation })).toBeDefined()
@@ -317,13 +356,13 @@ test('on a hint line drawn by a selection alone, a context action puts its icons
   await band.unmount()
   expect(s.forks).toHaveLength(1)
   expect(s.forks[0]).not.toContain('exit 137')
-  // The selection is still answered, yet its icons stay away.
+  // The selection is still answered, yet the line stays as with no selection.
   await clock.advance(400)
   expect(s.selected).toBe('exit 137')
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
-test('opened by /quick-actions hint with a selection there now, a context action closes it as well', async ($, on) => {
+test('with text taken by /quick-actions hint and a selection there now, a context action puts the line back to no selection as well', async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -337,7 +376,7 @@ test('opened by /quick-actions hint with a selection there now, a context action
   await band.unmount()
   await clock.advance(400)
   expect(s.selected).toBe('exit 137')
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
 test('/quick-actions recap runs with nothing selected', async ($, on) => {
@@ -418,7 +457,7 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await picker.press({ key: '_picker-close' })
   await picker.unmount()
 
-  // No selection: `/quick-actions hint`, then its ⋯.
+  // No selection: the hint line's ⋯ (`/quick-actions hint` run first changes nothing).
   s.selected = null
   await clock.advance(400)
   await openHint($, s, clock)
@@ -441,9 +480,9 @@ test('the ⋯ dialog: both kinds, marked, with a selection; the context actions 
   await picker.unmount()
   expect(s.forks).toHaveLength(1)
   expect(s.forks[0]).toContain('to-do list')
-  // A pick closes the hint line too.
+  // A pick puts the hint line back to no selection too.
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
 // ---------------------------------------------------------------------------

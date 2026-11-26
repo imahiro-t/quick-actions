@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { LEAD_RESERVE, TIP_RESERVE, buttonWidth, dockReturn, hintLayout, hintLineColumns, hintMost, leadFor } from '../hooks/hint-width'
 import { CHAIN_ICON } from '../hooks/compose'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, EN, JA, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, kindButtons, runCommand, showKind, stage, start } from './stage'
+import { BAND, EN, JA, NO_SELECTION_SHAPE, PANE, PICKER_CLOSE, PICKER_PANE, PLUGIN, pickAction, SURFACES, hintIcons, hintKinds, hintShape, kindButtons, runCommand, showKind, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 /**
@@ -457,13 +457,13 @@ test('another plugin\'s dock measured beside other columns is never given back: 
   expect(await actionCount(band)).toBe(expected(139, 'en').count)
   await band.unmount()
 
-  // With no selection nor line opened (the engine's line drawn), the same.
+  // With no selection (the line drawn on the conversation's actions, SELM-00131), the same.
   const again = await mountOther($, 139, 40)
   await again.unmount()
   s.selected = null
   await clock.advance(400)
   const plain = await mountBand($, 150, true)
-  expect(await hintIcons(plain)).toEqual([])
+  expect(await hintShape(plain)).toEqual(NO_SELECTION_SHAPE)
   await plain.unmount()
   await select(s, clock, SELECTED)
   band = await mountBand($, 139, true)

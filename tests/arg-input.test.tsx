@@ -11,6 +11,7 @@ import { closeGoesBack } from '../hooks/register'
 import {
   BAND,
   EN,
+  NO_SELECTION_SHAPE,
   JA,
   PANE,
   PICKER,
@@ -24,6 +25,7 @@ import {
   pickAction,
   pickerKindButtons,
   SURFACES,
+  hintShape,
   runCommand,
   showKind,
   showPickerKind,
@@ -198,7 +200,7 @@ for (const surface of SURFACES) {
     })
   }
 
-  test(`[${surface}] Enter with the field empty: the default, headed "standalone"; the held text unsent, its icons put away`, { options: EN }, async ($, on) => {
+  test(`[${surface}] Enter with the field empty: the default, headed "standalone"; the held text unsent, the hint line back to no selection`, { options: EN }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -220,7 +222,7 @@ for (const surface of SURFACES) {
     expect(texts.join('\n')).not.toContain('SECRET')
     await clock.advance(400)
     const after = await $.ui.mount({ ...BAND, surface })
-    expect(await after.findAll({ type: 'Button' })).toEqual([])
+    expect(await hintShape(after)).toEqual(NO_SELECTION_SHAPE)
     await after.unmount()
   })
 }
@@ -432,7 +434,7 @@ for (const surface of SURFACES) {
   })
 }
 
-test('the hint line /quick-actions hint opened: Enter on the argument screen runs, and the line closes', { options: JA }, async ($, on) => {
+test('the hint line after /quick-actions hint with no selection: Enter on the argument screen runs, and the line stays as with no selection', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -441,14 +443,14 @@ test('the hint line /quick-actions hint opened: Enter on the argument screen run
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await showKind(band, 'standalone')
   await band.press({ key: 'timer' })
-  // Open still: only the run puts it away.
+  // Drawn still, as it always is.
   expect((await band.findAll({ type: 'Button' })).length).toBeGreaterThan(0)
   await band.unmount()
   await submitArg($, '3m')
   expect(await paneTexts($)).toContain(MESSAGES.ja.timerLeft('03:00'))
   await clock.advance(400)
   const after = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await after.findAll({ type: 'Button' })).toEqual([])
+  expect(await hintShape(after)).toEqual(NO_SELECTION_SHAPE)
   await after.unmount()
 })
 

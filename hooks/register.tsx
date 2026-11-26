@@ -134,8 +134,9 @@ const PANE = PLUGIN
 const PANE_TITLE = 'Quick Actions'
 const PANE_COLUMNS = 56
 const COMMAND = PLUGIN
-// `/quick-actions hint`: the hint line without a selection. Reserved, so no
-// custom action can take it as its ID.
+// `/quick-actions hint`: the text selected now taken into the hint line, kept
+// there after its highlight goes. Reserved, so no custom action can take it as
+// its ID.
 const HINT_ARG = 'hint'
 const POLL_MS = 300
 const KEEP = 20
@@ -712,9 +713,24 @@ function pickedOf(text: string, requestId: unknown): Picked {
 }
 
 /**
+ * The hint line back to no selection, as it first opens (✕, or `/quick-actions
+ * hint` with nothing selected): the selection drawn on it now (`current`, if
+ * any) hidden until another is made, the text `hint` took let go, the kind
+ * switched to back to the one it opens on, and the chain mode off. The line
+ * itself stays.
+ */
+async function resetHint($: EngineInterface, current: string | null): Promise<void> {
+  if (current !== null) await update($, dismissed, () => current)
+  await update($, hint, () => null)
+  await update($, hintKind, () => null)
+  await update($, composing, () => null)
+}
+
+/**
  * What every run does first, whatever it runs on: one more use of the action,
- * the hint line `/quick-actions hint` opened closed (its kind with it), a new
- * entry (running) at the top of the pane, both tabs open with the results
+ * the text `/quick-actions hint` took into the hint line let go and the line
+ * back to the kind it opens on (as with no selection), a new entry (running)
+ * at the top of the pane, both tabs open with the results
  * shown and brought back to their top. An entry pushed out past KEEP stops its
  * run over time, if it has one. The new entry's ID.
  *
@@ -1386,7 +1402,7 @@ async function execOnce($: EngineInterface, def: ExecAction, lang: Lang, input: 
 // Every way an action on the selection or the conversation runs (an icon, the
 // ⋯ dialog, the command) comes here. `text` is the selected text a selection
 // action runs on; a context action runs on the conversation and reads none.
-// Any run closes the hint line that `/quick-actions hint` opened. A
+// Any run lets go of the text `/quick-actions hint` took into the hint line. A
 // standalone action runs through runStandalone instead, which takes no text.
 // `requestId` is the transcript row the selection lies in, when the engine
 // named one: the entry then keeps it (its origin), to go back to.
@@ -2349,18 +2365,19 @@ export const register: Register = (on, options) => {
     })
 
     // The icons follow $.ui.selection(): once it answers undefined, the next
-    // poll writes null and the hint line redraws without them. The engine
-    // keeps answering the last selection after its highlight goes (so a press
-    // can still read it) until the person selects again or their next prompt
-    // or command has run: no event tells the module more, so a press of an
-    // action or ✕ hides the icons for that selection (see `dismissed`).
+    // poll writes null and the hint line redraws as with no selection (the
+    // conversation's and the standalone actions). The engine keeps answering
+    // the last selection after its highlight goes (so a press can still read
+    // it) until the person selects again or their next prompt or command has
+    // run: no event tells the module more, so a press of an action or ✕ puts
+    // the line back to no selection for that selection (see `dismissed`).
     //
-    // The hint line `/quick-actions hint` opened (`hint`) holds the text
-    // selected as the command ran, since running the command is itself what
-    // makes the engine stop answering that selection: its going closes
-    // nothing. A selection made after it opened arms it (one whose text is the
-    // held one does not: that may be the held selection itself, seen late),
-    // and that selection going closes it, as a selection's going hides its icons.
+    // The text `/quick-actions hint` took (`hint`) is the one selected as the
+    // command ran, since running the command is itself what makes the engine
+    // stop answering that selection: its going lets go of nothing. A
+    // selection made after it was taken arms it (one whose text is the held
+    // one does not: that may be the held selection itself, seen late), and
+    // that selection going lets go of it too, the line back to no selection.
     //
     // The ⋯ dialog's tab, while open, follows a new selection: one made with
     // the pane open is what its selection actions run on. A selection's going
@@ -2484,12 +2501,18 @@ export const register: Register = (on, options) => {
     }
     // An argument nothing takes: told, and nothing runs (no pane, no use counted).
     const refuse = (id: string, given: string) => ({ text: withNotices(t.argsNotAccepted(id, given), notices, l) })
-    // `hint`: the hint line, on the text selected now, held here while the
-    // engine still answers it (see the poll in session.start).
+    // `hint`: the text selected now taken into the hint line, held here while
+    // the engine still answers it (see the poll in session.start), so the
+    // line's selection actions still run on it after its highlight goes. With
+    // nothing selected, the line back to no selection, as ✕ puts it.
     if (wanted === HINT_ARG) {
       if (arg !== undefined) return refuse(wanted, arg)
       const held = await pickedNow($)
-      await update($, hint, () => ({ text: held?.text ?? null, ...(held?.requestId === undefined ? {} : { requestId: held.requestId }), armed: false }))
+      if (held === null) {
+        await resetHint($, null)
+        return { text: withNotices(t.hintReset, notices, l) }
+      }
+      await update($, hint, () => ({ text: held.text, ...(held.requestId === undefined ? {} : { requestId: held.requestId }), armed: false }))
       await update($, hintKind, () => null)
       await update($, dismissed, () => null)
       return { text: withNotices(t.hintOpened, notices, l) }
@@ -2538,8 +2561,10 @@ export const register: Register = (on, options) => {
   // The icons take the hint line under the prompt, a row that is always there:
   // a band above the prompt would add a row mid-drag and shift the transcript.
   //
-  // Shown on the text selected now; else, while `/quick-actions hint` holds it
-  // open, on the text it held or, with none, without the selection's actions.
+  // Always drawn (but while a draft is typed or an AskUserQuestion dialog is
+  // up, where the engine's own line is left): on the text selected now; else
+  // on the text `/quick-actions hint` took, kept after its highlight went;
+  // else, with no selection, the conversation's and the standalone actions.
   //
   // The engine keeps answering a selection after its highlight goes (see the
   // poll), and nothing tells the module the highlight went: the line cannot
@@ -2568,8 +2593,8 @@ export const register: Register = (on, options) => {
     const selected = await read($, selection)
     const current = selected !== null && selected !== (await read($, dismissed)) ? selected : null
     const opened = await read($, hint)
-    if (current === null && opened === null) return next(e)
-    // What a selection action on this line runs on.
+    // What a selection action on this line runs on (none: no selection).
+    // `?? null` reads a held text a previous version kept as null as none.
     const text = current ?? opened?.text ?? null
 
     const l = await ensureLanguage($)
@@ -2652,8 +2677,8 @@ export const register: Register = (on, options) => {
     const { Box, Button, Text } = hintElements
     const input = canInput(e.surface, hintElements)
 
-    // A press puts this line away, whichever kind it runs: the selection's
-    // icons (dismissed) and the line `hint` opened.
+    // A press puts this line back to no selection, whichever kind it runs:
+    // the selection's icons (dismissed) and the text `hint` took go.
     const press = async (a: ActionDef) => {
       // The chain mode: stacked, nothing run (and no argument screen).
       if ((await read($, composing)) !== null) {
@@ -2690,13 +2715,7 @@ export const register: Register = (on, options) => {
       }
       return text === null ? null : pickedOf(text, opened?.requestId)
     }
-    const close = async () => {
-      if (current !== null) await update($, dismissed, () => current)
-      await update($, hint, () => null)
-      await update($, hintKind, () => null)
-      // The chain mode goes with the line.
-      await update($, composing, () => null)
-    }
+    const reset = () => resetHint($, current)
     const toggleChain = () => toggleComposing($)
     const undoStep = () => undoComposing($)
     // ▶: the steps stacked run in order, on the text the line holds.
@@ -2756,9 +2775,9 @@ export const register: Register = (on, options) => {
         <Box key="act-close" flexShrink={0} hover={{ scope: 'tip-close' }}>
           <Button
             key="close"
-            label={t.hintCloseName}
+            label={t.hintResetName}
             role="dismiss"
-            onPress={close}
+            onPress={reset}
           >
             ✕
           </Button>
@@ -2817,7 +2836,7 @@ export const register: Register = (on, options) => {
         )}
         {shownKinds.map(k => tip(`tip-kind-${k}`, t.hintKindTips[k]))}
         {enabled.map(a => tip(`tip-action-${a.id}`, a.label))}
-        {tip('tip-close', t.close)}
+        {tip('tip-close', t.hintResetTip)}
         {tip('tip-more', t.allActions)}
         {tip('tip-chain-mode', t.chainModeTip)}
         {chainMode && stepLabels.map((label, i) => tip(`tip-chain-step-${i}`, label))}

@@ -66,7 +66,7 @@ How many actions the hint line shows follows its width; the rest are under the �
 - **⛓ takes its share**: ⛓ is always on the line, so a narrow line shows one action fewer than it would without it (1 rather than 2 at 80 columns; 2 actions take 90). In the [chain mode](#putting-a-chain-together-on-the-spot) its guide, or the steps stacked with ⌫ and ▶, count too, so the more steps you stack, the fewer actions are shown beside them. Every action is still under ⋯
 - Each icon with an emoji is given one column to spare, since terminals draw emoji at slightly different widths
 - Where the width is not known, 6 icons are shown
-- **Their names**: screen readers and the desktop app's native buttons read each action's icon with its name and kind, such as "[🌐] To Japanese (Actions on the selection)", so that the same icon on two kinds (`[🌐]` and `<🌐>`) is told apart; ✕ reads "Reset the Quick Actions hint line to no selection" (on hover it shows "Back to no selection") and ⋯ "Open all actions". What the buttons draw is unchanged
+- **Their names**: screen readers and the desktop app's native buttons read each action's icon with its name and kind, such as "[🌐] To Japanese (Actions on the selection)", so that the same icon on two kinds (`[🌐]` and `<🌐>`) is told apart; ✕ reads "Reset the Quick Actions hint line to no selection" (on hover it shows "Back to no selection"; it is an ordinary button, not a close control, since the line stays) and ⋯ "Open all actions". What the buttons draw is unchanged
 
 ### The right pane's two tabs
 

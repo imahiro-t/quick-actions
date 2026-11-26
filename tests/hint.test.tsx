@@ -1,7 +1,7 @@
 import { expect, mock, test } from './kit'
 import type { Engine } from 'claude-code/testing'
 
-import { BAND, EN, JA, SURFACES, hintIcons, hintKinds, kindButtons, showKind, stage, start } from './stage'
+import { BAND, EN, JA, NO_SELECTION_SHAPE, SURFACES, hintIcons, hintShape, kindButtons, showKind, stage, start } from './stage'
 import { MESSAGES } from '../hooks/i18n'
 
 // Which icons the hint line shows, for the `pinActions` setting the test stores:
@@ -15,29 +15,13 @@ const iconsFor = async ($: Engine, surface: (typeof SURFACES)[number]) => {
 
 type Mounted = Parameters<typeof hintIcons>[0]
 
-// The kind shown now, by its kind button's name (hintKindShown marks it).
+// The kind shown now, by its kind button's name (hintKindShown marks it, in either language).
 const shownKind = (buttons: { kind: string; label: string }[]) =>
-  buttons.find(b => b.label.endsWith('（表示中）') || b.label.endsWith('(shown)'))?.kind
+  buttons.find(b => [MESSAGES.ja, MESSAGES.en].some(m => b.label.endsWith(m.hintKindShown(''))))?.kind
 
-// The hint line as it is with no selection (SELM-00131: always drawn): the
-// conversation's and the standalone kind buttons, no selection's, and the
-// conversation's actions (<…>), then ✕, ⋯ and ⛓.
-async function expectNoSelection(band: Mounted) {
-  expect(await hintKinds(band)).toEqual(['context', 'standalone'])
-  const icons = await hintIcons(band)
-  expect(icons.slice(-3)).toEqual(['✕', '⋯', '⛓️'])
-  const actions = icons.slice(0, -3)
-  expect(actions.length).toBeGreaterThan(0)
-  for (const icon of actions) expect(icon).toMatch(/^<.*>$/)
-}
-
-// The hint line on a selection: every kind button, the selection's actions ([…]).
-async function expectSelection(band: Mounted) {
-  expect(await hintKinds(band)).toEqual(['selection', 'context', 'standalone'])
-  const actions = (await hintIcons(band)).slice(0, -3)
-  expect(actions.length).toBeGreaterThan(0)
-  for (const icon of actions) expect(icon).toMatch(/^\[.*\]$/)
-}
+// The hint line on a selection: every kind button, the selection's actions ([…]), then ✕, ⋯ and ⛓.
+const SELECTION_SHAPE = { ...NO_SELECTION_SHAPE, kinds: ['selection', 'context', 'standalone'], marks: ['['] }
+const expectSelection = async (band: Mounted) => expect(await hintShape(band)).toEqual(SELECTION_SHAPE)
 
 for (const surface of SURFACES) {
   // SELM-00131: the line is always there. With nothing selected (and no
@@ -50,7 +34,7 @@ for (const surface of SURFACES) {
 
     await clock.advance(400)
     let band = await $.ui.mount({ ...BAND, surface })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     await band.unmount()
 
     s.selected = 'ECONNREFUSED 127.0.0.1:3306'
@@ -68,7 +52,7 @@ for (const surface of SURFACES) {
     await start($)
 
     const band = await $.ui.mount({ ...BAND, surface })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     await band.unmount()
   })
 
@@ -163,11 +147,11 @@ for (const surface of SURFACES) {
 
     s.selected = null
     await clock.advance(400)
-    await expectNoSelection(mounted)
+    expect(await hintShape(mounted)).toEqual(NO_SELECTION_SHAPE)
     await mounted.unmount()
 
     const fresh = await $.ui.mount({ ...BAND, surface })
-    await expectNoSelection(fresh)
+    expect(await hintShape(fresh)).toEqual(NO_SELECTION_SHAPE)
     await fresh.unmount()
 
     // Selecting again brings the selection's back.
@@ -187,10 +171,10 @@ for (const surface of SURFACES) {
 
     let band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'close' })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     await band.unmount()
     band = await $.ui.mount({ ...BAND, surface })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     await band.unmount()
 
     s.selected = 'exit 1'
@@ -215,7 +199,7 @@ for (const surface of SURFACES) {
     expect(await band.find({ key: '_chain-guide' })).toBeDefined()
 
     await band.press({ key: 'close' })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     expect(shownKind(await kindButtons(band))).toBe('context')
     expect(await band.find({ key: '_chain-guide' })).toBeUndefined()
     await band.unmount()
@@ -232,7 +216,7 @@ for (const surface of SURFACES) {
     await showKind(band, 'standalone')
     expect(shownKind(await kindButtons(band))).toBe('standalone')
     await band.press({ key: 'close' })
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     expect(shownKind(await kindButtons(band))).toBe('context')
     await band.unmount()
   })
@@ -249,7 +233,7 @@ for (const surface of SURFACES) {
     let band = await $.ui.mount({ ...BAND, surface })
     await band.press({ key: 'explain' })
     await clock.advance(400)
-    await expectNoSelection(band)
+    expect(await hintShape(band)).toEqual(NO_SELECTION_SHAPE)
     await band.unmount()
     expect(s.models.length).toBe(1)
 
@@ -266,6 +250,27 @@ for (const surface of SURFACES) {
     await clock.advance(400)
     band = await $.ui.mount({ ...BAND, surface })
     await expectSelection(band)
+    await band.unmount()
+  })
+
+  // ✕ no longer closes the line (it stays, back to no selection), so it is an
+  // ordinary button, not a dismiss control as the ⋯ dialog's Close button is.
+  test(`[${surface}] the hint line's ✕ is not a dismiss control`, async ($, on) => {
+    const clock = mock.clock(on)
+    const s = stage(on)
+    await start($)
+
+    await clock.advance(400)
+    let band = await $.ui.mount({ ...BAND, surface })
+    expect((await band.find({ key: 'close' }))?.props.role).not.toBe('dismiss')
+    await band.unmount()
+
+    s.selected = 'exit 137'
+    await clock.advance(400)
+    band = await $.ui.mount({ ...BAND, surface })
+    const close = await band.find({ key: 'close' })
+    expect(close).toBeDefined()
+    expect(close?.props.role).toBeUndefined()
     await band.unmount()
   })
 

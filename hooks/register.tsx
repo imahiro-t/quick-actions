@@ -2776,7 +2776,6 @@ export const register: Register = (on, options) => {
           <Button
             key="close"
             label={t.hintResetName}
-            role="dismiss"
             onPress={reset}
           >
             ✕

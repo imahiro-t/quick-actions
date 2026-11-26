@@ -153,7 +153,7 @@ test('the three hundred and thirteen built-ins (a hundred and six on the selecti
   expect(ACTIONS.filter(a => isStandalone(a)).map(a => a.id)).toEqual(STANDALONE)
   for (const id of REMOVED) expect(ids).not.toContain(id)
   expect(new Set(ids).size).toBe(ids.length)
-  // `close` is the ✕ button's key on the hint line; `hint` is the command's argument that opens it.
+  // `close` is the ✕ button's key on the hint line; `hint` is the command's argument that takes the selection in.
   expect(ids).not.toContain('close')
   expect(ids).not.toContain('hint')
   for (const a of ACTIONS) {

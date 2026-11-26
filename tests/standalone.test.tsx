@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { TICKER_LIMIT, actionsFor } from '../hooks/actions'
 import { MESSAGES } from '../hooks/i18n'
 import { paneStyle } from '../hooks/palette'
-import { BAND, EN, JA, PANE, PICKER, PICKER_ARG, PICKER_FILTER, PICKER_PANE, listedOptions, pickAction, pickerKindButtons, showPickerKind, SURFACES, hintIcons, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
+import { BAND, EN, JA, NO_SELECTION_SHAPE, PANE, PICKER, PICKER_ARG, PICKER_FILTER, PICKER_PANE, listedOptions, pickAction, pickerKindButtons, showPickerKind, SURFACES, hintIcons, hintShape, runCommand, showKind, stage, start, storedUsage, submitArg } from './stage'
 import type { Clock, Stage } from './stage'
 
 // Standalone actions ({icon}): on neither the selection nor the conversation.
@@ -42,6 +42,13 @@ const labelsOf = async ($: Engine) => {
   return labels
 }
 
+const shapeOf = async ($: Engine) => {
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const shape = await hintShape(band)
+  await band.unmount()
+  return shape
+}
+
 /** Nothing was sent anywhere: no model, no fork, no subagent. */
 const sentNothing = (s: Stage) => {
   expect(s.models).toEqual([])
@@ -58,7 +65,7 @@ async function select(s: Stage, clock: Clock, text: string | null) {
 // Pressed on the hint line, picked in the ⋯ dialog: no argument, no text
 
 for (const surface of SURFACES) {
-  test(`[${surface}] the hint line with a selection: timer runs with no argument, the selection unsent, its icons put away`, { options: { ...EN, pinActions: 'timer' } }, async ($, on) => {
+  test(`[${surface}] the hint line with a selection: timer runs with no argument, the selection unsent, the line back to no selection`, { options: { ...EN, pinActions: 'timer' } }, async ($, on) => {
     const clock = mock.clock(on)
     const s = stage(on)
     await start($)
@@ -79,14 +86,14 @@ for (const surface of SURFACES) {
     // Headed "standalone", never by the selection.
     expect(texts.join('\n')).toContain(MESSAGES.en.standalone)
     expect(texts.join('\n')).not.toContain('SECRET')
-    // The selection is still answered; its icons stay away.
+    // The selection is still answered; the line stays as with no selection.
     await clock.advance(400)
     expect(s.selected).toBe(SECRET)
-    expect(await labelsOf($)).toEqual([])
+    expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
   })
 }
 
-test('the hint line /quick-actions hint opened with no selection: timer runs, and the line closes', { options: JA }, async ($, on) => {
+test('the hint line after /quick-actions hint with no selection: timer runs, and the line stays as with no selection', { options: JA }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -105,7 +112,7 @@ test('the hint line /quick-actions hint opened with no selection: timer runs, an
   expect(s.toasts).toEqual([])
   expect(await paneTexts($)).toContain('⏳ 25:00 残り')
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
 test('the ⋯ dialog from the line /quick-actions hint opened on a held text: timer runs without it', { options: EN }, async ($, on) => {
@@ -127,7 +134,7 @@ test('the ⋯ dialog from the line /quick-actions hint opened on a held text: ti
   expect((await paneTexts($)).join('\n')).not.toContain('SECRET')
 })
 
-test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons put away', { options: EN }, async ($, on) => {
+test('the ⋯ dialog holding a text: timer runs without it, the hint line back to no selection', { options: EN }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -158,7 +165,7 @@ test('the ⋯ dialog holding a text: timer runs without it, the text\'s icons pu
   expect(texts).toContain('⏳ 25:00 left')
   expect(texts.join('\n')).not.toContain('SECRET')
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
 })
 
 test('the ⋯ dialog with no text: timer runs, and no "nothing selected" toast', { options: JA }, async ($, on) => {
@@ -255,7 +262,7 @@ test('/quick-actions TIMER 5M: the ID is lowercased, the argument read as writte
   expect(texts).toContain('"5M"')
 })
 
-test('/quick-actions timer with text selected: runs, the selection unsent and its icons put away', { options: EN }, async ($, on) => {
+test('/quick-actions timer with text selected: runs, the selection unsent and the hint line back to no selection', { options: EN }, async ($, on) => {
   const clock = mock.clock(on)
   const s = stage(on)
   await start($)
@@ -265,7 +272,7 @@ test('/quick-actions timer with text selected: runs, the selection unsent and it
   expect(s.toasts).toEqual([])
   expect((await paneTexts($)).join('\n')).not.toContain('SECRET')
   await clock.advance(400)
-  expect(await labelsOf($)).toEqual([])
+  expect(await shapeOf($)).toEqual(NO_SELECTION_SHAPE)
   // Counted as a use, as any run is.
   await clock.settle()
   expect(storedUsage(s)?.['timer']?.score).toBe(1)

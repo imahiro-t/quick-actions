@@ -75,12 +75,12 @@ export type ResultOrigin = {
 export type ArgInput = { action: ActionId; value: string; invalid?: string }
 
 /**
- * The hint line `/quick-actions hint` opened. `text` is what was selected as
- * the command ran (trimmed), or null with nothing selected; `requestId`, the
- * transcript row it lies in, when the engine named one; `armed` turns true
- * once a selection made after it opened is seen, whose going then closes it.
+ * The text `/quick-actions hint` took into the hint line. `text` is what was
+ * selected as the command ran (trimmed); `requestId`, the transcript row it
+ * lies in, when the engine named one; `armed` turns true once a selection made
+ * after it was taken is seen, whose going then lets go of it.
  */
-export type HintState = { text: string | null; requestId?: string; armed: boolean }
+export type HintState = { text: string; requestId?: string; armed: boolean }
 
 /**
  * A slot an exec action's run holds while it runs (see hooks/exec.ts
@@ -111,11 +111,16 @@ declare module 'claude-code' {
        * buttons turned the list to, from 0; absent, the first.
        */
       picking: { text: string | null; requestId?: string; filter: string; arg?: ArgInput; kind?: 'selection' | 'context' | 'standalone'; page?: number } | null
-      /** The hint line `/quick-actions hint` opened; null while it is not open that way. */
+      /**
+       * The text `/quick-actions hint` took into the hint line, which its
+       * selection actions run on after the highlight goes; null while none is
+       * held (the line is drawn all the same). Back to null with ✕, a run,
+       * `hint` with nothing selected, or a later selection's going.
+       */
       hint: HintState | null
       /**
-       * The kind of actions the person switched the hint line to while it is
-       * up; null for the one it opens on (the selection's with text, else the
+       * The kind of actions the person switched the hint line to; null for
+       * the one it opens on (the selection's with text, else the
        * conversation's). Back to null with a new selection, `/quick-actions
        * hint`, ✕ or a run.
        */

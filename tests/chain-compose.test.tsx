@@ -349,7 +349,7 @@ test('on the selection first, with the text held gone by ▶: refused as with no
   await band.unmount()
   s.selected = null
   await clock.advance(400)
-  await runCommand($, 'hint')
+  // The line is drawn with no selection too (SELM-00131), the steps kept.
   band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
   expect(w.composing).toEqual({ steps: ['translate-ja', 'summarize'] })
   await band.press({ key: RUN })
@@ -357,6 +357,28 @@ test('on the selection first, with the text held gone by ▶: refused as with no
   await band.unmount()
   expect(s.toasts).toContain(t.noSelection)
   expect(s.models).toEqual([])
+})
+
+// SELM-00131: `/quick-actions hint` with nothing selected puts the line back
+// to no selection, as ✕ does: the chain mode goes off, its steps with it.
+test('/quick-actions hint with nothing selected turns the chain mode off', { options: JA }, async ($, on) => {
+  const clock = mock.clock(on)
+  const s = stage(on)
+  const w = watch(on)
+  await start($)
+  let band = await hintOn($, s, clock, 'Hello world')
+  await stack(band, ['translate-ja'])
+  await band.unmount()
+  s.selected = null
+  await clock.advance(400)
+  expect(w.composing).toEqual({ steps: ['translate-ja'] })
+  const r = await runCommand($, 'hint')
+  expect(JSON.stringify(r)).toContain(t.hintReset)
+  expect(w.composing).toBeNull()
+  band = await $.ui.mount({ ...BAND, surface: 'terminal', viewport: EVERY_ACTION_FITS })
+  expect(await band.find({ key: RUN })).toBeUndefined()
+  expect((await band.find({ key: MODE }))?.props.label).toBe(t.chainModeName(false))
+  await band.unmount()
 })
 
 test('the steps, ⌫ and ▶ are kept whole and count in the line\'s width: fewer actions beside them', { options: JA }, async ($, on) => {

@@ -5,7 +5,7 @@ import { ACTIONS, actionsFor, isContext, isStandalone, markedIcon, needsSelectio
 import { matchesFilter } from '../hooks/filter'
 import { FILTER_KEY, toFilterField } from '../hooks/focus'
 import { MESSAGES } from '../hooks/i18n'
-import { BAND, COMPOSE_TOGGLE, EN, JA, KIND_KEY, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, PICKER_NEXT, PICKER_PREV, SURFACES, pageText, promptOf, runCommand, stage, start } from './stage'
+import { BAND, COMPOSE_TOGGLE, EN, JA, KIND_KEY, NO_SELECTION_SHAPE, PANE, PICKER, PICKER_ARG, PICKER_CLOSE, PICKER_FILTER, PICKER_FILTER_CLEAR, PICKER_KIND, PICKER_PANE, listBox, listedActions, listedOptions, pickAction, pickerKindButtons, showPickerKind, PICKER_LIST, PICKER_NEXT, PICKER_PREV, SURFACES, hintShape, pageText, promptOf, runCommand, stage, start } from './stage'
 import type { Clock, Stage } from './stage'
 
 // The ⋯ dialog: every action, the most used first, picked with the
@@ -150,9 +150,9 @@ for (const surface of SURFACES) {
     expect(await pane.find({ text: /answer from/ })).toBeDefined()
     await pane.unmount()
 
-    // Picked, the text's icons go as after an icon's press.
+    // Picked, the line goes back to no selection as after an icon's press.
     const again = await $.ui.mount({ ...BAND, surface })
-    expect(await again.find({ type: 'Button' })).toBeUndefined()
+    expect(await hintShape(again)).toEqual(NO_SELECTION_SHAPE)
     await again.unmount()
   })
 }

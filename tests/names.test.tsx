@@ -83,7 +83,7 @@ for (const surface of SURFACES) {
       const buttons = await hintButtons(band)
       await band.unmount()
       const [close, more, chainMode] = buttons.slice(-3)
-      expect([close?.key, close?.drawn, close?.name]).toEqual(['close', '✕', t.hintCloseName])
+      expect([close?.key, close?.drawn, close?.name]).toEqual(['close', '✕', t.hintResetName])
       expect([more?.drawn, more?.name]).toEqual(['⋯', t.hintMoreName])
       // ⛓ (SELM-00128) after them, named by whether the chain mode is on.
       expect([chainMode?.drawn, chainMode?.name]).toEqual([CHAIN_ICON, t.chainModeName(false)])

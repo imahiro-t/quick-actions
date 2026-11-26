@@ -89,8 +89,10 @@ export type Messages = {
   pickerPage: (page: number, pages: number, count: number) => string
   /** The command's result when it opened the ⋯ dialog. */
   pickerOpened: string
-  /** The command's result when `/quick-actions hint` opened the hint line. */
+  /** The command's result when `/quick-actions hint` took the text selected into the hint line. */
   hintOpened: string
+  /** The command's result when `/quick-actions hint` ran with nothing selected: the line back to no selection. */
+  hintReset: string
   /** Stands in the pane heading for the quote of a context action, which has no selected text. */
   onConversation: string
   /** The hint line's kind buttons, by kind: the name drawn inside the kind's mark (`[選択]`). */
@@ -186,8 +188,10 @@ export type Messages = {
    * that `[🌐]` and `<🌐>` (one icon, two kinds) are told apart.
    */
   hintActionName: (mark: string, label: string, kindTip: string) => string
-  /** The accessible name of the hint line's ✕. */
-  hintCloseName: string
+  /** The accessible name of the hint line's ✕, which puts it back to no selection. */
+  hintResetName: string
+  /** The hover label of the hint line's ✕. */
+  hintResetTip: string
   /** The accessible name of the hint line's ⋯. */
   hintMoreName: string
   /** The ⋯ dialog's filter field: drawn before it (an Input's label), its name. */
@@ -341,8 +345,8 @@ export const MESSAGES: Record<Lang, Messages> = {
       `不明なアクション ID です: ${id}${candidates.length === 0 ? '' : `（候補: ${candidates.join(', ')}）`}。/quick-actions（ID なし）で一覧から検索できます`,
     showing: (pane, label) => `${pane} ペインに ${label} の結果を表示します。`,
     commandDescription:
-      '選択中のテキストか今の会話にアクションを実行します。単独のアクションは選択も会話も使わずに実行し、ID の後に引数を書けます（例: timer 5m）。ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で選択がなくてもヒント行を開きます',
-    emptyPane: 'テキストを選択するか /quick-actions hint を実行して、プロンプト下のヒント行のアイコンを押してください。',
+      '選択中のテキストか今の会話にアクションを実行します。単独のアクションは選択も会話も使わずに実行し、ID の後に引数を書けます（例: timer 5m）。ID を省くと、すべてのアクションから選ぶダイアログを開きます。hint で今の選択テキストをヒント行に取り込みます',
+    emptyPane: 'プロンプト下のヒント行のアイコンを押してください（テキストを選択すると、選択テキストへのアクションが並びます）。',
     inlineHint: 'ターミナル幅を 110 桁以上にすると、このペインは右側に表示されます（フルスクリーン表示時）。',
     quote: text => `「${text}」`,
     close: '閉じる',
@@ -358,7 +362,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerNext: '次へ',
     pickerPage: (page, pages, count) => `${page} / ${pages}（${count} 件）`,
     pickerOpened: 'ダイアログでアクションを選んでください。',
-    hintOpened: 'プロンプト下のヒント行からアクションを選んでください。',
+    hintOpened: '選択テキストをヒント行に取り込みました。ハイライトが消えても、ヒント行の選択アクションはこのテキストに実行します。',
+    hintReset: '選択されたテキストがないため、ヒント行を選択なしの表示に戻しました。',
     onConversation: '今の会話',
     languageName: 'Japanese',
     agentDescription: label => `選択テキストの${label}（Quick Actions 専用）`,
@@ -524,7 +529,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     again: 'もう一度',
     setArg: type => SET_ARG.ja[type],
     hintActionName: (mark, label, kindTip) => `${mark} ${label}（${kindTip}）`,
-    hintCloseName: 'クイックアクションのヒントを閉じる',
+    hintResetName: 'クイックアクションのヒント行を選択なしの表示に戻す',
+    hintResetTip: '選択なしの表示に戻す',
     hintMoreName: 'すべてのアクションを開く',
     pickerFilterLabel: '絞り込み',
     argFieldLabel: '引数',
@@ -608,8 +614,8 @@ export const MESSAGES: Record<Lang, Messages> = {
       `Unknown action ID: ${id}${candidates.length === 0 ? '' : ` (candidates: ${candidates.join(', ')})`}. Run /quick-actions (no ID) to search the list`,
     showing: (pane, label) => `Showing the ${label} result in the ${pane} pane.`,
     commandDescription:
-      'Run an action on the selected text or on this conversation; a standalone action uses neither and takes an argument after its ID (e.g. timer 5m). Without an ID: pick one from every action in a dialog; hint: open the hint line, with or without a selection',
-    emptyPane: 'Select some text or run /quick-actions hint, then press an icon on the hint line below the prompt.',
+      'Run an action on the selected text or on this conversation; a standalone action uses neither and takes an argument after its ID (e.g. timer 5m). Without an ID: pick one from every action in a dialog; hint: take the text selected now into the hint line',
+    emptyPane: 'Press an icon on the hint line below the prompt (select some text to list the actions on it).',
     inlineHint: 'Widen the terminal to 110 columns or more to show this pane on the right (in fullscreen).',
     quote: text => `"${text}"`,
     close: 'Close',
@@ -625,7 +631,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     pickerNext: 'Next',
     pickerPage: (page, pages, count) => `${page} / ${pages} (${count})`,
     pickerOpened: 'Pick an action in the dialog.',
-    hintOpened: 'Pick an action on the hint line below the prompt.',
+    hintOpened: 'The selected text is taken into the hint line: its selection actions run on it even after the highlight goes.',
+    hintReset: 'No text is selected: the hint line is back to no selection.',
     onConversation: 'this conversation',
     languageName: 'English',
     agentDescription: label => `${label} for the selected text (Quick Actions only)`,
@@ -792,7 +799,8 @@ export const MESSAGES: Record<Lang, Messages> = {
     again: 'Again',
     setArg: type => SET_ARG.en[type],
     hintActionName: (mark, label, kindTip) => `${mark} ${label} (${kindTip})`,
-    hintCloseName: 'Close the Quick Actions hint',
+    hintResetName: 'Reset the Quick Actions hint line to no selection',
+    hintResetTip: 'Back to no selection',
     hintMoreName: 'Open all actions',
     pickerFilterLabel: 'Filter',
     argFieldLabel: 'Argument',

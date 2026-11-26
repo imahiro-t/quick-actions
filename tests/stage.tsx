@@ -575,6 +575,23 @@ export const hintIcons = async (band: Band) =>
 export const hintKinds = async (band: Band) =>
   (await band.findAll({ type: 'Button' })).flatMap(b => (String(b.key).startsWith(KIND_KEY) ? [String(b.key).slice(KIND_KEY.length)] : []))
 
+/**
+ * The hint line in short: its kind buttons, the marks its actions carry ('['
+ * the selection's, '<' the conversation's, '{' the standalone ones; each mark
+ * once, in the order drawn) and the buttons after them (✕, ⋯ and ⛓).
+ */
+export const hintShape = async (band: Band) => {
+  const icons = await hintIcons(band)
+  return { kinds: await hintKinds(band), marks: [...new Set(icons.slice(0, -3).map(i => i.charAt(0)))], ends: icons.slice(-3) }
+}
+
+/**
+ * The hint line's shape with no selection (SELM-00131: it is always drawn):
+ * the conversation's and the standalone kind buttons, no selection's, the
+ * conversation's actions, then ✕, ⋯ and ⛓.
+ */
+export const NO_SELECTION_SHAPE = { kinds: ['context', 'standalone'], marks: ['<'], ends: ['✕', '⋯', '⛓️'] }
+
 /** Switches the hint line to the actions of `kind`, as a press on its kind button does. */
 export const showKind = (band: Band, kind: HintKindName) => band.press({ key: `${KIND_KEY}${kind}` })
 
